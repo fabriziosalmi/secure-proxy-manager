@@ -40,6 +40,8 @@ import { BlockedByRule } from '../components/dashboard/BlockedByRule';
 import { ServicesPanel } from '../components/dashboard/ServicesPanel';
 import { serviceRows } from '../components/dashboard/services';
 import { blockedLogsLink } from '../components/dashboard/links';
+import { attentionNotices } from '../components/dashboard/AttentionNotices';
+import { useNeedsAttention } from '../hooks/useNeedsAttention';
 
 const REFETCH = 30_000;
 
@@ -113,14 +115,7 @@ function notices(summary: { data?: DashboardSummary | null; isError: boolean }):
       </Notice>
     ));
   }
-  if (s?.waf_status === 'auth_failed') {
-    out.push(
-      <Notice key="waf" tone="warning" title="The WAF refuses the backend">
-        The WAF refused the backend credential, so its statistics and category switches are unavailable. Set INTERNAL_ALERT_TOKEN to the same
-        value on the waf and backend services.
-      </Notice>,
-    );
-  }
+  // The WAF refusing the backend is in "Needs attention" (lib/attention).
   return out;
 }
 
@@ -217,6 +212,7 @@ export function Dashboard() {
     refetchInterval,
   });
   const status = useQuery({ ...statusQuery, refetchInterval, staleTime: 10_000 });
+  const attention = useNeedsAttention({ refetchInterval });
   const cache = useQuery<CacheStats | null>({
     queryKey: ['cache'],
     queryFn: () => getData<CacheStats>('cache/statistics'),
@@ -257,7 +253,8 @@ export function Dashboard() {
   }
 
   const updated = summary.dataUpdatedAt ? ` · updated ${formatClock(summary.dataUpdatedAt)}` : '';
-  const pageNotices = notices(summary);
+  // What needs attention first: it says why the numbers below may mislead.
+  const pageNotices = [...attentionNotices(attention.items), ...notices(summary)];
 
   return (
     <div className="flex flex-col gap-6">

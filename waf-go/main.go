@@ -1353,16 +1353,17 @@ func (h *MgmtHandlers) HealthHandler(w http.ResponseWriter, r *http.Request) {
 			hEnabled++
 		}
 	}
-	// The policy's mode and size, and whether its last reload failed; the
-	// reason, which names the operator's hosts, is behind GET /policy.
+	// The policy's mode and size, whether its last reload failed, and how many
+	// rules it makes log-only; the reason, which names the operator's hosts,
+	// is behind GET /policy.
 	pol := currentPolicy.Load()
 	policyMu.Lock()
 	policyFailed := policyLastError != ""
 	policyMu.Unlock()
 	fmt.Fprintf(w, `{"status":"healthy","commit":%q,"engine":%q,"regex_engine":%q,"regex_shadow":%t,"rules":%d,"categories":%d,"threshold":%d,"heuristics":%d,`+
-		`"policy":{"mode":%q,"exceptions":%d,"reload_failed":%t}}`,
+		`"policy":{"mode":%q,"exceptions":%d,"reload_failed":%t,"observe_rules":%d}}`,
 		GitCommit, wafEngine, engine.RegexEngine(), engine.RegexShadow(), total, len(engine.BlockRules()), eng.BlockThreshold(), hEnabled,
-		pol.Mode(), pol.Exceptions(), policyFailed)
+		pol.Mode(), pol.Exceptions(), policyFailed, len(pol.ObserveRules()))
 }
 
 func (h *MgmtHandlers) StatsHandler(w http.ResponseWriter, r *http.Request) {
@@ -1401,13 +1402,19 @@ func (h *MgmtHandlers) CategoriesHandler(w http.ResponseWriter, r *http.Request)
 		// Observe: the category matches and is logged, never scored.
 		Observe bool `json:"observe"`
 	}
+	// A category is observed by WAF_OBSERVE_CATEGORIES or by the policy in
+	// force; either way its matches are logged and never scored.
+	policyObserved := map[string]bool{}
+	for _, c := range currentPolicy.Load().ObserveCategories() {
+		policyObserved[c] = true
+	}
 	var cats []catInfo
 	for _, cr := range engine.BlockRules() {
 		cats = append(cats, catInfo{
 			Name:    cr.Category,
 			Rules:   len(cr.Rules),
 			Enabled: eng.CategoryEnabled(cr.Category),
-			Observe: eng.Observed(cr.Category),
+			Observe: eng.Observed(cr.Category) || policyObserved[cr.Category],
 		})
 	}
 	if err := json.NewEncoder(w).Encode(map[string]any{"status": "ok", "data": cats}); err != nil {

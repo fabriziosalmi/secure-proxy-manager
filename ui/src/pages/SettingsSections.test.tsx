@@ -115,6 +115,30 @@ describe('Settings sections', () => {
   })
   afterEach(() => { vi.restoreAllMocks() })
 
+  // The heuristics text follows the threshold the WAF runs: at 10 only the
+  // personal-data heuristic (10) blocks alone; at 5 every one does.
+  describe('Inspection', () => {
+    const serveThreshold = (threshold: number) => {
+      const base = vi.mocked(api.get).getMockImplementation()!
+      vi.mocked(api.get).mockImplementation(((url: string) => url === 'waf/status'
+        ? Promise.resolve({ data: { status: 'success', data: {
+          status: 'ok', categories: 22, categories_enabled: 22, rules: 179, rules_enabled: 179,
+          running: { engine: 'hybrid', threshold, regex_engine: 'go', regex_shadow: false, heuristics: 5, policy_mode: 'block', policy_exceptions: 0, policy_reload_failed: false },
+        } } })
+        : base(url)) as never)
+    }
+
+    it('says which heuristics block on their own at the running threshold', async () => {
+      serveThreshold(10)
+      const { unmount } = renderAt('/settings/inspection')
+      expect(await screen.findByText("Each one adds to a request's score. The WAF blocks at a score of 10, so Personal data in responses can block on its own, and the others need a second signal.")).toBeInTheDocument()
+      unmount()
+      serveThreshold(5)
+      renderAt('/settings/inspection')
+      expect(await screen.findByText("Each one adds to a request's score. The WAF blocks at a score of 5, so any one of them can block on its own.")).toBeInTheDocument()
+    })
+  })
+
   describe('Clients and access', () => {
     it('says who may connect without offering a control that does nothing', async () => {
       const { container } = renderAt('/settings/access')
@@ -437,12 +461,14 @@ describe('Settings sections', () => {
       expect(screen.getByText('DNS_UPSTREAM_1=192.168.1.2')).toBeInTheDocument()
     })
 
-    it('makes 2 GET requests on /settings/access instead of 4 when egress default deny is off', async () => {
+    // The egress allowlist is read only when default-deny is on; the WAF's
+    // status is read for Needs attention (Log only, a failed policy reload).
+    it('reads no egress list on /settings/access when egress default deny is off', async () => {
       renderAt('/settings/access')
       await screen.findByRole('switch', { name: 'Require proxy login' })
       const getUrls = vi.mocked(api.get).mock.calls.map(([u]) => String(u))
-      expect(getUrls).toEqual(expect.arrayContaining(['settings', 'status']))
-      expect(getUrls).toHaveLength(2)
+      expect(getUrls).toEqual(expect.arrayContaining(['settings', 'status', 'waf/status']))
+      expect(getUrls).toHaveLength(3)
     })
   })
 })

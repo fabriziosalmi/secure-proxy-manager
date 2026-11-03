@@ -7,6 +7,7 @@ import type { Coverage } from '../../types';
 import { formatCount } from '../../lib/format';
 import { sectionPath, type SectionId } from '../../lib/settingsMeta';
 import { SHARED_SEVERITY, type Posture } from '../../lib/posture';
+import { CRS_THRESHOLD, onlyLogged } from '../../lib/wafRunning';
 
 /** A line's state, in the one model Settings uses too (lib/posture). */
 export type CoverageState = Posture;
@@ -63,12 +64,31 @@ function wafLine(c: Coverage): CoverageLine {
   if (w.status !== 'ok' || w.rules === null || w.rules_enabled === null || w.categories === null || w.categories_enabled === null) {
     return { ...base, state: 'needs-attention', text: 'WAF: answered with an error, so its rules are not reported' };
   }
+  // What it runs, from its /health: Log only and a failed policy reload are
+  // read before the rule count, which would otherwise say "on".
+  const run = w.running;
+  if (run?.policy_mode === 'observe') {
+    return { ...base, state: 'needs-attention', text: 'WAF: Log only, it records what it would block and blocks nothing' };
+  }
+  if (run?.policy_reload_failed) {
+    return { ...base, state: 'needs-attention', text: 'WAF: its last policy reload failed, so it still runs the policy it had before' };
+  }
   const scope = c.https_inspection ? 'plain HTTP and inspected HTTPS' : 'plain HTTP only';
   if (w.rules_enabled === 0) return { ...base, state: 'needs-attention', text: `WAF: every rule category is switched off (${formatCount(w.categories)} categories)` };
   const rules = w.rules_enabled === w.rules
     ? `${formatCount(w.rules)} request rules in ${formatCount(w.categories)} categories`
     : `${formatCount(w.rules_enabled)} of ${formatCount(w.rules)} request rules on, in ${formatCount(w.categories_enabled)} of ${formatCount(w.categories)} categories`;
-  return { ...base, state: 'on', text: `WAF: ${rules}, inspecting ${scope}` };
+  // What only logs never adds to a score; the hybrid engine ships three
+  // such categories, so they are said, not flagged.
+  const logged = onlyLogged(w, run);
+  const observed = logged ? ` (${logged})` : '';
+  const hybrid = run?.engine === 'hybrid';
+  const crs = hybrid ? ', plus the OWASP Core Rule Set' : '';
+  // The threshold scores the SPM rules; the Core Rule Set blocks at its own.
+  const blocks = run
+    ? `; SPM rules block at a score of ${formatCount(run.threshold)}${hybrid ? `, the Core Rule Set at its own ${CRS_THRESHOLD}` : ''}; inspects`
+    : ', inspecting';
+  return { ...base, state: 'on', text: `WAF: ${rules}${observed}${crs}${blocks} ${scope}` };
 }
 
 function httpsLine(on: boolean | null): CoverageLine {

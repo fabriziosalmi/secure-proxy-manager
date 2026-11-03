@@ -29,7 +29,7 @@ type docMeta struct {
 // the call a non-browser client needs to stay authenticated (SECURE-API-01).
 var routeDocs = map[string]docMeta{
 	"GET /api/analytics/blocked-by-day":            {auth: true, desc: "Blocked client requests per calendar day by rule, today and the 6 days before (?tz=Europe/Rome, default UTC)"},
-	"GET /api/analytics/coverage":                  {auth: true, desc: "Protection switched on now: blacklist entries and where enforced, WAF rule counts, HTTPS inspection, proxy login, alerts"},
+	"GET /api/analytics/coverage":                  {auth: true, desc: "Protection switched on now: blacklist entries and where enforced, the WAF as GET /api/waf/status reports it, HTTPS inspection, proxy login, alerts"},
 	"GET /api/analytics/file-extensions":           {auth: true, desc: "Client requests of the last 7 days whose URL path ends in a file extension, by extension and group (newest 10,000 URL rows)"},
 	"GET /api/analytics/shadow-it":                 {auth: true, desc: "Client requests of the last 7 days to known services (file sharing, messaging, AI, social), by host"},
 	"GET /api/analytics/top-domains":               {auth: true, desc: "Top 50 accessed domains (for word cloud)"},
@@ -118,6 +118,7 @@ var routeDocs = map[string]docMeta{
 	"GET /api/status":                              {auth: true, desc: "System status overview"},
 	"GET /api/traffic/statistics":                  {auth: true, desc: "Traffic statistics by time period"},
 	"GET /api/waf/stats":                           {auth: true, desc: "WAF engine stats (inspected, blocked, entropy, categories, cache); on failure 502 or 503 with waf_status: unreachable, auth_failed or error"},
+	"GET /api/waf/status":                          {auth: true, desc: "What the WAF runs: status (ok, unreachable, auth_failed or error), rule and category counts with those only logged (categories_observed, rules_observed), and running from its /health: engine, threshold, regex_engine, regex_shadow, heuristics, policy_mode (block or observe), policy_exceptions, policy_reload_failed, policy_observe_rules (rules the policy makes log-only); null when /health did not answer"},
 	"GET /api/waf/events/{id}":                     {auth: true, desc: "The WAF's account of one block, by the event_id of its access log row: rules, the scoring ones (scoring_rules), categories, host, path, which half blocked (spm or crs), CRS score and, for a CRS block, the argument each rule matched (crs_targets); 404 once pruned with the access log"},
 	"GET /api/waf/policy":                          {auth: true, desc: "The WAF policy file (WAF_POLICY_FILE): policy, sha256 (send it back with a PUT), exists, file_error when it does not parse, and the policy the WAF has in force (waf, in_force, path_mismatch; waf_error when the WAF cannot be read)"},
 	"POST /api/waf/policy/exceptions":              {auth: true, desc: "Add one exception {rule, host?, path?, target?, comment?} to the WAF policy file; the WAF validates it first (422 refused, 503 when it cannot be reached: nothing written), then reloads it; data.added is false when one with the same scope exists"},

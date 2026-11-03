@@ -32,12 +32,14 @@ export function wafRow(summary: Load<DashboardSummary>): ServiceRow {
   switch (s.waf_status) {
     case 'ok': {
       const n = s.waf?.total_requests;
-      return { name, health: 'ok', state: 'reporting', detail: typeof n === 'number' ? `${formatCount(n)} requests inspected` : 'Inspected count not reported' };
+      // The WAF's own counter, since it started or was reset: not the 24 hours the
+      // rest of the page covers.
+      return { name, health: 'ok', state: 'reporting', detail: typeof n === 'number' ? `${formatCount(n)} requests inspected since the WAF started or its counters were reset` : 'Inspected count not reported' };
     }
     case 'auth_failed':
       return { name, health: 'down', state: 'refusing the backend', detail: 'Set INTERNAL_ALERT_TOKEN to the same value on the waf and backend services' };
     case 'unreachable':
-      return { name, health: 'down', state: 'not reachable', detail: 'The WAF management API is not reachable' };
+      return { name, health: 'down', state: 'not reachable', detail: 'The backend cannot reach the WAF management API. If the WAF itself is down, clients get an error on every request it inspects, unless WAF_FAIL_OPEN=1' };
     case 'error':
       return { name, health: 'down', state: 'error', detail: 'The WAF management API returned an error' };
     default:

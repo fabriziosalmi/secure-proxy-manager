@@ -25,7 +25,7 @@ describe('serviceRows', () => {
     ))
     expect(rows.Backend).toMatchObject({ health: 'ok', state: 'running', detail: 'v3.14.3' })
     expect(rows.Proxy).toMatchObject({ health: 'ok', state: 'running', detail: 'Squid 7.7, port 3128' })
-    expect(rows.WAF).toMatchObject({ health: 'ok', state: 'reporting', detail: '30 requests inspected' })
+    expect(rows.WAF).toMatchObject({ health: 'ok', state: 'reporting', detail: '30 requests inspected since the WAF started or its counters were reset' })
     // No cache_stats.json on the proxy: not a 0% hit rate.
     expect(rows['Cache statistics']).toMatchObject({ health: 'unknown', state: 'not collected', detail: 'The proxy has not written cache statistics yet' })
   })
