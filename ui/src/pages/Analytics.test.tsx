@@ -102,6 +102,7 @@ describe('Analytics', () => {
       'Cloud services in use',
       'Traffic by kind of service',
       'Downloads by file type',
+      'Most requested destinations',
     ])
     // The Overview's lists, the word cloud, the old cards and the playground are gone.
     for (const gone of ['Top Blocked', 'Live Feed', 'Top Domains', 'Regex Playground', 'Shadow IT', 'Threat Timeline (72h)', 'Score', 'Entropy Alerts']) {
@@ -115,6 +116,24 @@ describe('Analytics', () => {
     expect(screen.getByText('Insights')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Last 24 hours: Overview' })).toHaveAttribute('href', '/')
     expect(screen.getByRole('link', { name: 'Every request: Access logs' })).toHaveAttribute('href', '/logs')
+  })
+
+  // The hosts the clients asked for most: one row per host, each opening its
+  // requests in the access log, with its blocked share.
+  it('lists the most requested destinations, each linked to its requests', async () => {
+    const base = vi.mocked(api.get).getMockImplementation()!
+    vi.mocked(api.get).mockImplementation(((url: string, ...rest: unknown[]) => url === 'analytics/top-destinations'
+      ? Promise.resolve({ data: { status: 'success', data: [
+        { host: 'api.example.com', requests: 1180, blocked: 0 },
+        { host: 'ads.example.net', requests: 40, blocked: 10 },
+      ] } })
+      : (base as (u: string, ...r: unknown[]) => Promise<unknown>)(url, ...rest)) as never)
+    renderWithProviders(<Analytics />)
+    await screen.findByRole('link', { name: 'ads.example.net' })
+    const table = screen.getByRole('table', { name: 'Most requested destinations in the last 7 days' })
+    const rows = within(table).getAllByRole('row').slice(1).map((r) => r.textContent)
+    expect(rows).toEqual(['api.example.com1,180None', 'ads.example.net4010 (25.0%)'])
+    expect(within(table).getByRole('link', { name: 'ads.example.net' })).toHaveAttribute('href', '/logs?q=ads.example.net')
   })
 
   it('asks for the days of the viewer time zone and draws every day, the empty ones as zero', async () => {

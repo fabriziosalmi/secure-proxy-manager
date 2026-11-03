@@ -382,6 +382,7 @@ func (h *AnalyticsHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 	r.With(authMW, etag).Get("/api/analytics/user-agents", h.UserAgents)
 	r.With(authMW, etag).Get("/api/analytics/file-extensions", h.FileExtensions)
 	r.With(authMW, etag).Get("/api/analytics/top-domains", h.TopDomains)
+	r.With(authMW, etag).Get("/api/analytics/top-destinations", h.TopDestinations)
 	r.With(authMW, etag).Get("/api/analytics/blocked-by-day", h.BlockedByDay)
 	r.With(authMW).Get("/api/analytics/coverage", h.Coverage)
 	r.With(authMW, etag).Get("/api/audit-log", h.AuditLog)
@@ -1737,6 +1738,41 @@ func (h *AnalyticsHandlers) TopDomains(w http.ResponseWriter, r *http.Request) {
 		result = append(result, map[string]any{"domain": d, "count": c})
 	}
 	writeOK(w, result)
+}
+
+// TopDestinations answers GET /api/analytics/top-destinations: the 20 hosts
+// the clients asked for most in the analytics window, each with how many of
+// those requests were blocked. The stack's own traffic is left out, as in
+// every analytics count, and a host is one row whatever its ports and paths.
+// A database failure is an error, not an empty list.
+func (h *AnalyticsHandlers) TopDestinations(w http.ResponseWriter, r *http.Request) {
+	ext, extArgs := notInternal(h.src.Present())
+	// #nosec G202 -- destinationKey, clientRows and ext are constants and placeholders; values are bound.
+	rows, err := h.db.Query(string(`
+		SELECT `+destinationKey+` AS host, COUNT(*) AS cnt, SUM(blocked) AS blk FROM proxy_logs
+		WHERE destination IS NOT NULL AND destination != ''
+		AND unix_timestamp >= ? AND `+clientRows+` AND `+ext+`
+		GROUP BY host ORDER BY cnt DESC, host LIMIT 20`), append([]any{sinceUnix(analyticsWindow)}, extArgs...)...)
+	if err != nil {
+		writeInternalError(w, "top_destinations", err)
+		return
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var host string
+		var cnt, blk int
+		if err := rows.Scan(&host, &cnt, &blk); err != nil {
+			writeInternalError(w, "top_destinations", err)
+			return
+		}
+		out = append(out, map[string]any{"host": host, "requests": cnt, "blocked": blk})
+	}
+	if err := rows.Err(); err != nil {
+		writeInternalError(w, "top_destinations", err)
+		return
+	}
+	writeOK(w, out)
 }
 
 // WAFCategories proxies GET /categories from the WAF container.

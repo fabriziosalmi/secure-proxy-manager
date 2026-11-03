@@ -33,6 +33,7 @@ var routeDocs = map[string]docMeta{
 	"GET /api/analytics/file-extensions":           {auth: true, desc: "Client requests of the last 7 days whose URL path ends in a file extension, by extension and group (newest 10,000 URL rows)"},
 	"GET /api/analytics/shadow-it":                 {auth: true, desc: "Client requests of the last 7 days to known services (file sharing, messaging, AI, social), by host"},
 	"GET /api/analytics/top-domains":               {auth: true, desc: "Top 50 accessed domains (for word cloud)"},
+	"GET /api/analytics/top-destinations":          {auth: true, desc: "The 20 hosts the clients asked for most in the last 7 days, internal sources left out: host, requests, blocked"},
 	"GET /api/analytics/user-agents":               {auth: true, desc: "Client requests of the last 7 days by HTTP method and by kind of service (from the host)"},
 	"GET /api/audit-log":                           {auth: true, desc: "Admin action audit trail (who changed what, when), newest first; ?category=all|changes|signins and ?q= (text in the user, action, target or details, up to 200 characters) filter on the server; meta.retention_days is how long a row is kept"},
 	"POST /api/auth/login":                         {auth: false, desc: "Login: returns access_token and refresh_token; with X-SPM-Session: cookie (the UI) sets the HttpOnly session cookie and returns username and expires_at instead"},
