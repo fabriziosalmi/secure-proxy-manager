@@ -143,7 +143,7 @@ describe('App', () => {
     expect(await screen.findByText(/sign in to continue/i)).toBeInTheDocument()
   })
 
-  it('makes 3 GET requests (1 settings, 1 status, 1 health) after GET /api/session, instead of 6, when mounting /settings/access inside App', async () => {
+  it('makes 4 GET requests (1 settings, 1 status, 1 health, 1 waf/status) after GET /api/session when mounting /settings/access inside App', async () => {
     signedIn()
     vi.mocked(api.get).mockImplementation((url: string) => {
       if (url === 'settings') {
@@ -168,7 +168,8 @@ describe('App', () => {
       await screen.findByText('Backend and proxy running')
       const urls = vi.mocked(api.get).mock.calls.map(([u]) => String(u))
       expect(urls.filter((u) => u === 'settings')).toHaveLength(1)
-      expect(urls).toHaveLength(3)
+      expect(urls.filter((u) => u === 'waf/status')).toHaveLength(1)
+      expect(urls).toHaveLength(4)
     } finally {
       window.history.pushState({}, '', '/')
     }

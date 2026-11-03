@@ -373,6 +373,7 @@ func (h *AnalyticsHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 	r.With(authMW, etag).Get("/api/domains/statistics", h.DomainStats)
 	r.With(authMW).Get("/api/cache/statistics", h.CacheStats)
 	r.With(authMW).Get("/api/waf/stats", h.WAFStats)
+	r.With(authMW).Get("/api/waf/status", h.WAFStatus)
 	r.With(authMW).Get("/api/waf/categories", h.WAFCategories)
 	r.With(authMW).Post("/api/waf/categories/toggle", h.WAFCategoryToggle)
 	r.With(authMW).Post("/api/counters/reset", h.ResetCounters)

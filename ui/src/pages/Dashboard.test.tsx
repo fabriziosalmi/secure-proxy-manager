@@ -278,11 +278,46 @@ describe('Dashboard (Overview)', () => {
       expect(shownNotices()).toHaveLength(1)
     })
 
+    const wafStatus = { status: 'ok', categories: 20, categories_enabled: 20, categories_observed: 3, rules: 180, rules_enabled: 180, rules_observed: 12 }
+    const running = { engine: 'hybrid', threshold: 10, regex_engine: 'go', regex_shadow: false, heuristics: 5, policy_mode: 'block', policy_exceptions: 0, policy_reload_failed: false }
+
     it('says the WAF refuses the backend credential', async () => {
-      serve({ ...DEFAULT_ROUTES, 'dashboard/summary': { ...summaryData, waf: null, waf_status: 'auth_failed' } })
+      serve({
+        ...DEFAULT_ROUTES,
+        'dashboard/summary': { ...summaryData, waf: null, waf_status: 'auth_failed' },
+        'waf/status': { status: 'auth_failed', categories: null, categories_enabled: null, rules: null, rules_enabled: null },
+      })
       renderWithProviders(<Dashboard />)
       expect(await screen.findByText('The WAF refuses the backend')).toBeInTheDocument()
       expect(screen.getAllByText(/INTERNAL_ALERT_TOKEN/).length).toBeGreaterThan(0)
+      // The old copy named category switches the UI does not have.
+      expect(screen.queryByText(/category switches/)).toBeNull()
+    })
+
+    // Log only blocks nothing while every count still reads as protection:
+    // the Overview says it first, with the way to the switch.
+    it('says the WAF is in Log only, and nothing about a WAF that blocks', async () => {
+      serve({ ...DEFAULT_ROUTES, 'waf/status': { ...wafStatus, running: { ...running, policy_mode: 'observe' } } })
+      renderWithProviders(<Dashboard />)
+      const title = await screen.findByText('The WAF is in Log only: it blocks nothing')
+      const notice = title.closest('[role="status"]') as HTMLElement
+      expect(within(notice).getByRole('link', { name: 'Inspection' })).toHaveAttribute('href', '/settings/inspection')
+    })
+
+    it('shows no WAF notice for a WAF that blocks', async () => {
+      serve({ ...DEFAULT_ROUTES, 'waf/status': { ...wafStatus, running } })
+      renderWithProviders(<Dashboard />)
+      await waitFor(() => { expect(card('Client requests')).toHaveTextContent('1,180') })
+      await waitFor(() => { expect(vi.mocked(api.get).mock.calls.map((c) => c[0])).toContain('waf/status') })
+      expect(shownNotices()).toEqual([])
+    })
+
+    // Needs attention was worked out on Settings only; an admin lands here.
+    it('shows what Settings says needs attention, not the choices worth knowing', async () => {
+      serve({ ...DEFAULT_ROUTES, settings: [{ setting_name: 'default_password_changed', setting_value: 'false' }, { setting_name: 'ssl_bump_enabled', setting_value: 'false' }] })
+      renderWithProviders(<Dashboard />)
+      expect(await screen.findByText('The admin password was never changed here')).toBeInTheDocument()
+      expect(screen.queryByText('HTTPS traffic is not inspected')).toBeNull()
     })
 
     it('says the overview could not be loaded when the summary fails', async () => {
@@ -302,7 +337,7 @@ describe('Dashboard (Overview)', () => {
     const services = await screen.findByRole('region', { name: 'Services' })
     await waitFor(() => { expect(services).toHaveTextContent('Proxy · running') })
     expect(services).toHaveTextContent('Backend · running')
-    expect(services).toHaveTextContent('WAF · reporting30 requests inspected')
+    expect(services).toHaveTextContent('WAF · reporting30 requests inspected since the WAF started or its counters were reset')
     expect(services).toHaveTextContent('Cache statistics · not collected')
   })
 

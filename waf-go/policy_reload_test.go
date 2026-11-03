@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -182,7 +183,7 @@ func TestPolicyEndpointsAndMetrics(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	h.HealthHandler(w, httptest.NewRequest("GET", "/health", nil))
-	if !strings.Contains(w.Body.String(), `"policy":{"mode":"block","exceptions":1,"reload_failed":true}`) ||
+	if !strings.Contains(w.Body.String(), `"policy":{"mode":"block","exceptions":1,"reload_failed":true,"observe_rules":0}`) ||
 		strings.Contains(w.Body.String(), "shop.example") || strings.Contains(w.Body.String(), "learn") {
 		t.Errorf("/health: %s", w.Body.String())
 	}
@@ -305,5 +306,59 @@ func TestPolicyValidateWritesNothing(t *testing.T) {
 	after, _ := os.ReadFile(path)
 	if string(before) != string(after) || currentPolicy.Load().Exceptions() != 0 {
 		t.Error("validate changed the file or the policy in force")
+	}
+}
+
+// The policy's log-only categories and rules reach the management API: a
+// category the policy observes is reported as observed by /categories, as
+// one WAF_OBSERVE_CATEGORIES observes is, and /health counts the rules.
+// Without it the backend reported such a WAF as scoring rules it only logs.
+func TestCategoriesAndHealthReportWhatThePolicyObserves(t *testing.T) {
+	var cat string
+	for _, cr := range engine.BlockRules() {
+		if !eng.Observed(cr.Category) {
+			cat = cr.Category
+			break
+		}
+	}
+	if cat == "" {
+		t.Fatal("every category is observed at start-up; the test needs one that is not")
+	}
+	observed := func() bool {
+		w := httptest.NewRecorder()
+		(&MgmtHandlers{}).CategoriesHandler(w, httptest.NewRequest("GET", "/categories", nil))
+		var body struct {
+			Data []struct {
+				Name    string `json:"name"`
+				Observe bool   `json:"observe"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range body.Data {
+			if c.Name == cat {
+				return c.Observe
+			}
+		}
+		t.Fatalf("/categories has no %s", cat)
+		return false
+	}
+
+	withPolicyFile(t, "")
+	if observed() {
+		t.Fatalf("%s observed with no policy", cat)
+	}
+	writePolicy(t, fmt.Sprintf(`{"version":1,"observe_categories":[%q],"observe_rules":["XSS-003"]}`, cat))
+	if _, err := reloadPolicy(true); err != nil {
+		t.Fatal(err)
+	}
+	if !observed() {
+		t.Errorf("/categories: %s not observed while the policy observes it", cat)
+	}
+	w := httptest.NewRecorder()
+	(&MgmtHandlers{}).HealthHandler(w, httptest.NewRequest("GET", "/health", nil))
+	if !strings.Contains(w.Body.String(), `"observe_rules":1}`) {
+		t.Errorf("/health: %s; want observe_rules 1", w.Body.String())
 	}
 }

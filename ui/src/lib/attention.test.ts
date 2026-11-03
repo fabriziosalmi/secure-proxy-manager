@@ -112,4 +112,34 @@ describe('needsAttention', () => {
   it('says HTTPS inspection needs the CA when it is on', () => {
     expect(ids(input({ values: { ...fresh, ssl_bump_enabled: 'true' } }))).toContain('worth-knowing:https-on')
   })
+
+  describe('the WAF', () => {
+    const ok = { status: 'ok' as const, categories: 20, categories_enabled: 20, categories_observed: 3, rules: 180, rules_enabled: 180, rules_observed: 12 }
+    const running = { engine: 'hybrid', threshold: 10, regex_engine: 'go', regex_shadow: false, heuristics: 5, policy_mode: 'block', policy_exceptions: 0, policy_reload_failed: false }
+    const waf = (i: Partial<AttentionInput>) => ids(input(i)).filter((x) => x.includes(':waf-'))
+
+    it('says nothing while loading, when the request failed, or for a WAF that blocks', () => {
+      expect(waf({ waf: undefined })).toEqual([])
+      expect(waf({ waf: null })).toEqual([])
+      expect(waf({ waf: { ...ok, running } })).toEqual([])
+      // A WAF older than the policy reports no mode.
+      expect(waf({ waf: { ...ok, running: { ...running, policy_mode: '' } } })).toEqual([])
+    })
+
+    it('reports Log only and a failed policy reload, both under Inspection', () => {
+      const items = needsAttention(input({ waf: { ...ok, running: { ...running, policy_mode: 'observe', policy_reload_failed: true } } }))
+        .filter((a) => a.id.startsWith('waf-'))
+      expect(items.map((a) => `${a.posture}:${a.id}:${a.section}`)).toEqual([
+        'needs-attention:waf-log-only:inspection',
+        'needs-attention:waf-policy-not-reloaded:inspection',
+      ])
+    })
+
+    it('says why the state is not known', () => {
+      const none = { categories: null, categories_enabled: null, rules: null, rules_enabled: null }
+      expect(waf({ waf: { status: 'auth_failed', ...none } })).toEqual(['needs-attention:waf-refuses-backend'])
+      expect(waf({ waf: { status: 'unreachable', ...none } })).toEqual(['needs-attention:waf-unreachable'])
+      expect(waf({ waf: { status: 'error', ...none } })).toEqual(['needs-attention:waf-error'])
+    })
+  })
 })

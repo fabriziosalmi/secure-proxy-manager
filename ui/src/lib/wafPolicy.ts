@@ -5,7 +5,9 @@
  * has accepted it, and a whole-file PUT carries the digest of the version it
  * was edited from, so a change made elsewhere since is refused (409).
  */
+import type { QueryClient } from '@tanstack/react-query';
 import { api, getData } from './api';
+import { wafStatusQuery } from './queries';
 
 /** One block, as the WAF reported it. */
 export interface WafEvent {
@@ -75,6 +77,24 @@ export interface WafPolicyWrite {
 }
 
 export const wafPolicyKey = ['waf', 'policy'] as const;
+
+/** The WAF re-reads its policy file within this long of a change. */
+const POLICY_POLL_MS = 6_000;
+
+/**
+ * After a policy write: the policy and what the WAF runs are read again, so
+ * a switch to Log only shows at once on every page that reads them. A reload
+ * the WAF did not confirm is read again once its watcher has had the time to
+ * pick the file up.
+ */
+export function refreshWafState(queryClient: QueryClient, reload?: WafReload): void {
+  const again = () => {
+    void queryClient.invalidateQueries({ queryKey: wafPolicyKey });
+    void queryClient.invalidateQueries({ queryKey: wafStatusQuery.queryKey });
+  };
+  again();
+  if (reload && !reload.reloaded) setTimeout(again, POLICY_POLL_MS);
+}
 
 export function fetchWafEvent(id: string): Promise<WafEvent> {
   return getData<WafEvent>(`waf/events/${encodeURIComponent(id)}`);
