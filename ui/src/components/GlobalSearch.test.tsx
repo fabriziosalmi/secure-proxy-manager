@@ -205,4 +205,28 @@ describe('GlobalSearch', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(document.activeElement).toBe(trigger)
   })
+
+  // A backend that does not answer is not "no results".
+  it('says the search could not reach the backend when every lookup fails', async () => {
+    const { api } = await import('../lib/api')
+    vi.mocked(api.get).mockRejectedValue(new Error('Network Error'))
+    const user = userEvent.setup()
+    renderWithProviders(<GlobalSearch />)
+    await user.keyboard('{Meta>}k{/Meta}')
+    await user.type(await screen.findByPlaceholderText(/search/i), 'zz-nothing')
+    expect(await screen.findByText('The search could not reach the backend, so nothing was looked up.')).toBeInTheDocument()
+    expect(screen.queryByText(/No results for/)).not.toBeInTheDocument()
+  })
+
+  it('says how many lookups failed when only some do', async () => {
+    const { api } = await import('../lib/api')
+    vi.mocked(api.get).mockImplementation((url: string) =>
+      url.startsWith('logs') || url.startsWith('egress-allowlist') ? Promise.reject(new Error('500')) : Promise.resolve({ data: { data: [] } }))
+    const user = userEvent.setup()
+    renderWithProviders(<GlobalSearch />)
+    await user.keyboard('{Meta>}k{/Meta}')
+    await user.type(await screen.findByPlaceholderText(/search/i), 'zz-nothing')
+    expect(await screen.findByText('2 of 6 lookups failed, so some matches may be missing.')).toBeInTheDocument()
+    expect(screen.getByText(/No results for/)).toBeInTheDocument()
+  })
 })

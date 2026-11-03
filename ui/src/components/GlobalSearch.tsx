@@ -45,6 +45,9 @@ const TYPE_LABEL: Record<SearchResult['type'], string> = {
   log: 'Request',
 };
 
+/** The backend lookups one search makes: the five lists and the access log. */
+const LOOKUPS = 6;
+
 function Kbd({ children }: { children: React.ReactNode }) {
   return <kbd className="rounded border border-line bg-surface-muted px-1.5 py-px font-mono text-[11px] text-ink-secondary">{children}</kbd>;
 }
@@ -55,6 +58,11 @@ export function GlobalSearch() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [selected, setSelected] = useState(0);
   const [loading, setLoading] = useState(false);
+  // How many of the backend lookups of the last search failed: "No results"
+  // must not stand for "could not ask".
+  const [failed, setFailed] = useState(0);
+  // The latest search: an older one that answers late is dropped.
+  const seq = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   // Focus-trap + restore + Escape for the search dialog. (Cmd+K to OPEN stays a
@@ -99,9 +107,11 @@ export function GlobalSearch() {
 
   // Search logic
   const search = useCallback(async (q: string) => {
-    if (!q.trim()) { setResults([]); return; }
+    const mine = ++seq.current;
+    if (!q.trim()) { setResults([]); setFailed(0); return; }
     const lower = q.toLowerCase();
     const items: SearchResult[] = [];
+    let failures = 0;
 
     // Page matches
     PAGES.forEach(p => {
@@ -135,6 +145,8 @@ export function GlobalSearch() {
           // came back as matches for whatever was typed.
           api.get(`logs?q=${enc}&limit=5&sort=id&order=desc`),
         ]);
+        if (mine !== seq.current) return;
+        failures = [ipRes, domRes, ipAllowRes, domAllowRes, egressRes, logRes].filter((r) => r.status === 'rejected').length;
 
         if (ipRes.status === 'fulfilled') {
           const ips = ipRes.value.data?.data || [];
@@ -201,11 +213,16 @@ export function GlobalSearch() {
             });
           });
         }
-      } catch { /* silently ignore */ }
+      } catch {
+        // A result that does not have the expected shape: counted as a failed lookup.
+        failures = Math.max(failures, 1);
+      }
+      if (mine !== seq.current) return;
       setLoading(false);
     }
 
     setResults(items);
+    setFailed(failures);
     setSelected(0);
   }, [navigate]);
 
@@ -287,7 +304,7 @@ export function GlobalSearch() {
         <div className="sr-only" aria-live="polite" aria-atomic="true">
           {query.trim().length > 0 && !loading
             ? results.length === 0
-              ? `No results for "${query}"`
+              ? (failed ? `The search could not be completed for "${query}"` : `No results for "${query}"`)
               : `${results.length} ${results.length === 1 ? 'result' : 'results'} available`
             : ''}
         </div>
@@ -318,7 +335,11 @@ export function GlobalSearch() {
               ))}
             </ul>
           ) : query.length > 0 && !loading ? (
-            <p className="px-4 py-8 text-center text-sm text-ink-muted">No results for “{query}”</p>
+            <p className="px-4 py-8 text-center text-sm text-ink-muted">
+              {failed === LOOKUPS
+                ? 'The search could not reach the backend, so nothing was looked up.'
+                : <>No results for “{query}”</>}
+            </p>
           ) : (
             <div className="p-2">
               <p className="px-3 pb-1 pt-2 text-xs font-medium text-ink-muted">Go to</p>
@@ -341,6 +362,11 @@ export function GlobalSearch() {
           )}
         </div>
 
+        {failed > 0 && failed < LOOKUPS && query.length > 0 && !loading && (
+          <p role="status" className="border-t border-line-subtle px-4 py-2 text-xs text-warning">
+            {failed} of {LOOKUPS} lookups failed, so some matches may be missing.
+          </p>
+        )}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line-subtle bg-surface-muted px-4 py-2 text-xs text-ink-muted">
           <span className="flex items-center gap-1.5"><Kbd>↑</Kbd><Kbd>↓</Kbd> move</span>
           <span className="flex items-center gap-1.5"><Kbd>↵</Kbd> open</span>
