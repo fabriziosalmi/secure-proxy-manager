@@ -855,6 +855,14 @@ func handleRespmod(w icap.ResponseWriter, req *icap.Request) {
 		w.WriteHeader(204, nil, false)
 		return
 	}
+	// A response from a LAN host (the router's or a NAS's own pages) is not
+	// inspected, as its request was not (handleReqmod): the response rules
+	// read a vendor script full of addresses as a data leak and blocked the
+	// router's admin page.
+	if req.Request != nil && engine.IsLANHost(req.Request.Host) {
+		passThrough(w, req)
+		return
+	}
 	v := inspect.EvaluateResponse(eng, req.Response)
 	switch {
 	case v.Uninspectable:
