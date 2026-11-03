@@ -86,19 +86,6 @@ func readRefreshSettings(db *sql.DB) (bool, int) {
 	return enabledVal == "true", hours
 }
 
-// refreshCount is what one run of the worker did to one list: the feeds it
-// read, the ones it could not, the entries that were new, and (domains only)
-// the new ones left out because the list is at its limit.
-type refreshCount struct {
-	Added    int `json:"added"`
-	Fetched  int `json:"fetched"`
-	Failed   int `json:"failed"`
-	NotAdded int `json:"not_added,omitempty"`
-	// failedURLs are the feeds not read, one per line, for the alert; never
-	// in the audit, since a custom URL can carry a key.
-	failedURLs string
-}
-
 // runRefresh is one run of the worker: every feed refreshed, then one audit
 // row, as the user "system", with what the run did to each list. The worker
 // used to add tens of thousands of entries a day without a trace in the log.
@@ -143,18 +130,8 @@ func refreshAll(db *sql.DB) map[string]refreshCount {
 	db.QueryRow("SELECT setting_value FROM settings WHERE setting_name='ip_blacklist_urls'").Scan(&customIPURLs)         //nolint:errcheck
 	db.QueryRow("SELECT setting_value FROM settings WHERE setting_name='domain_blacklist_urls'").Scan(&customDomainURLs) //nolint:errcheck
 
-	ipURLs := append([]string{}, defaultIPLists...)
-	for _, u := range strings.Split(customIPURLs, "\n") {
-		if u = strings.TrimSpace(u); u != "" {
-			ipURLs = append(ipURLs, u)
-		}
-	}
-	domainURLs := append([]string{}, defaultDomainLists...)
-	for _, u := range strings.Split(customDomainURLs, "\n") {
-		if u = strings.TrimSpace(u); u != "" {
-			domainURLs = append(domainURLs, u)
-		}
-	}
+	ipURLs := feedURLs(db, "ip_blacklist", defaultIPLists, customIPURLs)
+	domainURLs := feedURLs(db, "domain_blacklist", defaultDomainLists, customDomainURLs)
 
 	return map[string]refreshCount{
 		"ip_blacklist":     refreshList(db, "ip_blacklist", "ip", ipURLs),
@@ -189,111 +166,36 @@ var fetchRefreshFeed = func(u string) (string, error) {
 	return string(data), nil
 }
 
-func refreshList(db *sql.DB, table, col string, urls []string) refreshCount {
-	existing := map[string]struct{}{}
-	rows, _ := db.Query(fmt.Sprintf("SELECT %s FROM %s", col, table))
-	if rows != nil {
-		for rows.Next() {
-			var v string
-			rows.Scan(&v) //nolint:errcheck
-			existing[v] = struct{}{}
+// feedURLs is every feed a list is refreshed from, each once: the built-in
+// feeds, the URLs of the setting (one per line), and every URL the list was
+// imported from (a Popular list, an address typed in the import form). The
+// last were never downloaded again before.
+func feedURLs(db *sql.DB, table string, builtIn []string, setting string) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(u string) {
+		if u = strings.TrimSpace(u); u != "" && !seen[u] {
+			seen[u] = true
+			out = append(out, u)
 		}
-		rows.Close()
 	}
-
-	// The entries are validated as the import handler validates them, so the
-	// refresh cannot reintroduce private/bogon ranges into the destination ACL.
-	var c refreshCount
-	for _, u := range urls {
-		data, err := fetchRefreshFeed(u)
-		if err != nil {
-			c.Failed++
-			c.failedURLs += u + "\n"
-			if errors.Is(err, errRefreshRefused) {
-				log.Warn().Str("url", u).Msg("blacklist refresh: refusing non-routable/invalid URL")
-			} else {
-				log.Warn().Err(err).Str("url", u).Msg("blacklist refresh fetch failed")
-			}
-			continue
-		}
-		c.Fetched++
-		added, capped := insertBlacklistEntries(db, table, col, u, data, existing)
-		c.Added += added
-		c.NotAdded += capped
+	for _, u := range builtIn {
+		add(u)
 	}
-	if c.Added > 0 {
-		log.Info().Str("table", table).Int("added", c.Added).Msg("blacklist refresh complete")
+	for _, u := range strings.Split(setting, "\n") {
+		add(u)
 	}
-	return c
-}
-
-// insertBlacklistEntries parses a fetched list and inserts new entries in one
-// transaction, returning the count added (rows the database actually took,
-// committed) and, for domains, the new entries left out at the list's limit.
-// For IP lists it applies the same
-// validation as the import handler: valid CIDR/IP only, and never a
-// private/bogon range (the ip_blacklist is a dst ACL denied before local_dst
-// is allowed: a LAN range would cut every client off from LAN services).
-//
-// The entries are recorded under the URL's source, the same one an import of
-// that URL uses, so a refreshed list is still one source that can be removed
-// as a whole.
-func insertBlacklistEntries(db *sql.DB, table, col, sourceURL, data string, existing map[string]struct{}) (int, int) {
-	tx, err := db.Begin()
+	rows, err := db.Query("SELECT source FROM list_sources WHERE list = ? AND kind = 'url' ORDER BY id", table)
 	if err != nil {
-		log.Error().Err(err).Msg("blacklist refresh: tx begin failed")
-		return 0, 0
+		log.Warn().Err(err).Str("table", table).Msg("blacklist refresh: the imported URLs could not be read; only the built-in feeds are refreshed")
+		return out
 	}
-	sourceID, err := database.KeyedSource(tx, table, database.SourceURL, sourceURL, "")
-	if err != nil {
-		tx.Rollback() //nolint:errcheck
-		log.Error().Err(err).Msg("blacklist refresh: cannot record the source")
-		return 0, 0
-	}
-	stmt, err := tx.Prepare(fmt.Sprintf("INSERT OR IGNORE INTO %s (%s, description, source_id) VALUES(?,'',?)", table, col))
-	if err != nil {
-		tx.Rollback() //nolint:errcheck
-		log.Error().Err(err).Msg("blacklist refresh: prepare failed")
-		return 0, 0
-	}
-	added := 0
-	limit := database.DomainBlacklistLimit()
-	capped := 0
-	for _, line := range strings.Split(data, "\n") {
-		parts := strings.Fields(line)
-		if len(parts) == 0 || strings.HasPrefix(parts[0], "#") {
-			continue
-		}
-		entry := parts[len(parts)-1]
-		if col == "ip" && (!netguard.IsValidCIDR(entry) || netguard.IsLANBogonCIDR(entry)) {
-			continue
-		}
-		if col == "domain" && !netguard.IsValidDomainEntry(entry) {
-			continue
-		}
-		if _, ex := existing[entry]; !ex {
-			// The domain list is bounded by what dnsmasq can hold in memory
-			// (database.DomainBlacklistLimit); past it, stop adding and say so.
-			if col == "domain" && len(existing) >= limit {
-				capped++
-				continue
-			}
-			existing[entry] = struct{}{}
-			if res, err := stmt.Exec(entry, sourceID); err == nil {
-				if n, _ := res.RowsAffected(); n > 0 {
-					added++
-				}
-			}
+	defer rows.Close()
+	for rows.Next() {
+		var u string
+		if rows.Scan(&u) == nil {
+			add(u)
 		}
 	}
-	stmt.Close()
-	if err := tx.Commit(); err != nil {
-		log.Error().Err(err).Msg("blacklist refresh: commit failed")
-		return 0, 0
-	}
-	if capped > 0 {
-		log.Warn().Int("not_added", capped).Int("limit", limit).
-			Msg("blacklist refresh: the domain blacklist is at SPM_DNS_BLOCKLIST_MAX_DOMAINS; entries past it were not added")
-	}
-	return added, capped
+	return out
 }

@@ -289,7 +289,10 @@ GET /api/domain-whitelist/sources
       "label": "Firehol Level 1",
       "entries": 4521,
       "first_added": "2026-10-25 08:00:00",
-      "last_added": "2026-10-25 08:02:00"
+      "last_added": "2026-10-25 08:02:00",
+      "refreshed_at": "2026-11-03 06:00:00",
+      "refresh_status": "ok",
+      "refresh_detail": "listed 4,530 entries"
     },
     {
       "id": null,
@@ -307,7 +310,11 @@ GET /api/domain-whitelist/sources
 
 The counts and dates are those of the entries. Most recently added first; the
 entries whose source was not recorded (`id: null`) last. A source with no
-entries left is not listed.
+entries left is not listed. A `url` source the automatic refresh has read
+carries `refreshed_at` (UTC), `refresh_status` (`ok`; `held` when the feed
+listed fewer than half of its entries, which are kept; `failed` when it could
+not be downloaded) and `refresh_detail` in words; they are absent until a
+refresh ran.
 
 ### Remove a source
 

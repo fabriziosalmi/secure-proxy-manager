@@ -66,10 +66,11 @@ func TestARefreshRunWritesOneAuditRowAsSystem(t *testing.T) {
 	c := counts(got[0].details)
 	// 10.0.0.1 is a LAN range and never enters the source IP blacklist; the
 	// second feed of each list answers an error.
-	if want := (refreshCount{Added: 2, Fetched: 1, Failed: 1}); c["ip_blacklist"] != want {
+	// A feed of each list failed, so nothing would have been removed.
+	if want := (refreshCount{Added: 2, Fetched: 1, Failed: 1, RemovalDeferred: true}); c["ip_blacklist"] != want {
 		t.Errorf("ip_blacklist = %+v, want %+v", c["ip_blacklist"], want)
 	}
-	if want := (refreshCount{Added: 3, Fetched: 1, Failed: 1}); c["domain_blacklist"] != want {
+	if want := (refreshCount{Added: 3, Fetched: 1, Failed: 1, RemovalDeferred: true}); c["domain_blacklist"] != want {
 		t.Errorf("domain_blacklist = %+v, want %+v", c["domain_blacklist"], want)
 	}
 

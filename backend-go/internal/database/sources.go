@@ -169,6 +169,11 @@ type SourceSummary struct {
 	Entries    int    `json:"entries"`
 	FirstAdded string `json:"first_added"`
 	LastAdded  string `json:"last_added"`
+	// The last refresh of a url source (workers/list_sync.go): when (UTC),
+	// "ok", "held" or "failed", and what it came to. Empty until one ran.
+	RefreshedAt   string `json:"refreshed_at,omitempty"`
+	RefreshStatus string `json:"refresh_status,omitempty"`
+	RefreshDetail string `json:"refresh_detail,omitempty"`
 }
 
 // ListSources returns the sources that have entries in list, most recently
@@ -181,14 +186,14 @@ func ListSources(db *sql.DB, list string) ([]SourceSummary, error) {
 		return nil, ErrUnknownList
 	}
 	meta := map[int64]SourceSummary{}
-	srows, err := db.Query("SELECT id, kind, source, label FROM list_sources WHERE list = ?", list)
+	srows, err := db.Query("SELECT id, kind, source, label, COALESCE(refreshed_at,''), COALESCE(refresh_status,''), COALESCE(refresh_detail,'') FROM list_sources WHERE list = ?", list)
 	if err != nil {
 		return nil, err
 	}
 	for srows.Next() {
 		var s SourceSummary
 		var id int64
-		if err := srows.Scan(&id, &s.Kind, &s.Source, &s.Label); err != nil {
+		if err := srows.Scan(&id, &s.Kind, &s.Source, &s.Label, &s.RefreshedAt, &s.RefreshStatus, &s.RefreshDetail); err != nil {
 			srows.Close()
 			return nil, err
 		}
