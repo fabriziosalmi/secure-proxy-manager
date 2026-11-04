@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import axios, { AxiosError, AxiosHeaders, type InternalAxiosRequestConfig } from 'axios'
 
-import { getErrorMessage, signOut, signIn, startSession, loadSession, api } from './api'
+import { getErrorMessage, signOut, signIn, startSession, loadSession, api, browser, oidcStatus } from './api'
 
 // A fake transport: each request is recorded and answered by `reply`.
 type Sent = { url?: string; method?: string; headers: Record<string, unknown> }
@@ -73,6 +73,34 @@ describe('the session', () => {
     sent = []
     await signOut() // no session: nothing to revoke
     expect(sent).toEqual([])
+  })
+
+  it('sends a person signed in with the OIDC provider to its logout, and nobody else anywhere', async () => {
+    const assign = vi.spyOn(browser, 'assign').mockImplementation(() => {})
+    startSession(null)
+    reply = (c) => answer(c, 200, { status: 'success', logout_url: 'https://id.example.com/logout?client_id=spm' })
+    await signOut()
+    expect(assign).toHaveBeenCalledWith('https://id.example.com/logout?client_id=spm')
+
+    assign.mockClear()
+    startSession(null)
+    reply = (c) => answer(c, 200, { status: 'success' })
+    await signOut()
+    expect(assign).not.toHaveBeenCalled()
+
+    // Only an http(s) URL is followed.
+    startSession(null)
+    reply = (c) => answer(c, 200, { status: 'success', logout_url: 'javascript:alert(1)' })
+    await signOut()
+    expect(assign).not.toHaveBeenCalled()
+  })
+
+  it('reads whether OIDC sign-in is offered, and takes a failure as not offered', async () => {
+    reply = (c) => answer(c, 200, { status: 'success', data: { enabled: true, label: 'Example ID' } })
+    expect(await oidcStatus()).toEqual({ enabled: true, label: 'Example ID' })
+    expect(sent.at(-1)?.url).toBe('auth/oidc')
+    reply = (c) => answer(c, 502)
+    expect(await oidcStatus()).toEqual({ enabled: false })
   })
 
   it('still signs out locally when the server call fails', async () => {

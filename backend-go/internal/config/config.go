@@ -65,12 +65,20 @@ type Config struct {
 
 	// Encryption key for sensitive settings (hex-encoded 32 bytes)
 	EncryptionKey string
+
+	// OIDC is sign-in with an OpenID Connect provider; off when not set.
+	OIDC OIDC
 }
 
 // Load reads environment variables and returns a validated Config.
 // It panics on missing required variables.
 func Load() *Config {
 	username := requireEnv("BASIC_AUTH_USERNAME")
+	// "oidc:" and "token:" name the people signed in with the identity
+	// provider and the API tokens; the local admin cannot take either form.
+	if strings.HasPrefix(username, "oidc:") || strings.HasPrefix(username, "token:") {
+		log.Fatal().Msg("BASIC_AUTH_USERNAME cannot start with oidc: or token:")
+	}
 	password := requireEnv("BASIC_AUTH_PASSWORD")
 	validatePasswordComplexity(password)
 
@@ -124,6 +132,7 @@ func Load() *Config {
 		AlertToken:     serviceToken(os.Getenv("INTERNAL_ALERT_TOKEN"), envOrDefault("SPM_SERVICE_TOKEN_FILE", DefaultServiceTokenFile)),
 		GeoIPURL:       envOrDefault("GEOIP_URL", ""), // Empty means use defaults
 		EncryptionKey:  loadOrGenerateEncKey(),
+		OIDC:           loadOIDCOrExit(),
 	}
 	return cfg
 }

@@ -11,12 +11,14 @@ vi.mock('../lib/api', () => ({
     get: vi.fn(),
     interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } },
   },
+  OIDC_LOGIN_PATH: '/api/auth/oidc/login',
+  oidcStatus: vi.fn().mockResolvedValue({ enabled: false }),
   // Mirrors the real helper: one POST that asks for a cookie session.
   signIn: (username: string, password: string) =>
     (api.post as (...a: unknown[]) => Promise<unknown>)('auth/login', { username, password }, { headers: { 'X-SPM-Session': 'cookie' } }).then(() => undefined),
 }))
 
-import { api } from '../lib/api'
+import { api, oidcStatus } from '../lib/api'
 
 describe('Login', () => {
   const onLogin = vi.fn()
@@ -175,6 +177,36 @@ describe('Login', () => {
       expect(screen.getByRole('alert')).toHaveTextContent('Invalid username or password')
       expect(screen.queryByText(/SQL injection/i)).not.toBeInTheDocument()
     })
+  })
+
+  it('offers no single sign-on when the backend does not', async () => {
+    renderWithProviders(<Login onLogin={onLogin} />)
+    await waitFor(() => expect(oidcStatus).toHaveBeenCalled())
+    expect(screen.queryByRole('link', { name: /sign in with/i })).not.toBeInTheDocument()
+  })
+
+  it.each(['light', 'dark'] as const)('offers the OIDC provider by its label and passes axe in %s theme', async (theme) => {
+    vi.mocked(oidcStatus).mockResolvedValueOnce({ enabled: true, label: 'Example ID' })
+    document.documentElement.classList.toggle('dark', theme === 'dark')
+    try {
+      const { container } = renderWithProviders(<Login onLogin={onLogin} />)
+      const link = await screen.findByRole('link', { name: 'Sign in with Example ID' })
+      expect(link).toHaveAttribute('href', '/api/auth/oidc/login')
+      await expectNoAxeViolations(container)
+    } finally {
+      document.documentElement.classList.remove('dark')
+    }
+  })
+
+  it('says why a single sign-on failed, once', async () => {
+    window.history.replaceState(null, '', '/?oidc_error=not_allowed&x=1')
+    try {
+      renderWithProviders(<Login onLogin={onLogin} />)
+      expect(screen.getByRole('alert')).toHaveTextContent(/not allowed to sign in here/)
+      await waitFor(() => expect(window.location.search).toBe('?x=1'))
+    } finally {
+      window.history.replaceState(null, '', '/')
+    }
   })
 
   it('has required attribute on both inputs', () => {

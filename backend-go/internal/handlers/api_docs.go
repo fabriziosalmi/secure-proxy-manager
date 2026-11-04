@@ -36,6 +36,9 @@ var routeDocs = map[string]docMeta{
 	"GET /api/analytics/top-destinations":          {auth: true, desc: "The 20 hosts the clients asked for most in the last 7 days, internal sources left out: host, requests, blocked"},
 	"GET /api/analytics/user-agents":               {auth: true, desc: "Client requests of the last 7 days by HTTP method and by kind of service (from the host)"},
 	"GET /api/audit-log":                           {auth: true, desc: "Admin action audit trail (who changed what, when), newest first; ?category=all|changes|signins and ?q= (text in the user, action, target or details, up to 200 characters) filter on the server; meta.retention_days is how long a row is kept"},
+	"GET /api/auth/oidc":                           {auth: false, desc: "Whether sign-in with the OIDC provider is offered: data.enabled and, when it is, data.label for the button"},
+	"GET /api/auth/oidc/login":                     {auth: false, desc: "Start an OIDC sign-in: redirects to the provider with a fresh state, nonce and PKCE challenge (404 when OIDC is not configured)"},
+	"GET /api/auth/oidc/callback":                  {auth: false, desc: "Where the provider sends the browser back: checks state, code, ID token and nonce, lets in a person OIDC_ALLOWED_EMAILS or OIDC_ALLOWED_GROUPS names, sets the session cookie (user oidc:<email>) and redirects to /; on a failure redirects to /?oidc_error=<reason>"},
 	"POST /api/auth/login":                         {auth: false, desc: "Login: returns access_token and refresh_token; with X-SPM-Session: cookie (the UI) sets the HttpOnly session cookie and returns username and expires_at instead"},
 	"POST /api/blacklists/import":                  {auth: true, desc: "Import blacklist from URL or text ({type: 'ip'|'domain', url?, content?, name?}); the entries are recorded under the URL, or a new pasted-list source"},
 	"GET /api/blacklists/enforcement":              {auth: true, desc: "What enforces each list: the domain limit, the blocked domains the allowed list removes, and the proxy's records of what Squid holds (null when not written)"},
@@ -145,15 +148,18 @@ var routeDocs = map[string]docMeta{
 // auth middleware: /metrics is for the internal network (nginx does not
 // proxy it), and the WebSocket checks its own single-use token.
 var publicRoutes = map[string]bool{
-	"POST /api/auth/login":   true,
-	"POST /api/auth/refresh": true,
-	"GET /api/health":        true,
-	"GET /api/ready":         true,
-	"GET /health":            true,
-	"GET /livez":             true,
-	"GET /readyz":            true,
-	"GET /metrics":           true,
-	"GET /api/ws/logs":       true,
+	"POST /api/auth/login":        true,
+	"POST /api/auth/refresh":      true,
+	"GET /api/auth/oidc":          true,
+	"GET /api/auth/oidc/login":    true,
+	"GET /api/auth/oidc/callback": true,
+	"GET /api/health":             true,
+	"GET /api/ready":              true,
+	"GET /health":                 true,
+	"GET /livez":                  true,
+	"GET /readyz":                 true,
+	"GET /metrics":                true,
+	"GET /api/ws/logs":            true,
 }
 
 // RegisterAPIDocs publishes the catalogue. The handler walks the router at

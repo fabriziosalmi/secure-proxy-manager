@@ -95,18 +95,41 @@ export async function signIn(username: string, password: string): Promise<void> 
   startSession(res.data?.expires_at);
 }
 
+/** Leaving the page, through one object a test can replace. */
+export const browser = { assign: (url: string) => window.location.assign(url) };
+
+/** Where the browser starts a sign-in with the OIDC provider. */
+export const OIDC_LOGIN_PATH = '/api/auth/oidc/login';
+
+/** Whether the sign-in page offers the OIDC provider (GET /api/auth/oidc). */
+export async function oidcStatus(): Promise<{ enabled: boolean; label?: string }> {
+  try {
+    const d = await getData<{ enabled?: boolean; label?: string }>('auth/oidc');
+    return { enabled: d?.enabled === true, label: d?.label };
+  } catch {
+    return { enabled: false };
+  }
+}
+
 /**
  * Sign out: the backend revokes the token and clears the cookie. A failed
  * revocation must not keep the user signed in, so its error is swallowed and
- * the local session ends regardless.
+ * the local session ends regardless. A person signed in with the OIDC
+ * provider is then sent to the provider's logout (logout_url), which brings
+ * the browser back to the dashboard.
  */
 export async function signOut(): Promise<void> {
+  let logoutURL: string | undefined;
   try {
-    if (sessionActive) await api.post('logout');
+    if (sessionActive) {
+      const res = await api.post<{ logout_url?: string }>('logout');
+      logoutURL = res?.data?.logout_url;
+    }
   } catch {
     /* the local sign-out below still happens */
   }
   endSession();
+  if (logoutURL && /^https?:\/\//i.test(logoutURL)) browser.assign(logoutURL);
 }
 
 // Earlier versions kept the token in localStorage, where any script in the
