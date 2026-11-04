@@ -69,6 +69,7 @@ var routeDocs = map[string]docMeta{
 	"GET /api/database/size":                       {auth: true, desc: "SQLite database file size"},
 	"GET /api/database/stats":                      {auth: true, desc: "Database table row counts"},
 	"GET /api/docs":                                {auth: true, desc: "This endpoint: API documentation"},
+	"GET /api/openapi.json":                        {auth: true, desc: "The OpenAPI 3.1 description of every route this server registers, built from the router; x-spm-token-scope is the scope an API token needs"},
 	"GET /api/domain-blacklist":                    {auth: true, desc: "List domain blacklist (?page=1&page_size=50&search=...)"},
 	"POST /api/domain-blacklist":                   {auth: true, desc: "Add domain to blacklist ({domain, description})"},
 	"POST /api/domain-blacklist/bulk-delete":       {auth: true, desc: "Bulk delete domains by ID array"},
@@ -140,7 +141,9 @@ var routeDocs = map[string]docMeta{
 
 // publicRoutes are reachable without authentication. Kept explicit so the
 // catalogue reports the auth requirement from one reviewable list rather than
-// from a flag copied per entry.
+// from a flag copied per entry. cmd/server mounts the last two without the
+// auth middleware: /metrics is for the internal network (nginx does not
+// proxy it), and the WebSocket checks its own single-use token.
 var publicRoutes = map[string]bool{
 	"POST /api/auth/login":   true,
 	"POST /api/auth/refresh": true,
@@ -149,6 +152,8 @@ var publicRoutes = map[string]bool{
 	"GET /health":            true,
 	"GET /livez":             true,
 	"GET /readyz":            true,
+	"GET /metrics":           true,
+	"GET /api/ws/logs":       true,
 }
 
 // RegisterAPIDocs publishes the catalogue. The handler walks the router at
@@ -171,6 +176,7 @@ func RegisterAPIDocs(r chi.Router, authMW func(http.Handler) http.Handler) {
 			"data":      docs,
 		})
 	})
+	registerOpenAPI(r, authMW)
 }
 
 // CatalogueRoutes enumerates every route registered on r. Exported so a test

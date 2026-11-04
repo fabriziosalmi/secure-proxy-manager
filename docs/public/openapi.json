@@ -1,0 +1,5475 @@
+{
+  "components": {
+    "schemas": {
+      "DomainEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "added_date": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "domain": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_id": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "source_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "domain",
+          "description",
+          "added_date",
+          "source_id",
+          "source_kind",
+          "source",
+          "source_label"
+        ],
+        "type": "object"
+      },
+      "DomainEntryList": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/DomainEntry"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "deprecated": true,
+            "type": "integer"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ListMeta"
+          },
+          "offset": {
+            "deprecated": true,
+            "type": "integer"
+          },
+          "status": {
+            "const": "success"
+          },
+          "total": {
+            "deprecated": true,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "DomainException": {
+        "additionalProperties": false,
+        "properties": {
+          "added_date": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "domain": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_id": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "source_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": {
+            "enum": [
+              "fqdn"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "domain",
+          "description",
+          "added_date",
+          "source_id",
+          "source_kind",
+          "source",
+          "source_label",
+          "type"
+        ],
+        "type": "object"
+      },
+      "DomainExceptionList": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/DomainException"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "deprecated": true,
+            "type": "integer"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ListMeta"
+          },
+          "offset": {
+            "deprecated": true,
+            "type": "integer"
+          },
+          "status": {
+            "const": "success"
+          },
+          "total": {
+            "deprecated": true,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "EgressEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "added_date": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "entry": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "cidr",
+              "domain"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "entry",
+          "type",
+          "description",
+          "added_date"
+        ],
+        "type": "object"
+      },
+      "EgressEntryList": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/EgressEntry"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "deprecated": true,
+            "type": "integer"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ListMeta"
+          },
+          "offset": {
+            "deprecated": true,
+            "type": "integer"
+          },
+          "status": {
+            "const": "success"
+          },
+          "total": {
+            "deprecated": true,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "Error": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "errors": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "status": {
+            "const": "error"
+          }
+        },
+        "required": [
+          "status",
+          "detail"
+        ],
+        "type": "object"
+      },
+      "IPEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "added_date": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer"
+          },
+          "ip": {
+            "type": "string"
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_id": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "source_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "ip",
+          "description",
+          "added_date",
+          "source_id",
+          "source_kind",
+          "source",
+          "source_label"
+        ],
+        "type": "object"
+      },
+      "IPEntryList": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/IPEntry"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "deprecated": true,
+            "type": "integer"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ListMeta"
+          },
+          "offset": {
+            "deprecated": true,
+            "type": "integer"
+          },
+          "status": {
+            "const": "success"
+          },
+          "total": {
+            "deprecated": true,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "ListMeta": {
+        "additionalProperties": false,
+        "properties": {
+          "internal": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "limit",
+          "offset"
+        ],
+        "type": "object"
+      },
+      "LogList": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/LogRow"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "deprecated": true,
+            "type": "integer"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ListMeta"
+          },
+          "offset": {
+            "deprecated": true,
+            "type": "integer"
+          },
+          "status": {
+            "const": "success"
+          },
+          "total": {
+            "deprecated": true,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "LogRow": {
+        "additionalProperties": false,
+        "properties": {
+          "blocked": {
+            "type": "boolean"
+          },
+          "bytes": {
+            "type": "integer"
+          },
+          "destination": {
+            "type": "string"
+          },
+          "event_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer"
+          },
+          "internal": {
+            "type": "boolean"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "reason_label": {
+            "type": "string"
+          },
+          "resolved_ip": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_ip": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "timestamp",
+          "source_ip",
+          "method",
+          "destination",
+          "status",
+          "bytes",
+          "blocked",
+          "reason",
+          "reason_label",
+          "internal",
+          "kind",
+          "resolved_ip",
+          "event_id"
+        ],
+        "type": "object"
+      },
+      "LogStats": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "additionalProperties": false,
+            "properties": {
+              "blocked_by_reason": {
+                "items": {
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "blocked_count": {
+                "type": "integer"
+              },
+              "ip_blocks_count": {
+                "type": "integer"
+              },
+              "last_import": {
+                "type": "string"
+              },
+              "total_count": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "total_count",
+              "blocked_count",
+              "ip_blocks_count",
+              "last_import",
+              "blocked_by_reason"
+            ],
+            "type": "object"
+          },
+          "status": {
+            "const": "success"
+          }
+        },
+        "required": [
+          "status",
+          "data"
+        ],
+        "type": "object"
+      },
+      "Message": {
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "status": {
+            "const": "success"
+          }
+        },
+        "required": [
+          "status",
+          "message"
+        ],
+        "type": "object"
+      },
+      "NewDomainEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain"
+        ],
+        "type": "object"
+      },
+      "NewEgressEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "entry": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "entry"
+        ],
+        "type": "object"
+      },
+      "NewIPEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "ip": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ip"
+        ],
+        "type": "object"
+      },
+      "Setting": {
+        "additionalProperties": false,
+        "properties": {
+          "decrypt_failed": {
+            "type": "boolean"
+          },
+          "is_set": {
+            "type": "boolean"
+          },
+          "secret": {
+            "type": "boolean"
+          },
+          "setting_name": {
+            "type": "string"
+          },
+          "setting_value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "setting_name"
+        ],
+        "type": "object"
+      },
+      "SettingList": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Setting"
+            },
+            "type": "array"
+          },
+          "status": {
+            "const": "success"
+          }
+        },
+        "required": [
+          "status",
+          "data"
+        ],
+        "type": "object"
+      },
+      "SettingValue": {
+        "additionalProperties": false,
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "type": "object"
+      },
+      "SettingsUpdate": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "description": "Setting names and their new values, all as strings; a secret sent empty keeps its stored value (see ?clear=)",
+        "type": "object"
+      },
+      "SettingsUpdated": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "additionalProperties": false,
+            "properties": {
+              "kept": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "kept"
+            ],
+            "type": "object"
+          },
+          "message": {
+            "type": "string"
+          },
+          "status": {
+            "const": "success"
+          }
+        },
+        "required": [
+          "status",
+          "message",
+          "data"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "basicAuth": {
+        "description": "The admin username and password",
+        "scheme": "basic",
+        "type": "http"
+      },
+      "bearerAuth": {
+        "description": "An access token from POST /api/auth/login, or an API token (spm_\u003cid\u003e_\u003csecret\u003e)",
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "cookieAuth": {
+        "description": "The dashboard's session; a state-changing request also needs X-Requested-With: spm",
+        "in": "cookie",
+        "name": "spm_session",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "description": "The management API of Secure Proxy Manager. x-spm-token-scope on an operation is the scope an API token needs to call it: read, write, or none when no token may.",
+    "license": {
+      "identifier": "MIT",
+      "name": "MIT"
+    },
+    "title": "Secure Proxy Manager API",
+    "version": "1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/analytics/blocked-by-day": {
+      "get": {
+        "operationId": "get_api_analytics_blocked_by_day",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Blocked client requests per calendar day by rule, today and the 6 days before (?tz=Europe/Rome, default UTC)",
+        "tags": [
+          "analytics"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/analytics/coverage": {
+      "get": {
+        "operationId": "get_api_analytics_coverage",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Protection switched on now: blacklist entries and where enforced, the WAF as GET /api/waf/status reports it, HTTPS inspection, proxy login, alerts",
+        "tags": [
+          "analytics"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/analytics/file-extensions": {
+      "get": {
+        "operationId": "get_api_analytics_file_extensions",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Client requests of the last 7 days whose URL path ends in a file extension, by extension and group (newest 10,000 URL rows)",
+        "tags": [
+          "analytics"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/analytics/shadow-it": {
+      "get": {
+        "operationId": "get_api_analytics_shadow_it",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Client requests of the last 7 days to known services (file sharing, messaging, AI, social), by host",
+        "tags": [
+          "analytics"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/analytics/top-destinations": {
+      "get": {
+        "operationId": "get_api_analytics_top_destinations",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "The 20 hosts the clients asked for most in the last 7 days, internal sources left out: host, requests, blocked",
+        "tags": [
+          "analytics"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/analytics/top-domains": {
+      "get": {
+        "operationId": "get_api_analytics_top_domains",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Top 50 accessed domains (for word cloud)",
+        "tags": [
+          "analytics"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/analytics/user-agents": {
+      "get": {
+        "operationId": "get_api_analytics_user_agents",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Client requests of the last 7 days by HTTP method and by kind of service (from the host)",
+        "tags": [
+          "analytics"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/audit-log": {
+      "get": {
+        "operationId": "get_api_audit_log",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Admin action audit trail (who changed what, when), newest first; ?category=all|changes|signins and ?q= (text in the user, action, target or details, up to 200 characters) filter on the server; meta.retention_days is how long a row is kept",
+        "tags": [
+          "audit-log"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "operationId": "post_api_auth_login",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "security": [],
+        "summary": "Login: returns access_token and refresh_token; with X-SPM-Session: cookie (the UI) sets the HttpOnly session cookie and returns username and expires_at instead",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "operationId": "post_api_auth_refresh",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "security": [],
+        "summary": "",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/blacklists/enforcement": {
+      "get": {
+        "operationId": "get_api_blacklists_enforcement",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "What enforces each list: the domain limit, the blocked domains the allowed list removes, and the proxy's records of what Squid holds (null when not written)",
+        "tags": [
+          "blacklists"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/blacklists/import": {
+      "post": {
+        "operationId": "post_api_blacklists_import",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Import blacklist from URL or text ({type: 'ip'|'domain', url?, content?, name?}); the entries are recorded under the URL, or a new pasted-list source",
+        "tags": [
+          "blacklists"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/blacklists/import-geo": {
+      "post": {
+        "operationId": "post_api_blacklists_import_geo",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Import geo-block by country codes ({countries: ['CN','RU']})",
+        "tags": [
+          "blacklists"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/cache/statistics": {
+      "get": {
+        "operationId": "get_api_cache_statistics",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Squid cache statistics as the proxy last collected them, with their state",
+        "tags": [
+          "cache"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/change-password": {
+      "post": {
+        "operationId": "post_api_change_password",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Change admin password (requires current_password + new_password)",
+        "tags": [
+          "change-password"
+        ],
+        "x-spm-token-scope": "none"
+      }
+    },
+    "/api/clients/statistics": {
+      "get": {
+        "operationId": "get_api_clients_statistics",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Top 50 client IPs by request count, then the internal sources (marked internal)",
+        "tags": [
+          "clients"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/clients/{ip}/details": {
+      "get": {
+        "operationId": "get_api_clients_ip_details",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ip",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "",
+        "tags": [
+          "clients"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/clients/{ip}/{prefix}/details": {
+      "get": {
+        "operationId": "get_api_clients_ip_prefix_details",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ip",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "prefix",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "",
+        "tags": [
+          "clients"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/counters/reset": {
+      "post": {
+        "operationId": "post_api_counters_reset",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Reset all counters (logs + WAF stats)",
+        "tags": [
+          "counters"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/dashboard/summary": {
+      "get": {
+        "operationId": "get_api_dashboard_summary",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Aggregated dashboard data (requests, blocks, top clients, threat categories, WAF stats)",
+        "tags": [
+          "dashboard"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/database/export": {
+      "get": {
+        "operationId": "get_api_database_export",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Export all data as JSON",
+        "tags": [
+          "database"
+        ],
+        "x-spm-token-scope": "none"
+      }
+    },
+    "/api/database/optimize": {
+      "post": {
+        "operationId": "post_api_database_optimize",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Run VACUUM + REINDEX on database",
+        "tags": [
+          "database"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/database/reset": {
+      "post": {
+        "operationId": "post_api_database_reset",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Reset database to defaults (destructive!)",
+        "tags": [
+          "database"
+        ],
+        "x-spm-token-scope": "none"
+      }
+    },
+    "/api/database/size": {
+      "get": {
+        "operationId": "get_api_database_size",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "SQLite database file size",
+        "tags": [
+          "database"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/database/stats": {
+      "get": {
+        "operationId": "get_api_database_stats",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Database table row counts",
+        "tags": [
+          "database"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/dns/detect": {
+      "post": {
+        "operationId": "post_api_dns_detect",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "",
+        "tags": [
+          "dns"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/docs": {
+      "get": {
+        "operationId": "get_api_docs",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "This endpoint: API documentation",
+        "tags": [
+          "docs"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/domain-blacklist": {
+      "get": {
+        "operationId": "get_api_domain_blacklist",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainEntryList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "List domain blacklist (?page=1\u0026page_size=50\u0026search=...)",
+        "tags": [
+          "domain-blacklist"
+        ],
+        "x-spm-token-scope": "read"
+      },
+      "post": {
+        "operationId": "post_api_domain_blacklist",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewDomainEntry"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Add domain to blacklist ({domain, description})",
+        "tags": [
+          "domain-blacklist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/domain-blacklist/bulk-delete": {
+      "post": {
+        "operationId": "post_api_domain_blacklist_bulk_delete",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Bulk delete domains by ID array",
+        "tags": [
+          "domain-blacklist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/domain-blacklist/clear-all": {
+      "delete": {
+        "operationId": "delete_api_domain_blacklist_clear_all",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Delete ALL domains from blacklist",
+        "tags": [
+          "domain-blacklist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/domain-blacklist/export": {
+      "get": {
+        "operationId": "get_api_domain_blacklist_export",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Download every domain blacklist entry, one per line",
+        "tags": [
+          "domain-blacklist"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/domain-blacklist/import": {
+      "post": {
+        "operationId": "post_api_domain_blacklist_import",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "",
+        "tags": [
+          "domain-blacklist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/domain-blacklist/presets": {
+      "get": {
+        "operationId": "get_api_domain_blacklist_presets",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "The presets of the domain blacklist (DNS-over-HTTPS resolvers), each with its domains and the ones already listed",
+        "tags": [
+          "domain-blacklist"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/domain-blacklist/presets/{preset}": {
+      "post": {
+        "operationId": "post_api_domain_blacklist_presets_preset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "preset",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Add the domains of one preset that are not listed yet, under the preset's own source, with one audit event; returns added and already",
+        "tags": [
+          "domain-blacklist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/domain-blacklist/sources": {
+      "get": {
+        "operationId": "get_api_domain_blacklist_sources",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Where the domain blacklist entries came from: one row per source with its entry count and date range; id null for entries whose source was not recorded",
+        "tags": [
+          "domain-blacklist"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/domain-blacklist/sources/{id}": {
+      "delete": {
+        "operationId": "delete_api_domain_blacklist_sources_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Remove the domain blacklist entries one source added ({id} or 'unrecorded'), then re-export the lists",
+        "tags": [
+          "domain-blacklist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/domain-blacklist/{id}": {
+      "delete": {
+        "operationId": "delete_api_domain_blacklist_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Delete domain from blacklist by ID",
+        "tags": [
+          "domain-blacklist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/domain-whitelist": {
+      "get": {
+        "operationId": "get_api_domain_whitelist",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainExceptionList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "List domain whitelist",
+        "tags": [
+          "domain-whitelist"
+        ],
+        "x-spm-token-scope": "read"
+      },
+      "post": {
+        "operationId": "post_api_domain_whitelist",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewDomainEntry"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Add domain to whitelist ({domain, description})",
+        "tags": [
+          "domain-whitelist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/domain-whitelist/export": {
+      "get": {
+        "operationId": "get_api_domain_whitelist_export",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Download every domain whitelist entry, one per line",
+        "tags": [
+          "domain-whitelist"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/domain-whitelist/import": {
+      "post": {
+        "operationId": "post_api_domain_whitelist_import",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Add a pasted list ({content}, one entry per line) to the domain whitelist as one pasted-list source; returns added, skipped (already listed), refused and the first refusals with their reasons",
+        "tags": [
+          "domain-whitelist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/domain-whitelist/presets": {
+      "get": {
+        "operationId": "get_api_domain_whitelist_presets",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "The common-services presets of the domain whitelist (GitHub, Docker, ...), each with its domains and the ones already listed",
+        "tags": [
+          "domain-whitelist"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/domain-whitelist/presets/{preset}": {
+      "post": {
+        "operationId": "post_api_domain_whitelist_presets_preset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "preset",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Add the domains of one preset that are not listed yet, under the preset's own source, with one audit event; returns added and already",
+        "tags": [
+          "domain-whitelist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/domain-whitelist/sources": {
+      "get": {
+        "operationId": "get_api_domain_whitelist_sources",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Where the domain whitelist entries came from: one row per source with its entry count and date range; id null for entries whose source was not recorded",
+        "tags": [
+          "domain-whitelist"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/domain-whitelist/sources/{id}": {
+      "delete": {
+        "operationId": "delete_api_domain_whitelist_sources_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Remove the domain whitelist entries one source added ({id} or 'unrecorded'), then re-export the lists",
+        "tags": [
+          "domain-whitelist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/domain-whitelist/{id}": {
+      "delete": {
+        "operationId": "delete_api_domain_whitelist_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Delete domain from whitelist by ID",
+        "tags": [
+          "domain-whitelist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/domains/statistics": {
+      "get": {
+        "operationId": "get_api_domains_statistics",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Top 50 domains with blocked/allowed status",
+        "tags": [
+          "domains"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/egress-allowlist": {
+      "get": {
+        "operationId": "get_api_egress_allowlist",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EgressEntryList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "",
+        "tags": [
+          "egress-allowlist"
+        ],
+        "x-spm-token-scope": "read"
+      },
+      "post": {
+        "operationId": "post_api_egress_allowlist",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewEgressEntry"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "",
+        "tags": [
+          "egress-allowlist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/egress-allowlist/bulk-delete": {
+      "post": {
+        "operationId": "post_api_egress_allowlist_bulk_delete",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "",
+        "tags": [
+          "egress-allowlist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/egress-allowlist/clear-all": {
+      "delete": {
+        "operationId": "delete_api_egress_allowlist_clear_all",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "",
+        "tags": [
+          "egress-allowlist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/egress-allowlist/{id}": {
+      "delete": {
+        "operationId": "delete_api_egress_allowlist_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "",
+        "tags": [
+          "egress-allowlist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/egress-providers": {
+      "get": {
+        "operationId": "get_api_egress_providers",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "List catalog and custom URL egress providers with status and coverage counts",
+        "tags": [
+          "egress-providers"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/egress-providers/url": {
+      "post": {
+        "operationId": "post_api_egress_providers_url",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Add custom URL egress provider ({url, label})",
+        "tags": [
+          "egress-providers"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/egress-providers/url/{id}": {
+      "delete": {
+        "operationId": "delete_api_egress_providers_url_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Delete custom URL egress provider by ID",
+        "tags": [
+          "egress-providers"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/egress-providers/{name}": {
+      "put": {
+        "operationId": "put_api_egress_providers_name",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Enable or disable egress provider ({enabled, confirm_shared})",
+        "tags": [
+          "egress-providers"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/egress-providers/{name}/apply-held": {
+      "post": {
+        "operationId": "post_api_egress_providers_name_apply_held",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Apply a held update (\u003e25% growth) for an egress provider",
+        "tags": [
+          "egress-providers"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/egress-providers/{name}/refresh": {
+      "post": {
+        "operationId": "post_api_egress_providers_name_refresh",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Immediately fetch and refresh an egress provider",
+        "tags": [
+          "egress-providers"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/health": {
+      "get": {
+        "operationId": "get_api_health",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "security": [],
+        "summary": "Health check: returns version, runtime, update/CVE info",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/internal/alert": {
+      "post": {
+        "operationId": "post_api_internal_alert",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Receive security alert from WAF/proxy",
+        "tags": [
+          "internal"
+        ],
+        "x-spm-token-scope": "none"
+      }
+    },
+    "/api/internal/signals": {
+      "post": {
+        "operationId": "post_api_internal_signals",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Receive the WAF's client signals (stored for the trajectory correlator, never notified)",
+        "tags": [
+          "internal"
+        ],
+        "x-spm-token-scope": "none"
+      }
+    },
+    "/api/ip-blacklist": {
+      "get": {
+        "operationId": "get_api_ip_blacklist",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IPEntryList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "List IP blacklist (?page=1\u0026page_size=50\u0026search=...)",
+        "tags": [
+          "ip-blacklist"
+        ],
+        "x-spm-token-scope": "read"
+      },
+      "post": {
+        "operationId": "post_api_ip_blacklist",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewIPEntry"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Add IP to blacklist ({ip, description})",
+        "tags": [
+          "ip-blacklist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/ip-blacklist/bulk-delete": {
+      "post": {
+        "operationId": "post_api_ip_blacklist_bulk_delete",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Bulk delete IPs by ID array",
+        "tags": [
+          "ip-blacklist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/ip-blacklist/clear-all": {
+      "delete": {
+        "operationId": "delete_api_ip_blacklist_clear_all",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Delete ALL IPs from blacklist",
+        "tags": [
+          "ip-blacklist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/ip-blacklist/export": {
+      "get": {
+        "operationId": "get_api_ip_blacklist_export",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Download every IP blacklist entry, one per line",
+        "tags": [
+          "ip-blacklist"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/ip-blacklist/import": {
+      "post": {
+        "operationId": "post_api_ip_blacklist_import",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "",
+        "tags": [
+          "ip-blacklist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/ip-blacklist/sources": {
+      "get": {
+        "operationId": "get_api_ip_blacklist_sources",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Where the IP blacklist entries came from: one row per source with its entry count and date range; id null for entries whose source was not recorded",
+        "tags": [
+          "ip-blacklist"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/ip-blacklist/sources/{id}": {
+      "delete": {
+        "operationId": "delete_api_ip_blacklist_sources_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Remove the IP blacklist entries one source added ({id} or 'unrecorded'), then re-export the lists",
+        "tags": [
+          "ip-blacklist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/ip-blacklist/{id}": {
+      "delete": {
+        "operationId": "delete_api_ip_blacklist_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Delete IP from blacklist by ID",
+        "tags": [
+          "ip-blacklist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/ip-whitelist": {
+      "get": {
+        "operationId": "get_api_ip_whitelist",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IPEntryList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "List IP whitelist",
+        "tags": [
+          "ip-whitelist"
+        ],
+        "x-spm-token-scope": "read"
+      },
+      "post": {
+        "operationId": "post_api_ip_whitelist",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewIPEntry"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Add IP to whitelist ({ip, description})",
+        "tags": [
+          "ip-whitelist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/ip-whitelist/export": {
+      "get": {
+        "operationId": "get_api_ip_whitelist_export",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Download every IP whitelist entry, one per line",
+        "tags": [
+          "ip-whitelist"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/ip-whitelist/import": {
+      "post": {
+        "operationId": "post_api_ip_whitelist_import",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Add a pasted list ({content}, one entry per line) to the IP whitelist as one pasted-list source; returns added, skipped (already listed), refused and the first refusals with their reasons",
+        "tags": [
+          "ip-whitelist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/ip-whitelist/sources": {
+      "get": {
+        "operationId": "get_api_ip_whitelist_sources",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Where the IP whitelist entries came from: one row per source with its entry count and date range; id null for entries whose source was not recorded",
+        "tags": [
+          "ip-whitelist"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/ip-whitelist/sources/{id}": {
+      "delete": {
+        "operationId": "delete_api_ip_whitelist_sources_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Remove the IP whitelist entries one source added ({id} or 'unrecorded'), then re-export the lists",
+        "tags": [
+          "ip-whitelist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/ip-whitelist/{id}": {
+      "delete": {
+        "operationId": "delete_api_ip_whitelist_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Delete IP from whitelist by ID",
+        "tags": [
+          "ip-whitelist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/logout": {
+      "post": {
+        "operationId": "post_api_logout",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Invalidate current JWT token",
+        "tags": [
+          "logout"
+        ],
+        "x-spm-token-scope": "none"
+      }
+    },
+    "/api/logs": {
+      "get": {
+        "operationId": "get_api_logs",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Proxy access logs, internal sources left out by default (?limit=25\u0026offset=0\u0026sort=timestamp\u0026order=desc\u0026source_ip=\u0026outcome=allowed|blocked\u0026reason=\u0026q=\u0026include_internal=false\u0026before_id=\u0026since=\u0026until=, since and until in Unix seconds)",
+        "tags": [
+          "logs"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/logs/clear": {
+      "post": {
+        "operationId": "post_api_logs_clear",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Delete all proxy logs",
+        "tags": [
+          "logs"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/logs/clear-old": {
+      "post": {
+        "operationId": "post_api_logs_clear_old",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Delete logs older than N days (?days=30)",
+        "tags": [
+          "logs"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/logs/export": {
+      "get": {
+        "operationId": "get_api_logs_export",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "The access log rows GET /api/logs selects for the same filters, all of them, as streamed CSV",
+        "tags": [
+          "logs"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/logs/stats": {
+      "get": {
+        "operationId": "get_api_logs_stats",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogStats"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Log statistics (total, blocked, IP blocks count)",
+        "tags": [
+          "logs"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/logs/timeline": {
+      "get": {
+        "operationId": "get_api_logs_timeline",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Hourly traffic timeline (?hours=24) in the hours of ?tz= (IANA name, default UTC)",
+        "tags": [
+          "logs"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/maintenance/backup-config": {
+      "get": {
+        "operationId": "get_api_maintenance_backup_config",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Export full config as JSON backup",
+        "tags": [
+          "maintenance"
+        ],
+        "x-spm-token-scope": "none"
+      }
+    },
+    "/api/maintenance/check-cert-security": {
+      "get": {
+        "operationId": "get_api_maintenance_check_cert_security",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Check SSL certificate status and security",
+        "tags": [
+          "maintenance"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/maintenance/clear-cache": {
+      "post": {
+        "operationId": "post_api_maintenance_clear_cache",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Clear Squid proxy cache",
+        "tags": [
+          "maintenance"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/maintenance/reload-config": {
+      "post": {
+        "operationId": "post_api_maintenance_reload_config",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Regenerate Squid ACL files and signal reload",
+        "tags": [
+          "maintenance"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/maintenance/reload-dns": {
+      "post": {
+        "operationId": "post_api_maintenance_reload_dns",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Export every list again and signal dnsmasq to reload; data.domains is the domain entries the DNS sinkhole got, data.left_out those Domain exceptions took out",
+        "tags": [
+          "maintenance"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/maintenance/restore-config": {
+      "post": {
+        "operationId": "post_api_maintenance_restore_config",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Restore config from JSON backup",
+        "tags": [
+          "maintenance"
+        ],
+        "x-spm-token-scope": "none"
+      }
+    },
+    "/api/notifications/status": {
+      "get": {
+        "operationId": "get_api_notifications_status",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "What became of the alerts on each channel since the backend started (since): last_attempt, last_delivered, last_error, last_error_at, last_failed, delivered, failed; test alerts count",
+        "tags": [
+          "notifications"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/notifications/test": {
+      "post": {
+        "operationId": "post_api_notifications_test",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Send a test alert to every configured channel; data.channels reports each delivery",
+        "tags": [
+          "notifications"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/openapi.json": {
+      "get": {
+        "operationId": "get_api_openapi_json",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "The OpenAPI 3.1 description of every route this server registers, built from the router; x-spm-token-scope is the scope an API token needs",
+        "tags": [
+          "openapi.json"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/ready": {
+      "get": {
+        "operationId": "get_api_ready",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "security": [],
+        "summary": "",
+        "tags": [
+          "ready"
+        ]
+      }
+    },
+    "/api/security/cve": {
+      "get": {
+        "operationId": "get_api_security_cve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Known CVEs for installed Squid version",
+        "tags": [
+          "security"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/security/download-ca": {
+      "get": {
+        "operationId": "get_api_security_download_ca",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Download SSL-Bump CA certificate (.pem)",
+        "tags": [
+          "security"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/security/rate-limits": {
+      "get": {
+        "operationId": "get_api_security_rate_limits",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "View current rate limit state per IP",
+        "tags": [
+          "security"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/security/rate-limits/{ip}": {
+      "delete": {
+        "operationId": "delete_api_security_rate_limits_ip",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ip",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Clear rate limit for specific IP",
+        "tags": [
+          "security"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/security/score": {
+      "get": {
+        "operationId": "get_api_security_score",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Retired: answers 410 Gone (the score counted settings nothing enforced)",
+        "tags": [
+          "security"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/session": {
+      "get": {
+        "operationId": "get_api_session",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "The signed-in session: username, how it authenticated (cookie, bearer, basic or token) and expires_at (Unix seconds, null for Basic and for a token without expiry); scope (read or write) for an API token",
+        "tags": [
+          "session"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "operationId": "get_api_settings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Get all settings as [{setting_name, setting_value}]",
+        "tags": [
+          "settings"
+        ],
+        "x-spm-token-scope": "read"
+      },
+      "post": {
+        "operationId": "post_api_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsUpdated"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Bulk update settings ({key: value, ...}); 400 lists every refused value in errors {key: message}",
+        "tags": [
+          "settings"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/settings/{name}": {
+      "put": {
+        "operationId": "put_api_settings_name",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingValue"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "",
+        "tags": [
+          "settings"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/status": {
+      "get": {
+        "operationId": "get_api_status",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "System status overview",
+        "tags": [
+          "status"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/tokens": {
+      "get": {
+        "operationId": "get_api_tokens",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "API tokens, revoked and expired ones included, newest first: id, name, scope (read or write), created_by, created_at, expires_at, last_used_at, revoked_at; the values are not stored. Not reachable with a token",
+        "tags": [
+          "tokens"
+        ],
+        "x-spm-token-scope": "none"
+      },
+      "post": {
+        "operationId": "post_api_tokens",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Create an API token {name, scope: read|write, expires_in_days? (1 to 3650, default 90), no_expiry?}; data.token is its value, shown this once (send it as Authorization: Bearer). A read token may GET and HEAD; neither scope reaches the token, password, session, database export and reset, backup and restore, internal and profiling routes. Not reachable with a token",
+        "tags": [
+          "tokens"
+        ],
+        "x-spm-token-scope": "none"
+      }
+    },
+    "/api/tokens/{id}": {
+      "delete": {
+        "operationId": "delete_api_tokens_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Revoke an API token: it stops working at once. Not reachable with a token",
+        "tags": [
+          "tokens"
+        ],
+        "x-spm-token-scope": "none"
+      }
+    },
+    "/api/traffic/statistics": {
+      "get": {
+        "operationId": "get_api_traffic_statistics",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Traffic statistics by time period",
+        "tags": [
+          "traffic"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/waf/categories": {
+      "get": {
+        "operationId": "get_api_waf_categories",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "",
+        "tags": [
+          "waf"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/waf/categories/toggle": {
+      "post": {
+        "operationId": "post_api_waf_categories_toggle",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "",
+        "tags": [
+          "waf"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/waf/events/{id}": {
+      "get": {
+        "operationId": "get_api_waf_events_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "The WAF's account of one block, by the event_id of its access log row: rules, the scoring ones (scoring_rules), categories, host, path, which half blocked (spm or crs), CRS score and, for a CRS block, the argument each rule matched (crs_targets); 404 once pruned with the access log",
+        "tags": [
+          "waf"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/waf/heuristics": {
+      "get": {
+        "operationId": "get_api_waf_heuristics",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "The WAF heuristics the running WAF applies (data.available, data.running)",
+        "tags": [
+          "waf"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/waf/policy": {
+      "get": {
+        "operationId": "get_api_waf_policy",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "The WAF policy file (WAF_POLICY_FILE): policy, sha256 (send it back with a PUT), exists, file_error when it does not parse, and the policy the WAF has in force (waf, in_force, path_mismatch; waf_error when the WAF cannot be read)",
+        "tags": [
+          "waf"
+        ],
+        "x-spm-token-scope": "read"
+      },
+      "put": {
+        "operationId": "put_api_waf_policy",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Replace the WAF policy file with {policy, sha256}: sha256 is the digest GET returned (\"\" when there was no file), and a file changed since is refused with 409; validated and reloaded like an exception",
+        "tags": [
+          "waf"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/waf/policy/exceptions": {
+      "post": {
+        "operationId": "post_api_waf_policy_exceptions",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Add one exception {rule, host?, path?, target?, comment?} to the WAF policy file; the WAF validates it first (422 refused, 503 when it cannot be reached: nothing written), then reloads it; data.added is false when one with the same scope exists",
+        "tags": [
+          "waf"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/waf/policy/observe-rules": {
+      "post": {
+        "operationId": "post_api_waf_policy_observe_rules",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Leave one rule {rule} to log only in the WAF policy file, validated and reloaded like an exception; data.added is false when it is already there",
+        "tags": [
+          "waf"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/waf/stats": {
+      "get": {
+        "operationId": "get_api_waf_stats",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "WAF engine stats (inspected, blocked, entropy, categories, cache); on failure 502 or 503 with waf_status: unreachable, auth_failed or error",
+        "tags": [
+          "waf"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/waf/status": {
+      "get": {
+        "operationId": "get_api_waf_status",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "What the WAF runs: status (ok, unreachable, auth_failed or error), rule and category counts with those only logged (categories_observed, rules_observed), and running from its /health: engine, threshold, regex_engine, regex_shadow, heuristics, policy_mode (block or observe), policy_exceptions, policy_reload_failed, policy_observe_rules (rules the policy makes log-only); null when /health did not answer",
+        "tags": [
+          "waf"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/waf/test-rule": {
+      "post": {
+        "operationId": "post_api_waf_test_rule",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "",
+        "tags": [
+          "waf"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/waf/trajectories": {
+      "get": {
+        "operationId": "get_api_waf_trajectories",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Trajectories the correlator read from the WAF's client signals, latest first (?days=1..90, default 7)",
+        "tags": [
+          "waf"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/waf/trajectories/{id}": {
+      "get": {
+        "operationId": "get_api_waf_trajectories_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "One trajectory with the client's signals in its window",
+        "tags": [
+          "waf"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/ws-token": {
+      "get": {
+        "operationId": "get_api_ws_token",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Get one-time WebSocket auth token for live log streaming",
+        "tags": [
+          "ws-token"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/ws/logs": {
+      "get": {
+        "operationId": "get_api_ws_logs",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "security": [],
+        "summary": "WebSocket: real-time log stream (offer the subprotocols spm.v1 and spm-ws-token.\u003ctoken\u003e, token from /api/ws-token; the server selects spm.v1)",
+        "tags": [
+          "ws"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "get_health",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "security": [],
+        "summary": "Legacy health check (simple)",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/livez": {
+      "get": {
+        "operationId": "get_livez",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "security": [],
+        "summary": "",
+        "tags": [
+          "livez"
+        ]
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "get_metrics",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "security": [],
+        "summary": "",
+        "tags": [
+          "metrics"
+        ]
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "get_readyz",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "security": [],
+        "summary": "",
+        "tags": [
+          "readyz"
+        ]
+      }
+    }
+  },
+  "security": [
+    {
+      "basicAuth": []
+    },
+    {
+      "bearerAuth": []
+    },
+    {
+      "cookieAuth": []
+    }
+  ],
+  "servers": [
+    {
+      "description": "The dashboard host (https://\u003chost\u003e:8443), or the backend from its host (http://127.0.0.1:5001)",
+      "url": "/"
+    }
+  ]
+}
