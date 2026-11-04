@@ -416,6 +416,7 @@ func (h *AnalyticsHandlers) Status(w http.ResponseWriter, r *http.Request) {
 	out := map[string]any{
 		"proxy_status":   proxyStatus,
 		"proxy_host":     h.cfg.ProxyHost,
+		"proxy_ip":       h.cfg.ProxyIP,
 		"proxy_port":     proxyPort,
 		"timestamp":      time.Now().Format(time.RFC3339),
 		"version":        config.AppVersion,

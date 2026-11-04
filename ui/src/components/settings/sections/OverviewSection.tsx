@@ -13,7 +13,8 @@ import { Button } from '../../ui/Button';
 import { Notice } from '../../ui/Notice';
 import { PostureMark } from '../../ui/PostureMark';
 import { ClientSetup } from '../../ClientSetup';
-import { proxyAddress, cn } from '../../../lib/utils';
+import { cn } from '../../../lib/utils';
+import { useProxyAddress } from '../../../hooks/useProxyAddress';
 import { formatCount } from '../../../lib/format';
 import { applyToProxy } from '../../../lib/reload';
 import { describeSave, rowsAfterSave, type SaveResult } from '../../../lib/settingsSave';
@@ -76,13 +77,14 @@ function NeedsAttention({ items, loading }: { items: AttentionItem[]; loading: b
 
 function ConnectDevice() {
   const [open, setOpen] = useState(false);
+  const proxy = useProxyAddress();
   const panelId = useId();
   return (
     <Section level={3} title="Connect a device">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <p className="text-sm text-ink-secondary">
           Set the device's HTTP and HTTPS proxy to{' '}
-          <code className="rounded bg-surface-muted px-1 font-mono text-[13px] text-ink">{proxyAddress()}</code>.{' '}
+          <code className="rounded bg-surface-muted px-1 font-mono text-[13px] text-ink">{proxy.address}</code>.{' '}
           <Link to="/clients" className="font-semibold text-accent hover:underline">Clients</Link> lists the devices that sent traffic.
         </p>
         <Button aria-expanded={open} aria-controls={panelId} onClick={() => setOpen(!open)}>

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { parseUtc, relative } from './utils'
+import { parseUtc, relative, proxyAddress, isLoopbackHost } from './utils'
 
 describe('parseUtc', () => {
   it('reads a zone-less SQLite timestamp as UTC', () => {
@@ -30,5 +30,26 @@ describe('relative', () => {
   it('shows a dash for empty and echoes what it cannot parse', () => {
     expect(relative('')).toBe('not recorded')
     expect(relative('not a date')).toBe('not a date')
+  })
+})
+
+// The address a device configures: the server's LAN address (PROXY_IP) when
+// the server names one, else the host the UI was opened on.
+describe('proxy address', () => {
+  it('prefers the server address and brackets IPv6', () => {
+    expect(proxyAddress('192.0.2.10')).toBe('192.0.2.10:3128')
+    expect(proxyAddress(' 192.0.2.10 ')).toBe('192.0.2.10:3128')
+    expect(proxyAddress('2001:db8::10')).toBe('[2001:db8::10]:3128')
+    expect(proxyAddress('')).toBe(`${window.location.hostname}:3128`)
+    expect(proxyAddress(undefined)).toBe(`${window.location.hostname}:3128`)
+  })
+
+  it('knows the hosts no other device can reach', () => {
+    for (const h of ['localhost', 'app.localhost', '127.0.0.1', '127.1.2.3', '::1', '[::1]', '0.0.0.0', 'LOCALHOST']) {
+      expect(isLoopbackHost(h), h).toBe(true)
+    }
+    for (const h of ['192.168.0.157', 'proxy.lan', '10.0.0.1', '2001:db8::1', 'localhost.example']) {
+      expect(isLoopbackHost(h), h).toBe(false)
+    }
   })
 })

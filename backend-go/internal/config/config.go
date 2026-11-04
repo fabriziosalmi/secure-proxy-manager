@@ -33,6 +33,9 @@ type Config struct {
 	Port               string
 	CORSAllowedOrigins []string
 	ProxyHost          string
+	// ProxyIP is this server's address on the LAN (PROXY_IP), the one a
+	// device configures; empty when not set.
+	ProxyIP string
 
 	// Filesystem
 	DatabasePath string
@@ -104,6 +107,7 @@ func Load() *Config {
 		Port:               envOrDefault("PORT", "5000"),
 		CORSAllowedOrigins: cleanCors,
 		ProxyHost:          envOrDefault("PROXY_HOST", "proxy"),
+		ProxyIP:            strings.TrimSpace(os.Getenv("PROXY_IP")),
 		DatabasePath:       envOrDefault("DATABASE_PATH", "/data/proxy_manager.db"),
 		ConfigDir:          envOrDefault("CONFIG_DIR", "/config"),
 		LogPath:            envOrDefault("LOG_PATH", "/logs/access.log"),

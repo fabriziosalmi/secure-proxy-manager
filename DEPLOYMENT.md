@@ -423,7 +423,7 @@ GRAFANA_ADMIN_PASSWORD='<password>' docker compose --profile observability up -d
 Prometheus (`infra/prometheus/prometheus.yml`) scrapes `backend:5000/metrics`
 and `waf:8080/metrics` every 15 seconds and loads the alert rules in
 `infra/prometheus/rules/spm.rules.yml` (`SPMTargetDown`,
-`SPMBlacklistExportFailed`, `SPMWafReconcileFailed`,
+`SPMBlacklistExportFailed`, `SPMWAFReconcilePushFailed`,
 `SPMNotificationDeliveryFailed`, `SPMDatabaseIntegrityFailed`,
 `SPMLogRetentionDisabled`). Grafana provisions Prometheus (`http://prometheus:9090`)
 as its default datasource from

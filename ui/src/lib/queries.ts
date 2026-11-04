@@ -10,6 +10,8 @@ import type { EgressProvider, NotificationStatus, ProxyAuthStatus, SettingRow, W
 export interface StatusData {
   proxy_status?: string;
   proxy_host?: string;
+  /** This server's LAN address (PROXY_IP); empty when not set. */
+  proxy_ip?: string;
   proxy_port?: string;
   version?: string;
   requests_count?: number;
