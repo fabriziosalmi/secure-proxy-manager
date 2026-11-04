@@ -241,7 +241,7 @@ export function AddEntries({ list, method, onMethodChange, onChanged, onClose }:
           label="Entries, one per line"
           hint={list.allowed
             ? 'One entry per line; lines starting with # are ignored. Entries already listed are skipped, and an entry that is not valid is refused with the reason.'
-            : 'Lines starting with # or ; are ignored, and hosts-file lines work: the last field of a line is the entry. Entries already listed or not valid are skipped.'}
+            : 'Lines starting with # or ; are ignored, and so is a # or ; comment after an entry. Hosts-file lines work: the name after the address is the entry. Entries already listed or not valid are skipped.'}
         >
           <textarea id={`${ids}-text`} aria-describedby={`${ids}-text-hint`} value={text} onChange={(e) => setText(e.target.value)} rows={6} required
             spellCheck={false}

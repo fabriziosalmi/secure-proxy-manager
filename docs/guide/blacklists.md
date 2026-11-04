@@ -373,13 +373,16 @@ curl -k -X POST $SPM/api/blacklists/import \
 
 ### Supported formats
 
-- One entry per line.
-- Hosts files: the last field of a line is the entry (`0.0.0.0 ads.example`
+- One entry per line: the first field of the line.
+- Hosts files: the name after the address is the entry (`0.0.0.0 ads.example`
   imports `ads.example`).
 - A domain written as a URL is reduced to its host name.
-- Blank lines and lines starting with `#` or `;` are ignored. An entry already
-  listed, or not valid, is skipped and counted; for IPs, private and other
-  non-routable ranges are skipped and counted separately.
+- Blank lines and lines starting with `#` or `;` are ignored. A `#` or `;`
+  after a space starts a comment that runs to the end of the line
+  (`0.0.0.0 ads.example # reason` imports `ads.example`); a `#` inside a URL is
+  part of it.
+- An entry already listed, or not valid, is skipped and counted; for IPs,
+  private and other non-routable ranges are skipped and counted separately.
 
 ### Country blocks
 

@@ -6,6 +6,7 @@
 package listentry
 
 import (
+	"net"
 	"net/url"
 	"strings"
 
@@ -30,23 +31,39 @@ const (
 	Domain Kind = "domain"
 )
 
-// Parse reads one line. The entry is the last field, which takes both a bare
-// list and the hosts-file form ("0.0.0.0 evil.example"); # and ; start a
-// comment line.
+// Parse reads one line. The entry is the first field of the line, or, in
+// the hosts-file form ("0.0.0.0 evil.example"), the name after the address.
+// # and ; start a comment line, and after a space they start a comment that
+// runs to the end of the line: feeds annotate entries
+// ("0.0.0.0 docs.pipenv.org # https://github.com/...", "198.51.100.0/24 ;
+// SBL123"), and the last field, which this used to take, was then the
+// comment, so a hosts feed blocked github.com. A # with no space before it
+// (a URL's fragment) is part of the entry.
 func Parse(line string, kind Kind) (string, Verdict) {
-	line = strings.TrimSpace(line)
-	if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+	line = strings.TrimSpace(stripComment(line))
+	if line == "" {
 		return "", Ignored
 	}
 	parts := strings.Fields(line)
-	if len(parts) == 0 {
-		return "", Ignored
+	entry := parts[0]
+	if kind == Domain && len(parts) > 1 && net.ParseIP(parts[0]) != nil {
+		entry = parts[1]
 	}
-	entry := parts[len(parts)-1]
 	if kind == IP {
 		return parseIP(entry)
 	}
 	return parseDomain(entry)
+}
+
+// stripComment cuts line at a # or ; that starts it or follows a space or a
+// tab.
+func stripComment(line string) string {
+	for i := 0; i < len(line); i++ {
+		if (line[i] == '#' || line[i] == ';') && (i == 0 || line[i-1] == ' ' || line[i-1] == '\t') {
+			return line[:i]
+		}
+	}
+	return line
 }
 
 func parseIP(entry string) (string, Verdict) {

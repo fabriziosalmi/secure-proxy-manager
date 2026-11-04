@@ -209,7 +209,9 @@ refuses.
 **Formats:**
 
 - One entry per line.
-- Hosts files: the last field of a line is the entry.
+- Hosts files: the name after the address is the entry.
+- A `#` or `;` after a space starts a comment that runs to the end of the
+  line.
 - A domain written as a URL is reduced to its host name.
 - Blank lines and lines starting with `#` or `;` are ignored.
 
