@@ -74,7 +74,8 @@ echo ""
 # Install Playwright deps if running locally (not in Docker)
 if [ -z "${CI:-}" ] && [ -f "${REPO_ROOT}/tests/e2e/package.json" ]; then
   info "Installing Playwright deps locally..."
-  (cd "${REPO_ROOT}/tests/e2e" && npm install --silent)
+  # npm ci installs exactly what package-lock.json pins, hashes included.
+  (cd "${REPO_ROOT}/tests/e2e" && npm ci --silent)
 fi
 
 info "Starting test stack (${BUILD_FLAG:-no rebuild})..."
