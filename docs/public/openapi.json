@@ -4527,7 +4527,7 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "The signed-in session: username, how it authenticated (cookie, bearer, basic or token) and expires_at (Unix seconds, null for Basic and for a token without expiry)",
+        "summary": "The signed-in session: username, how it authenticated (cookie, bearer, basic or token) and expires_at (Unix seconds, null for Basic and for a token without expiry); scope (read or write) for an API token",
         "tags": [
           "session"
         ],
