@@ -88,7 +88,8 @@ func LoadOIDC(get func(string) string) (OIDC, error) {
 	if o.GroupsClaim == "" {
 		o.GroupsClaim = "groups"
 	}
-	o.Scopes = splitList(get("OIDC_SCOPES"), false)
+	// Scopes are written space-separated in OAuth; commas are accepted too.
+	o.Scopes = strings.FieldsFunc(get("OIDC_SCOPES"), func(r rune) bool { return r == ',' || r == ' ' || r == '\t' })
 	if len(o.Scopes) == 0 {
 		o.Scopes = []string{"openid", "email", "profile"}
 	}

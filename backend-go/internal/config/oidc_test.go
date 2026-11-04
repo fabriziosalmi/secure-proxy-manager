@@ -40,6 +40,17 @@ func TestOIDCReadsAValidConfiguration(t *testing.T) {
 	}
 }
 
+func TestOIDCScopesAreReadSpaceOrCommaSeparated(t *testing.T) {
+	for _, v := range []string{"openid email groups", "openid,email,groups", " openid, email  groups "} {
+		m := valid()
+		m["OIDC_SCOPES"] = v
+		o, err := LoadOIDC(env(m))
+		if err != nil || strings.Join(o.Scopes, "|") != "openid|email|groups" {
+			t.Errorf("OIDC_SCOPES=%q: %q %v", v, o.Scopes, err)
+		}
+	}
+}
+
 func TestOIDCRefusesAHalfWrittenConfiguration(t *testing.T) {
 	for name, change := range map[string]map[string]string{
 		"client id without issuer": {"OIDC_ISSUER": ""},
