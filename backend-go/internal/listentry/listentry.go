@@ -32,7 +32,8 @@ const (
 )
 
 // Parse reads one line. The entry is the first field of the line, or, in
-// the hosts-file form ("0.0.0.0 evil.example"), the name after the address.
+// the hosts-file form ("0.0.0.0 evil.example"), the name after the address,
+// or, in adblock syntax ("||evil.example^"), the name the rule blocks.
 // # and ; start a comment line, and after a space they start a comment that
 // runs to the end of the line: feeds annotate entries
 // ("0.0.0.0 docs.pipenv.org # https://github.com/...", "198.51.100.0/24 ;
@@ -44,6 +45,19 @@ func Parse(line string, kind Kind) (string, Verdict) {
 	if line == "" {
 		return "", Ignored
 	}
+	if v, done := adblockLine(line); done {
+		return "", v
+	}
+	if strings.HasPrefix(line, "||") {
+		if kind != Domain {
+			return "", Invalid
+		}
+		name, ok := adblockName(line)
+		if !ok {
+			return "", Invalid
+		}
+		return parseDomain(name)
+	}
 	parts := strings.Fields(line)
 	entry := parts[0]
 	if kind == Domain && len(parts) > 1 && net.ParseIP(parts[0]) != nil {
@@ -53,6 +67,36 @@ func Parse(line string, kind Kind) (string, Verdict) {
 		return parseIP(entry)
 	}
 	return parseDomain(entry)
+}
+
+// adblockLine settles the adblock-syntax lines that name no entry: a
+// comment (! ...), the header ([Adblock Plus 2.0]), and an exception
+// (@@||name^), which allows rather than blocks and is skipped and counted.
+// done is false for any other line.
+func adblockLine(line string) (v Verdict, done bool) {
+	switch {
+	case strings.HasPrefix(line, "!"), strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]"):
+		return Ignored, true
+	case strings.HasPrefix(line, "@@"):
+		return Invalid, true
+	}
+	return 0, false
+}
+
+// adblockName is the name of an adblock rule that blocks a whole name and
+// its subdomains: ||name^, optionally with $important. A rule with a path,
+// a wildcard or another modifier blocks less (or other) than the name, so
+// taking the name would block more than the list means: ok is false.
+func adblockName(line string) (string, bool) {
+	rest := strings.TrimPrefix(line, "||")
+	name, after, found := strings.Cut(rest, "^")
+	if !found || (after != "" && after != "$important") {
+		return "", false
+	}
+	if name == "" || strings.ContainsAny(name, "/*|$^:") {
+		return "", false
+	}
+	return name, true
 }
 
 // stripComment cuts line at a # or ; that starts it or follows a space or a

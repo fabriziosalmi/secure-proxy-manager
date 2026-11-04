@@ -39,6 +39,22 @@ func TestParse(t *testing.T) {
 		{"198.51.100.0/24 ; SBL123456", IP, "198.51.100.0/24", Accepted},
 		{"203.0.113.9 # seen 2026-11-01", IP, "203.0.113.9", Accepted},
 		{"203.0.113.9\t1\t# ipsum count", IP, "203.0.113.9", Accepted},
+		// Adblock syntax, as AdGuard Home and Pi-hole lists publish it.
+		{"[Adblock Plus]", Domain, "", Ignored},
+		{"[Adblock Plus 2.0]", Domain, "", Ignored},
+		{"! Title: HaGeZi's Multi PRO", Domain, "", Ignored},
+		{"||telemetry.001-studio.com^", Domain, "telemetry.001-studio.com", Accepted},
+		{"||ads.example^$important", Domain, "ads.example", Accepted},
+		{"||ads.example^ # a comment", Domain, "ads.example", Accepted},
+		// An exception allows; a path, a wildcard or another modifier blocks
+		// less than the whole name: none is taken.
+		{"@@||allowed.example^", Domain, "", Invalid},
+		{"||ads.example/banner^", Domain, "", Invalid},
+		{"||ads.*.example^", Domain, "", Invalid},
+		{"||ads.example^$third-party", Domain, "", Invalid},
+		{"||ads.example", Domain, "", Invalid},
+		{"||^", Domain, "", Invalid},
+		{"||198.51.100.7^", IP, "", Invalid},
 	} {
 		if e, v := Parse(c.line, c.kind); e != c.entry || v != c.v {
 			t.Errorf("Parse(%q, %s) = %q, %d; want %q, %d", c.line, c.kind, e, v, c.entry, c.v)
