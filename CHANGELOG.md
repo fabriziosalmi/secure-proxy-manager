@@ -15,6 +15,60 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.28.0] - 2026-11-04
+
+Automation without the admin password: scripts, tools and the MCP server
+sign in with tokens of their own, and the API describes itself in OpenAPI.
+
+### Added
+
+- API tokens, under **Settings > Admin and backup > API tokens** or
+  `GET`/`POST /api/tokens` and `DELETE /api/tokens/{id}`. A token is sent as
+  `Authorization: Bearer spm_<id>_<secret>`. Its scope is `read` (`GET` and
+  `HEAD`) or `write` (any method). It expires after 90 days unless another
+  expiry, or none, is chosen. No token reaches the token routes, the password
+  and session routes, the database export and reset, the configuration
+  backup and restore, the internal routes or the runtime profiles; such a
+  call answers `403`. The value is shown once, and only a SHA-256 of its
+  secret is stored. Changes made with a token are in the audit log as
+  `token:<name>`, a wrong token counts against the client like a wrong
+  password, and revoking one stops it at once. The table is created at
+  start; nothing to do.
+- `GET /api/openapi.json` (authenticated): an OpenAPI 3.1 description of
+  every route the backend registers, built from its router, with the scope an
+  API token needs on each operation (`x-spm-token-scope`). The lists,
+  settings and access-log routes carry request and response schemas. The
+  docs site publishes the same document as `openapi.json`.
+- **Connect a device** has a **Linux server** tab: `/etc/environment`, apt,
+  the Docker daemon's image pulls and a systemd service, each with the
+  server's address filled in and its own copy button. The getting-started
+  guide has the same steps.
+- The MCP server, `spm-mcp` 0.4.0, signs in with `SPM_TOKEN`. With
+  `SPM_MCP_READONLY=false` it registers the tools that change the proxy only
+  for a write token, which it learns from `GET /api/session`. It is published
+  to PyPI separately from this release.
+
+### Changed
+
+- `GET /api/session` answers `via: "token"` for an API token, with its
+  `scope` and, when it has one, its expiry.
+- `spm-mcp`: `SPM_USERNAME` and `SPM_PASSWORD` still work without
+  `SPM_TOKEN`, with a warning, and will be removed in the next release.
+
+### Fixed
+
+- The **Linux** tab of **Connect a device** offered `export` lines for
+  `/etc/environment`, which takes `NAME=value` lines only. It now names
+  `~/.bashrc` and points to the Linux server tab.
+- `GET /api/docs` reported `GET /metrics` and the WebSocket as needing
+  authentication; neither goes through the auth middleware (the WebSocket
+  checks its own single-use token).
+- The authentication docs said that past the failed-attempt limit every
+  request answers `429`; a login does, any other request answers `401`.
+
+New routes and a new field; no route, field or status code is removed.
+Nothing is **BREAKING** and `X-API-Version` stays 1.
+
 ## [3.27.0] - 2026-11-04
 
 Lists in the format AdGuard Home and Pi-hole users already run, and a device
