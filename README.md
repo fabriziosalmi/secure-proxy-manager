@@ -266,8 +266,9 @@ token is enough for the read-only tools. `SPM_TOKEN` needs spm-mcp 0.4.0 or late
 - The admin password must be 8 or more characters and not a common default;
   the backend refuses to start otherwise. A `SECRET_KEY` you set must be 32 or
   more characters and not a known example value.
-- The SSL-bump CA is generated per deployment under `config/` and is
-  gitignored. Treat `config/ssl_key.pem` as a secret.
+- The SSL-bump CA is generated per deployment and is gitignored. Its private
+  key, `ssl/ssl_key.pem`, is mounted only into the proxy; treat it, and any
+  backup of `ssl/`, as a secret.
 - Alert channel credentials are stored encrypted (AES-256-GCM) and are
   write-only through the API.
 - The proxy denies FTP and keeps port 21 out of `Safe_ports`; the image build

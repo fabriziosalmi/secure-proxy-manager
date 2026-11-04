@@ -180,7 +180,7 @@ Details: [Settings and Maintenance API](./settings.md).
 | `POST`   | `/api/maintenance/clear-cache` | Clear the Squid cache (see [Settings and Maintenance](./settings.md#clear-proxy-cache)) |
 | `GET`    | `/api/maintenance/backup-config` | The settings and the five lists, as a backup |
 | `POST`   | `/api/maintenance/restore-config` | Add what a backup holds |
-| `GET`    | `/api/maintenance/check-cert-security` | Whether the CA file and the certificate database exist |
+| `GET`    | `/api/maintenance/check-cert-security` | Whether the CA certificate and the certificate database exist, and whether the CA key is out of `/config` |
 | `GET`    | `/api/security/download-ca` | The SSL-bump CA certificate (`/config/ssl_cert.pem`) |
 | `GET`    | `/api/security/rate-limits` | Failed-login counts per address |
 | `DELETE` | `/api/security/rate-limits/{ip}` | Clear one address's count |

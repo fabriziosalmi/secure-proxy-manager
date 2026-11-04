@@ -153,16 +153,18 @@ them):
 
 ```
 secure-proxy-manager/
-├── config/        # shared with proxy, waf, dns: exported lists, marker and trigger
-│   │              # files, status records, ssl_cert.pem and ssl_key.pem (SSL-bump CA),
-│   │              # ssl_db/ (generated certificates)
+├── config/        # shared with backend, proxy, waf, dns: exported lists, marker and
+│   │              # trigger files, status records, ssl_cert.pem (the SSL-bump CA certificate)
 │   └── dnsmasq.d/ # blocklist.hosts for dnsmasq
 ├── data/          # backend only: proxy_manager.db, .jwt_secret, .enc_key
 ├── logs/          # Squid access.log and cache.log, dnsmasq.log
+├── ssl/           # proxy only: ssl_key.pem (the CA's private key), ssl_db/ (generated certificates)
 └── .env
 ```
 
-`config/*.pem` and `config/ssl_db/` are gitignored.
+`ssl/`, `config/*.pem` and `config/ssl_db/` are gitignored. `ssl/` is
+`root:13` (the proxy group) with mode `750`, so on the host it is read with
+`sudo`.
 
 Named volumes:
 
@@ -190,10 +192,20 @@ There are two TLS surfaces.
 2. **The SSL-bump CA.** With Settings > Inspection > Inspect HTTPS traffic on,
    Squid decrypts HTTPS with a local CA so the WAF can inspect requests.
    `proxy/generate_squid_conf.sh` creates `config/ssl_cert.pem` and
-   `config/ssl_key.pem` at start when either is missing (RSA 2048, valid 825
-   days, the key created under `umask 077`) and initialises `config/ssl_db/`.
+   `ssl/ssl_key.pem` at start when either is missing (RSA 2048, valid 825
+   days, the key created under `umask 077`) and initialises `ssl/ssl_db/`.
    Each deployment has its own CA. The generator also detects the CA key that
    was once committed to this repository, deletes it and generates a new one.
+
+   The private key and the generated certificates are in `ssl/`, which only
+   the proxy mounts. `config/` is shared: the backend runs as root and dnsmasq
+   runs with `CAP_DAC_OVERRIDE`, so both can read any file in it. Earlier
+   versions kept the key in `config/`. On the first start with the `ssl/`
+   mount, the proxy moves the key there unchanged, so clients keep the CA they
+   installed, and deletes `config/ssl_db/`, which it rebuilds in `ssl/`. A
+   compose file without the mount keeps the key in `config/`, and the proxy
+   logs a warning at every start; `GET /api/maintenance/check-cert-security`
+   reports it too.
 
    Install the CA on every client that should be inspected: Settings >
    Inspection > Download the CA certificate (.pem). Without SSL bump, HTTPS is a
@@ -211,11 +223,11 @@ docker compose exec proxy openssl x509 -in /config/ssl_cert.pem -noout -subject 
 
 # 2. Stop the stack and keep the old CA until every client is updated.
 docker compose down
-mv config/ssl_cert.pem config/ssl_cert.pem.old
-mv config/ssl_key.pem  config/ssl_key.pem.old
+sudo mv config/ssl_cert.pem config/ssl_cert.pem.old
+sudo mv ssl/ssl_key.pem     ssl/ssl_key.pem.old
 
 # 3. Clear the generated-certificate database, which belongs to the old CA.
-rm -rf config/ssl_db
+sudo rm -rf ssl/ssl_db
 
 # 4. Start. The proxy generates a new CA.
 docker compose up -d
@@ -224,11 +236,11 @@ docker compose exec proxy openssl x509 -in /config/ssl_cert.pem -noout -enddate
 # 5. Install the new CA on every client (Settings > Inspection > Download the CA certificate (.pem)).
 
 # 6. Once every client is updated:
-rm config/ssl_cert.pem.old config/ssl_key.pem.old
+sudo rm config/ssl_cert.pem.old ssl/ssl_key.pem.old
 ```
 
-To use a CA of your own instead, put its certificate and key at
-`config/ssl_cert.pem` and `config/ssl_key.pem` in step 4.
+To use a CA of your own instead, put its certificate at `config/ssl_cert.pem`
+and its key at `ssl/ssl_key.pem` (mode `400`) in step 4.
 
 ### Rotating the other two keys
 
@@ -256,17 +268,20 @@ The database holds the settings, the lists, the access log and the audit log.
 
   ```bash
   docker compose stop backend
-  tar -czf spm-backup-$(date +%Y%m%d).tar.gz data/ config/
+  sudo tar -czf spm-backup-$(date +%Y%m%d).tar.gz data/ config/ ssl/
   docker compose start backend
   ```
 
-  To restore, stop the stack, extract the archive over `data/` and `config/`,
-  and run `docker compose up -d`.
+  `ssl/` holds the SSL-bump CA's private key: without it the proxy generates
+  a new CA, and every client has to install it again. The archive then holds
+  that key, so keep it where only you can read it. To restore, stop the
+  stack, extract the archive over `data/`, `config/` and `ssl/`, and run
+  `docker compose up -d`.
 
 A daily cold copy from cron, stopping the backend for the copy:
 
 ```bash
-0 2 * * * cd /opt/secure-proxy-manager && docker compose stop backend && tar -czf /backups/spm-$(date +\%Y\%m\%d).tar.gz data config; docker compose start backend
+0 2 * * * cd /opt/secure-proxy-manager && docker compose stop backend && tar -czf /backups/spm-$(date +\%Y\%m\%d).tar.gz data config ssl; docker compose start backend
 ```
 
 The installer's `data.bak.<timestamp>` copies are restored with

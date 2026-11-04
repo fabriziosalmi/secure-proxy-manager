@@ -62,10 +62,14 @@ config/custom_squid_extra.conf
 config/domain_acl_status.json
 
 # TLS material — NEVER commit. The SSL-bump CA is generated per-deployment at
-# first boot (proxy/startup.sh). Committing it shares one private key with every
-# user and enables MITM of all bumped TLS.
+# first boot (proxy/generate_squid_conf.sh). Committing it shares one private key
+# with every user and enables MITM of all bumped TLS. The key and the
+# certificate database live in ssl/; config/ holds the certificate, and the key
+# and database of versions before the move.
+ssl/
 config/*.pem
 config/ssl_db/
+config/ssl_ca_status.json
 
 # Claude Code working directory (worktrees, settings, transcripts)
 .claude/

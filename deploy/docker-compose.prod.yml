@@ -270,6 +270,9 @@ services:
       # holds .jwt_secret, .enc_key and the database. Squid is the
       # internet-facing data plane and runs with a broad capability set, so
       # it is the last container that should be able to read them.
+      # The SSL-bump CA key and the certificate database, on the proxy only:
+      # /config is shared with services that can read whatever sits there.
+      - ./ssl:/ssl
       - ./logs:/var/log/squid
       - squid-cache:/var/spool/squid
     depends_on:

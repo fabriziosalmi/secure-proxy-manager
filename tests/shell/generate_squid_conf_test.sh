@@ -193,6 +193,122 @@ conf="$(generate "$tunnel_seed")"
 grep -q '^on_unsupported_protocol tunnel all' <<<"$conf" && ok "SSL-bump: on_unsupported_protocol from the extras is kept" || bad "SSL-bump: on_unsupported_protocol from the extras is kept"
 parses "$tunnel_seed" && ok "SSL-bump: squid -k parse accepts on_unsupported_protocol" || bad "SSL-bump: squid -k parse accepts on_unsupported_protocol"
 
+echo "── SSL-bump CA: the key lives in /ssl, a mount only the proxy has ──"
+# /config is shared with the backend (root, proxy group) and dns (root,
+# CAP_DAC_OVERRIDE), which read whatever sits there. --tmpfs makes /ssl a mount
+# point, as the compose files' ./ssl bind mount does.
+ca_run() { # extra docker args, script
+  local args="$1" script="$2"
+  # shellcheck disable=SC2086
+  docker run --rm --memory 256m $args --entrypoint /bin/bash "$IMAGE" -c "
+    mkdir -p /config /etc/squid /var/spool/squid /var/log/squid /run/squid
+    km() { openssl rsa -in \"\$1\" -noout -modulus 2>/dev/null | sha256sum | cut -c1-16; }
+    cm() { openssl x509 -in \"\$1\" -noout -modulus 2>/dev/null | sha256sum | cut -c1-16; }
+    fp() { openssl x509 -in \"\$1\" -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2; }
+    seed_ca() { # a CA left in /config by an older version, with its database
+      (umask 077; openssl genrsa -out /config/ssl_key.pem 2048 2>/dev/null)
+      openssl req -new -key /config/ssl_key.pem -x509 -days 30 -out /config/ssl_cert.pem -subj /CN=old 2>/dev/null
+      mkdir -p /config/ssl_db/certs; echo leaf > /config/ssl_db/certs/leaf.pem; : > /config/ssl_db/index.txt
+    }
+    $script
+  " 2>/dev/null
+}
+
+got="$(ca_run '--tmpfs /ssl' '
+  touch /config/ssl_bump_enabled
+  /usr/local/bin/generate_squid_conf.sh >/tmp/gen.log 2>&1
+  [ -f /ssl/ssl_key.pem ] && echo key=ssl
+  [ -e /config/ssl_key.pem ] && echo key=config
+  [ "$(km /ssl/ssl_key.pem)" = "$(cm /config/ssl_cert.pem)" ] && echo pair=ok
+  [ -f /ssl/ssl_db/index.txt ] && echo db=ssl
+  [ -e /config/ssl_db ] && echo db=config
+  stat -c "dir=%U:%G:%a" /ssl; stat -c "keymode=%U:%a" /ssl/ssl_key.pem
+  cat /config/ssl_ca_status.json
+  grep -E "^  key=|^sslcrtd_program" /etc/squid/squid.conf
+  squid -k parse >/dev/null 2>&1 && echo parse=ok
+')"
+grep -q 'key=ssl' <<<"$got" && ! grep -q 'key=config' <<<"$got" && grep -q 'pair=ok' <<<"$got" \
+  && ok "fresh: the CA key is generated in /ssl, none in /config" || bad "fresh: the CA key is generated in /ssl, none in /config" "$got"
+grep -q 'db=ssl' <<<"$got" && ! grep -q 'db=config' <<<"$got" \
+  && ok "fresh: the certificate database is in /ssl, none in /config" || bad "fresh: the certificate database is in /ssl" "$got"
+grep -q 'dir=root:proxy:750' <<<"$got" && grep -q 'keymode=root:400' <<<"$got" \
+  && ok "fresh: /ssl is root:proxy 750 and the key root 400" || bad "fresh: /ssl and key modes" "$got"
+grep -q '"key_isolated":true,"db":true' <<<"$got" \
+  && ok "fresh: the status file tells the backend the key is isolated" || bad "fresh: status file" "$got"
+grep -qx '  key=/ssl/ssl_key.pem \\' <<<"$got" && grep -qx 'sslcrtd_program /usr/lib/squid/security_file_certgen -s /ssl/ssl_db -M 4MB' <<<"$got" \
+  && grep -q 'parse=ok' <<<"$got" \
+  && ok "fresh: squid.conf reads the key and the database from /ssl, and parses" || bad "fresh: squid.conf paths" "$got"
+
+got="$(ca_run '--tmpfs /ssl' '
+  seed_ca; before_fp=$(fp /config/ssl_cert.pem); before_km=$(km /config/ssl_key.pem)
+  touch /config/tls_peek_enabled
+  /usr/local/bin/generate_squid_conf.sh >/tmp/gen.log 2>&1
+  [ "$(km /ssl/ssl_key.pem)" = "$before_km" ] && echo key=same
+  [ "$(fp /config/ssl_cert.pem)" = "$before_fp" ] && echo cert=same
+  [ -e /config/ssl_key.pem ] && echo left=key
+  [ -e /config/ssl_db ] && echo left=db
+  [ -e /ssl/ssl_db/certs/leaf.pem ] && echo leaf=moved
+  [ -f /ssl/ssl_db/index.txt ] && echo db=ssl
+  grep -o "Moved the CA key[^.]*" /tmp/gen.log
+  grep -E "^http_port" /etc/squid/squid.conf
+  /usr/local/bin/generate_squid_conf.sh >/tmp/gen2.log 2>&1
+  grep -q "Using existing SSL certificates" /tmp/gen2.log && ! grep -q Moved /tmp/gen2.log && echo again=quiet
+  [ "$(km /ssl/ssl_key.pem)" = "$before_km" ] && [ "$(fp /config/ssl_cert.pem)" = "$before_fp" ] && echo again=same
+')"
+grep -q 'key=same' <<<"$got" && grep -q 'cert=same' <<<"$got" \
+  && ok "upgrade: the key moves to /ssl unchanged, the certificate clients installed stays" || bad "upgrade: the key moves unchanged" "$got"
+! grep -q 'left=' <<<"$got" && grep -q 'db=ssl' <<<"$got" && ! grep -q 'leaf=moved' <<<"$got" \
+  && ok "upgrade: no key and no certificate database left in /config" || bad "upgrade: nothing left in /config" "$got"
+grep -qx 'http_port 3128 ssl-bump cert=/config/ssl_cert.pem key=/ssl/ssl_key.pem' <<<"$got" \
+  && ok "upgrade: TLS server names read the key from /ssl" || bad "upgrade: peek key path" "$got"
+grep -q 'again=quiet' <<<"$got" && grep -q 'again=same' <<<"$got" \
+  && ok "upgrade: a second run moves nothing and keeps the same CA" || bad "upgrade: second run" "$got"
+
+got="$(ca_run '--tmpfs /ssl' '
+  seed_ca; want=$(km /config/ssl_key.pem)
+  (umask 077; openssl genrsa -out /ssl/ssl_key.pem 2048 2>/dev/null)
+  /usr/local/bin/generate_squid_conf.sh >/tmp/gen.log 2>&1
+  [ "$(km /ssl/ssl_key.pem)" = "$want" ] && echo kept=matching
+  [ -e /config/ssl_key.pem ] && echo left=key
+')"
+grep -q 'kept=matching' <<<"$got" && ! grep -q 'left=key' <<<"$got" \
+  && ok "two keys: the one that matches the certificate ends in /ssl" || bad "two keys: the matching one wins" "$got"
+
+got="$(ca_run '--tmpfs /ssl' '
+  seed_ca; want=$(km /config/ssl_key.pem)
+  cp -p /config/ssl_key.pem /ssl/ssl_key.pem
+  (umask 077; openssl genrsa -out /config/ssl_key.pem 2048 2>/dev/null)
+  /usr/local/bin/generate_squid_conf.sh >/tmp/gen.log 2>&1
+  [ "$(km /ssl/ssl_key.pem)" = "$want" ] && echo kept=ssl
+  [ -e /config/ssl_key.pem ] && echo left=key
+')"
+grep -q 'kept=ssl' <<<"$got" && ! grep -q 'left=key' <<<"$got" \
+  && ok "two keys: a stray copy in /config is removed, the matching key in /ssl stays" || bad "two keys: stray copy removed" "$got"
+
+got="$(ca_run '' '
+  seed_ca; before_km=$(km /config/ssl_key.pem)
+  /usr/local/bin/generate_squid_conf.sh >/tmp/gen.log 2>&1; echo "rc=$?"
+  [ "$(km /config/ssl_key.pem)" = "$before_km" ] && echo key=kept
+  grep -q "WARNING: /ssl is not mounted" /tmp/gen.log && echo warned
+  [ -e /ssl/ssl_key.pem ] && echo key=layer
+  cat /config/ssl_ca_status.json
+')"
+grep -q 'rc=0' <<<"$got" && grep -q 'key=kept' <<<"$got" && grep -q 'warned' <<<"$got" && ! grep -q 'key=layer' <<<"$got" \
+  && ok "no /ssl mount: the key stays in /config, with a warning, never in the container layer" || bad "no /ssl mount: fallback" "$got"
+grep -q '"key_isolated":false' <<<"$got" \
+  && ok "no /ssl mount: the status file says the key is not isolated" || bad "no /ssl mount: status file" "$got"
+
+bump="$(ca_run '--tmpfs /ssl' '
+  touch /config/ssl_bump_enabled
+  /usr/local/bin/generate_squid_conf.sh >/tmp/gen.log 2>&1
+  chown -R proxy:proxy /var/spool/squid /var/log/squid /run/squid
+  squid -z -N >/dev/null 2>&1; rm -f /run/squid/squid.pid
+  timeout 8 squid -N -d1 >/tmp/sq.log 2>&1; echo "squid_rc=$?"
+  grep -m1 -E "FATAL|crashing too rapidly" /tmp/sq.log
+')"
+grep -q 'squid_rc=124' <<<"$bump" && ! grep -qE 'FATAL|crashing' <<<"$bump" \
+  && ok "SSL-bump with the key in /ssl: Squid runs (the certificate helper reaches the database)" || bad "SSL-bump from /ssl: Squid runs" "$bump"
+
 echo "── TLS server names ON (peek, then splice) ──"
 conf="$(generate 'touch /config/tls_peek_enabled')"
 grep -q '^http_port 3128 ssl-bump cert=/config/ssl_cert.pem key=/config/ssl_key.pem$' <<<"$conf" && ok "peek: the port reads TLS" || bad "peek: the port reads TLS"
