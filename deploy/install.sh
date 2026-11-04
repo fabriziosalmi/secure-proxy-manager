@@ -4,11 +4,13 @@
 # ║  Usage: curl -fsSL https://raw.githubusercontent.com/            ║
 # ║    fabriziosalmi/secure-proxy-manager/main/deploy/install.sh|bash║
 # ╚═══════════════════════════════════════════════════════════════════╝
+# Installs, or updates to, the newest release (vX.Y.Z), not main: the compose
+# file then comes from the same version as the images it pulls. SPM_VERSION=vX.Y.Z
+# installs that release instead.
 set -euo pipefail
 
 REPO="https://github.com/fabriziosalmi/secure-proxy-manager.git"
 INSTALL_DIR="/opt/secure-proxy-manager"
-BRANCH="main"
 
 C='\033[0;36m'; G='\033[0;32m'; R='\033[0;31m'; Y='\033[0;33m'; N='\033[0m'; B='\033[1m'
 
@@ -93,6 +95,48 @@ PORTS
     fi
 }
 
+# ── Release ───────────────────────────────────────────────────────────
+# main moves between releases: its compose file can name a mount, a variable
+# or a service that the release images it pulls do not have yet.
+
+# release_tag prints the release to install: SPM_VERSION when it is set and
+# exists, otherwise the newest vX.Y.Z tag. Tags that are not a release
+# (mcp-v*, release candidates) are skipped, and the order is numeric, so
+# v3.10.0 comes after v3.9.0. Errors go to stderr: it runs in $(...).
+release_tag() {
+    local tag
+    if [ -n "${SPM_VERSION:-}" ]; then
+        if ! printf '%s\n' "$SPM_VERSION" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+'; then
+            printf "${R}[FAIL]${N} %s\n" "SPM_VERSION must be a release tag such as v3.29.0, not '$SPM_VERSION'" >&2
+            return 1
+        fi
+        if ! git ls-remote --exit-code --tags --refs "$REPO" "refs/tags/$SPM_VERSION" >/dev/null 2>&1; then
+            printf "${R}[FAIL]${N} %s\n" "Release $SPM_VERSION was not found in $REPO" >&2
+            return 1
+        fi
+        tag="$SPM_VERSION"
+    else
+        tag=$(git ls-remote --tags --refs "$REPO" 2>/dev/null \
+            | sed -n 's#.*refs/tags/\(v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$#\1#p' \
+            | sort -t. -k1.2,1n -k2,2n -k3,3n | tail -n 1)
+        if [ -z "$tag" ]; then
+            printf "${R}[FAIL]${N} %s\n" "Could not read the releases from $REPO" >&2
+            return 1
+        fi
+    fi
+    printf '%s\n' "$tag"
+}
+
+# checkout_release moves the clone in the current directory to the release,
+# detached. A clone made by an earlier installer tracked main, which is ahead
+# of the newest release; it moves back to the release too.
+checkout_release() { # tag
+    git fetch -q --depth 1 origin "refs/tags/$1:refs/tags/$1" \
+        && git -c advice.detachedHead=false checkout -q "$1"
+}
+
+# Sourced (tests/shell/install_release_test.sh): define the functions only.
+(return 0 2>/dev/null) && return 0
 
 echo ""
 printf "${C}╔═══════════════════════════════════════════════════════════╗${N}\n"
@@ -140,6 +184,10 @@ if ! command -v git &>/dev/null; then
 fi
 
 # ── Clone or update repo ─────────────────────────────────────────────
+info "Finding the release..."
+TAG=$(release_tag) || exit 1
+ok "Release: $TAG"
+
 # The production compose is copied to compose.prod.yml, which git does not
 # track, and selected with COMPOSE_FILE in .env (docker compose reads it). It
 # used to be copied over the TRACKED docker-compose.yml, so the next
@@ -159,12 +207,12 @@ if [ -d "$INSTALL_DIR" ]; then
             fail "docker-compose.yml has local changes this installer did not make. Move them to compose.prod.yml or an override file, run 'git checkout -- docker-compose.yml', then re-run."
         fi
     fi
-    git pull --ff-only origin "$BRANCH"
+    checkout_release "$TAG" || fail "Could not move $INSTALL_DIR to $TAG (see the git message above)"
     cp deploy/docker-compose.prod.yml compose.prod.yml
-    ok "Updated to latest"
+    ok "Updated to $TAG"
 else
     info "Cloning repository..."
-    git clone --depth 1 -b "$BRANCH" "$REPO" "$INSTALL_DIR"
+    git -c advice.detachedHead=false clone -q --depth 1 -b "$TAG" "$REPO" "$INSTALL_DIR"
     cd "$INSTALL_DIR"
     cp deploy/docker-compose.prod.yml compose.prod.yml
     ok "Cloned to $INSTALL_DIR"

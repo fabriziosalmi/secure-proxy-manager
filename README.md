@@ -57,8 +57,9 @@ release images are built for `linux/amd64` and `linux/arm64`.
 curl -fsSL https://raw.githubusercontent.com/fabriziosalmi/secure-proxy-manager/main/deploy/install.sh | sudo bash
 ```
 
-`deploy/install.sh` installs Docker if it is missing, clones the repository to
-`/opt/secure-proxy-manager`, writes a `.env` with a random admin password,
+`deploy/install.sh` installs Docker if it is missing, clones the newest
+release (`SPM_VERSION=vX.Y.Z` picks another) to `/opt/secure-proxy-manager`,
+writes a `.env` with a random admin password,
 `SECRET_KEY` and `INTERNAL_ALERT_TOKEN`, checks that the host ports are free,
 pulls the release images from GHCR (and verifies their signatures when cosign
 3 or later is installed), and starts the stack. It prints the credentials at

@@ -1,6 +1,0 @@
-# Trivy vulnerability allowlist. ONLY for advisories that are non-applicable or
-# dev-only with no proportionate fix; every entry needs a justification.
-# Keep in sync with scripts/npm-audit-allowlist.json.
-#
-# Currently EMPTY — the react-router RSC-mode CSRF exception (GHSA-qwww-vcr4-c8h2)
-# was retired by the react-router v8 migration (#191).
