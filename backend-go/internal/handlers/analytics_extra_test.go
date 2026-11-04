@@ -81,6 +81,24 @@ func TestAnalyticsHandlers_Status_Mocked(t *testing.T) {
 	if data["proxy_status"] != "running" {
 		t.Errorf("Expected proxy_status running, got %v", data["proxy_status"])
 	}
+	if data["proxy_ip"] != "" {
+		t.Errorf("proxy_ip without PROXY_IP = %v, want empty", data["proxy_ip"])
+	}
+}
+
+// PROXY_IP, the server's address on the LAN, is what Connect a device shows:
+// proxy_host is the container name, which only resolves inside the stack.
+func TestStatusReportsTheProxyIP(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	cfg.ProxyIP = "192.0.2.10"
+	w := httptest.NewRecorder()
+	NewAnalyticsHandlers(db, cfg).Status(w, httptest.NewRequest("GET", "/api/status", nil))
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if data, _ := resp["data"].(map[string]any); data["proxy_ip"] != "192.0.2.10" {
+		t.Errorf("status = %v, want proxy_ip 192.0.2.10", resp["data"])
+	}
 }
 
 type stubSysInfo struct {

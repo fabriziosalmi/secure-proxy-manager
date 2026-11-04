@@ -64,6 +64,16 @@ pulls the release images from GHCR (and verifies their signatures when cosign
 3 or later is installed), and starts the stack. It prints the credentials at
 the end; they are also in `/opt/secure-proxy-manager/.env`.
 
+**From a clone, with the signed release images (nothing to build):**
+
+```bash
+git clone https://github.com/fabriziosalmi/secure-proxy-manager.git
+cd secure-proxy-manager
+cp .env.example .env              # edit it as below
+cp deploy/docker-compose.prod.yml compose.prod.yml
+docker compose -f compose.prod.yml up -d
+```
+
 **From a clone (builds the images locally):**
 
 ```bash

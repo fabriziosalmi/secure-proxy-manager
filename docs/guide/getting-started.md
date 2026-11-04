@@ -65,7 +65,18 @@ least 32 characters and not a known example value.
 docker compose up -d --build
 ```
 
-The first run builds the backend, WAF, UI, proxy and dns images.
+The first run builds the backend, WAF, UI, proxy and dns images. To run the
+signed release images instead, as the installer does, without building
+anything:
+
+```bash
+cp deploy/docker-compose.prod.yml compose.prod.yml
+docker compose -f compose.prod.yml up -d
+```
+
+`compose.prod.yml` pins the release it came with (`SPM_IMAGE_TAG` overrides
+it). Keep using `-f compose.prod.yml`, or add `COMPOSE_FILE=compose.prod.yml`
+to `.env`, for every later `docker compose` command.
 
 ### 4. Open the web UI
 
@@ -81,8 +92,11 @@ Set the proxy on each device to:
 - **Host:** the LAN address of the machine running Secure Proxy Manager
 - **Port:** `3128`
 
-Settings > Overview > Connect a device shows the steps per platform and a PAC
-file. The proxy accepts clients from private IPv4 ranges, IPv6 unique-local
+Set `PROXY_IP` in `.env` to that address. Settings > Overview > Connect a
+device then shows it with the steps per platform, a PAC file and the URL
+devices can load it from (`http://<address>/wpad.dat`); without `PROXY_IP` it
+shows the host the dashboard was opened on, and warns when that is
+`localhost`. The proxy accepts clients from private IPv4 ranges, IPv6 unique-local
 and link-local addresses and localhost; `GUI_IP_WHITELIST` admits other
 sources. Transparent interception is not supported (see
 [Transparent proxy](/guide/security#transparent-proxy)).
@@ -139,7 +153,7 @@ docker compose --profile observability up -d
 
 Prometheus scrapes `backend:5000/metrics` and `waf:8080/metrics`, evaluates the
 alert rules in `infra/prometheus/rules/spm.rules.yml` (`SPMTargetDown`,
-`SPMBlacklistExportFailed`, `SPMWafReconcileFailed`,
+`SPMBlacklistExportFailed`, `SPMWAFReconcilePushFailed`,
 `SPMNotificationDeliveryFailed`, `SPMDatabaseIntegrityFailed`,
 `SPMLogRetentionDisabled`), and Grafana provisions Prometheus as its default
 datasource.

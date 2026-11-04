@@ -6,13 +6,16 @@ import { renderWithProviders } from '../test/helpers'
 import { expectNoAxeViolations } from '../test/axe'
 import { ClientSetup } from './ClientSetup'
 
-vi.mock('../lib/api', () => ({
-  api: {
+vi.mock('../lib/api', () => {
+  const api = {
     get: vi.fn().mockResolvedValue({ data: { data: [] } }),
     post: vi.fn(),
     interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } },
-  },
-}))
+  }
+  // The status query reads through getData, as the app does.
+  const getData = (path: string) => api.get(path).then((r: { data?: { data?: unknown } }) => r?.data?.data)
+  return { api, getData }
+})
 
 import { api } from '../lib/api'
 
@@ -67,16 +70,32 @@ describe('ClientSetup', () => {
 
   it('shows Authentication: Username and password on iOS when enable_proxy_auth is true', async () => {
     const user = userEvent.setup()
-    vi.mocked(api.get).mockResolvedValueOnce({
-      data: {
-        data: [{ setting_name: 'enable_proxy_auth', setting_value: 'true' }],
-      },
-    })
+    vi.mocked(api.get).mockImplementation((url: string) => Promise.resolve({
+      data: { data: url === 'settings' ? [{ setting_name: 'enable_proxy_auth', setting_value: 'true' }] : {} },
+    }) as never)
 
     renderWithProviders(<ClientSetup />)
     await user.click(screen.getByRole('tab', { name: 'iOS' }))
 
     expect(await screen.findByText(/Authentication: Username and password/i)).toBeInTheDocument()
     expect(screen.queryByText(/Authentication: Off/i)).not.toBeInTheDocument()
+  })
+
+  // The page runs on localhost here: with no PROXY_IP the address shown is
+  // localhost, which no other device can reach, and the page says so; with
+  // PROXY_IP the address and the PAC URL are the server's.
+  it('warns on localhost and shows the PAC URL', async () => {
+    renderWithProviders(<ClientSetup />)
+    expect(await screen.findByText('Other devices cannot reach this address')).toBeInTheDocument()
+    expect(screen.getByText('http://localhost/wpad.dat')).toBeInTheDocument()
+  })
+
+  it('uses PROXY_IP from the status for the address and the PAC URL', async () => {
+    vi.mocked(api.get).mockImplementation((url: string) =>
+      Promise.resolve({ data: { data: url === 'status' ? { proxy_ip: '192.0.2.10' } : [] } }) as never)
+    renderWithProviders(<ClientSetup />)
+    expect(await screen.findByText('192.0.2.10:3128')).toBeInTheDocument()
+    expect(screen.getByText('http://192.0.2.10/wpad.dat')).toBeInTheDocument()
+    expect(screen.queryByText('Other devices cannot reach this address')).toBeNull()
   })
 })

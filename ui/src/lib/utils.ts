@@ -22,16 +22,30 @@ export function safeExternalUrl(url?: string | null): string {
 }
 
 /**
- * The proxy address a client configures: the host this UI was reached on, at
- * the port docker-compose publishes for Squid ("3128:3128"). The backend's
- * proxy_host is the container name ("proxy"), which resolves only inside the
- * compose network, so the Settings panel showed "proxy:3128" while the
- * Dashboard showed the address that works. Every surface reads this instead.
+ * The proxy address a client configures: the server's LAN address when the
+ * server names it (PROXY_IP, GET /api/status proxy_ip), else the host this UI
+ * was reached on, at the port docker-compose publishes for Squid
+ * ("3128:3128"). The backend's proxy_host is the container name ("proxy"),
+ * which resolves only inside the compose network. Every surface reads this
+ * (through useProxyAddress).
  */
 export const PROXY_PORT = 3128
 
-export function proxyAddress(): string {
-  return `${window.location.hostname}:${PROXY_PORT}`
+export function proxyHost(proxyIP?: string): string {
+  const ip = proxyIP?.trim()
+  if (!ip) return window.location.hostname
+  // An IPv6 address is written in brackets before a port.
+  return ip.includes(':') && !ip.startsWith('[') ? `[${ip}]` : ip
+}
+
+export function proxyAddress(proxyIP?: string): string {
+  return `${proxyHost(proxyIP)}:${PROXY_PORT}`
+}
+
+/** A host no other device can reach this server by (the server itself). */
+export function isLoopbackHost(host: string): boolean {
+  const h = host.replace(/^\[|\]$/g, '').toLowerCase()
+  return h === 'localhost' || h.endsWith('.localhost') || h === '::1' || h === '0.0.0.0' || /^127\./.test(h)
 }
 
 /**
