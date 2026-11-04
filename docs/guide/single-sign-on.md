@@ -8,8 +8,10 @@ ID token itself. The decision record is in
 
 - **Everyone let in is an admin.** SPM has no roles; the allow-list decides
   who may sign in at all.
-- **The local admin stays.** The password sign-in keeps working next to the
-  provider, so a broken provider does not lock you out.
+- **The local admin stays.** By default the password sign-in keeps working
+  next to the provider, so a broken provider does not lock you out.
+  `OIDC_PASSWORD_LOGIN=false` takes it off the dashboard and keeps it on the
+  server, as break-glass: see [Turning the password off](#turning-the-password-off).
 - **Sessions last one hour** by default (`OIDC_SESSION_DURATION`), and are not
   renewed: someone removed at the provider is out at the end of the session.
   Changing who may sign in, or switching OIDC off, ends every OIDC session at
@@ -44,6 +46,7 @@ sends `email_verified: false`, SPM refuses the sign-in.
 | `OIDC_SCOPES` | Space- or comma-separated (default `openid email profile`). |
 | `OIDC_SESSION_DURATION` | How long a sign-in lasts, `5m` to `24h` (default `1h`). |
 | `OIDC_LABEL` | The name on the sign-in button (default "single sign-on"). |
+| `OIDC_PASSWORD_LOGIN` | `false`: the dashboard refuses the admin password (default `true`). Needs `OIDC_ISSUER`. |
 
 Then restart the backend:
 
@@ -91,6 +94,57 @@ advertises an `end_session_endpoint`, the browser is then sent there, so the
 person is signed out at the provider too, and comes back to the dashboard.
 Register `https://<dashboard host>:8443/` as a post-logout redirect URL at the
 provider for that. Dex does not advertise one.
+
+## Turning the password off
+
+With `OIDC_PASSWORD_LOGIN=false`, the sign-in page offers only the provider,
+and the backend refuses the admin password in every form when the request
+came through the dashboard:
+
+- `POST /api/auth/login` answers `403` before the password is checked, so
+  these attempts do not count toward the lockout. The audit log records
+  `login_failed` with `password_off`, once per client address within
+  `RATE_LIMIT_WINDOW_SECONDS`.
+- Basic authentication answers `401`, and so do the access tokens and session
+  cookies a password sign-in issued. A refresh answers `403`.
+
+People signed in with the provider, and API tokens, are not affected. A
+session the admin opened through the dashboard before the change is refused
+from its next request.
+
+The backend tells the dashboard apart by its headers, not by the client's
+address. nginx sets `X-Forwarded-For` and `X-Real-IP` on every request it
+passes to `/api/`, replacing what the client sent, so no client of the
+dashboard arrives without them. The address would not do: a browser on the
+server itself reaches nginx from the Docker gateway's address, and with some
+Docker setups clients on the network do too.
+
+### Break-glass
+
+The backend's own port, `127.0.0.1:5001` in the shipped compose files, is not
+behind nginx, so the password works there. It answers only on the server:
+
+```bash
+# On the server, or through a tunnel: ssh -L 5001:127.0.0.1:5001 <server>
+curl -u admin:PASS http://127.0.0.1:5001/api/status
+```
+
+That port serves the API, not the dashboard, and a session signed in there is
+refused through the dashboard. To get the dashboard back with the password,
+set `OIDC_PASSWORD_LOGIN=true` in `.env` and restart the backend:
+
+```bash
+docker compose up -d backend
+```
+
+What else reaches the backend without nginx, and can still use the password:
+
+- containers on SPM's Docker network (`backend:5000`);
+- a reverse proxy of your own in front of the backend's port, unless it sets
+  `X-Forwarded-For`;
+- with Docker before 28.0, hosts on the same network segment as the server,
+  which can reach ports published on `127.0.0.1`
+  ([Docker's documentation](https://docs.docker.com/engine/network/port-publishing/)).
 
 ## Example: Dex
 

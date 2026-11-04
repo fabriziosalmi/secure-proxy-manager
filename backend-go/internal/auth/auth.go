@@ -437,6 +437,9 @@ func (s *Service) AuthenticateRequest(r *http.Request) (Principal, error) {
 			return s.authenticateToken(r, value)
 		}
 		username, basic, err := s.Authenticate(r)
+		if err == nil {
+			err = s.AdminAllowed(r, username)
+		}
 		if basic {
 			return Principal{Username: username, Via: ViaBasic}, err
 		}
@@ -447,6 +450,9 @@ func (s *Service) AuthenticateRequest(r *http.Request) (Principal, error) {
 		return Principal{}, errors.New("missing Authorization header or session cookie")
 	}
 	username, err := s.ValidateJWT(c.Value)
+	if err == nil {
+		err = s.AdminAllowed(r, username)
+	}
 	return Principal{Username: username, Via: ViaCookie}, err
 }
 
@@ -469,6 +475,11 @@ func (s *Service) Authenticate(r *http.Request) (string, bool, error) {
 		username, password, ok := r.BasicAuth()
 		if !ok {
 			return "", false, errors.New("malformed Basic auth header")
+		}
+		// Refused before bcrypt and before the attempt is counted: through
+		// the dashboard the password is not checked at all.
+		if s.PasswordOff(r) {
+			return "", false, ErrPasswordOff
 		}
 		// The attempt is reserved before bcrypt runs and refunded on success.
 		// Checking first and recording the failure afterwards let every

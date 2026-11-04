@@ -62,6 +62,11 @@ func TestOIDCRefusesAHalfWrittenConfiguration(t *testing.T) {
 		"nobody allowed":           {"OIDC_ALLOWED_EMAILS": ""},
 		"session too long":         {"OIDC_SESSION_DURATION": "48h"},
 		"session not a duration":   {"OIDC_SESSION_DURATION": "1 hour"},
+		"password login not bool":  {"OIDC_PASSWORD_LOGIN": "only from here"},
+		"password off, no issuer": {
+			"OIDC_ISSUER": "", "OIDC_CLIENT_ID": "", "OIDC_REDIRECT_URL": "",
+			"OIDC_ALLOWED_EMAILS": "", "OIDC_PASSWORD_LOGIN": "false",
+		},
 	} {
 		m := valid()
 		for k, v := range change {
@@ -77,6 +82,21 @@ func TestOIDCRefusesAHalfWrittenConfiguration(t *testing.T) {
 	m["OIDC_REDIRECT_URL"] = "http://localhost:8443/api/auth/oidc/callback"
 	if _, err := LoadOIDC(env(m)); err != nil {
 		t.Errorf("groups only, loopback redirect: %v", err)
+	}
+}
+
+func TestOIDCPasswordLoginStaysOnUnlessTurnedOff(t *testing.T) {
+	m := valid()
+	if o, err := LoadOIDC(env(m)); err != nil || o.PasswordOff {
+		t.Fatalf("default: %+v %v", o, err)
+	}
+	m["OIDC_PASSWORD_LOGIN"] = "false"
+	if o, err := LoadOIDC(env(m)); err != nil || !o.PasswordOff {
+		t.Fatalf("false: %+v %v", o, err)
+	}
+	// Left at true without a provider, as a copied .env may have it.
+	if o, err := LoadOIDC(env(map[string]string{"OIDC_PASSWORD_LOGIN": "true"})); err != nil || o.Enabled() || o.PasswordOff {
+		t.Fatalf("true without issuer: %+v %v", o, err)
 	}
 }
 

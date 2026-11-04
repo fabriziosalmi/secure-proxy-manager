@@ -102,12 +102,19 @@ export const browser = { assign: (url: string) => window.location.assign(url) };
 export const OIDC_LOGIN_PATH = '/api/auth/oidc/login';
 
 /** Whether the sign-in page offers the OIDC provider (GET /api/auth/oidc). */
-export async function oidcStatus(): Promise<{ enabled: boolean; label?: string }> {
+export interface OIDCStatus {
+  enabled: boolean;
+  label?: string;
+  // false when the backend refuses the local password here (OIDC_PASSWORD_LOGIN=false).
+  passwordLogin: boolean;
+}
+
+export async function oidcStatus(): Promise<OIDCStatus> {
   try {
-    const d = await getData<{ enabled?: boolean; label?: string }>('auth/oidc');
-    return { enabled: d?.enabled === true, label: d?.label };
+    const d = await getData<{ enabled?: boolean; label?: string; password_login?: boolean }>('auth/oidc');
+    return { enabled: d?.enabled === true, label: d?.label, passwordLogin: d?.password_login !== false };
   } catch {
-    return { enabled: false };
+    return { enabled: false, passwordLogin: true };
   }
 }
 

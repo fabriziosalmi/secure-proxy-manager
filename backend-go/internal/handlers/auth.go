@@ -158,6 +158,18 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.svc.PasswordOff(r) {
+		// Recorded once per address and window, and not notified: no lockout
+		// limits these, so a row or a notification for each would let anyone
+		// flood the audit log or the channel.
+		clientAddr := auth.ClientIP(r)
+		if h.firstLockoutReport("password_off " + clientAddr) {
+			h.store.Audit(req.Username, "login_failed", clientAddr, "password_off")
+		}
+		writeError(w, http.StatusForbidden, auth.ErrPasswordOff.Error())
+		return
+	}
+
 	// Re-use authenticate which handles rate-limiting internally.
 	tmpR, _ := http.NewRequest("GET", "/", nil)
 	tmpR.Header.Set("Authorization", basicHeader(req.Username, req.Password))
@@ -229,6 +241,10 @@ func (h *AuthHandlers) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	username, authTime, err := h.svc.ValidateRefreshSession(req.RefreshToken)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "invalid or expired refresh token")
+		return
+	}
+	if err := h.svc.AdminAllowed(r, username); err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
 		return
 	}
 	// Atomically consume the old refresh token (one-time rotation). If a

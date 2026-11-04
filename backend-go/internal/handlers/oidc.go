@@ -104,10 +104,12 @@ func (h *AuthHandlers) registerOIDC(r chi.Router) {
 }
 
 // OIDCStatus tells the sign-in page whether to offer the provider.
-func (h *AuthHandlers) OIDCStatus(w http.ResponseWriter, _ *http.Request) {
+func (h *AuthHandlers) OIDCStatus(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{"enabled": h.cfg.OIDC.Enabled()}
 	if h.cfg.OIDC.Enabled() {
 		data["label"] = h.cfg.OIDC.Label
+		// The sign-in page hides the password form when it would be refused.
+		data["password_login"] = !h.svc.PasswordOff(r)
 	}
 	writeOK(w, data)
 }

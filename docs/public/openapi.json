@@ -1043,7 +1043,7 @@
           }
         },
         "security": [],
-        "summary": "Whether sign-in with the OIDC provider is offered: data.enabled and, when it is, data.label for the button",
+        "summary": "Whether sign-in with the OIDC provider is offered: data.enabled and, when it is, data.label for the button and data.password_login (false when the dashboard refuses the admin password, OIDC_PASSWORD_LOGIN=false)",
         "tags": [
           "auth"
         ]

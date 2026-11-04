@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { OIDC_LOGIN_PATH, oidcStatus, signIn } from '../lib/api';
+import { OIDC_LOGIN_PATH, oidcStatus, signIn, type OIDCStatus } from '../lib/api';
 import { Button } from '../components/ui/Button';
 import { PasswordInput } from '../components/settings/ChangePassword';
 
@@ -20,6 +20,9 @@ function describeLoginError(err: unknown): string {
     };
   })?.response;
   const status = response?.status;
+  if (status === 403) {
+    return 'Password sign-in is turned off here. Sign in with the identity provider.';
+  }
   if (status === 401 || (status !== undefined && status >= 400 && status < 500 && status !== 429)) {
     return 'Invalid username or password';
   }
@@ -57,7 +60,7 @@ export function Login({ onLogin }: Props) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [oidc, setOidc] = useState<{ enabled: boolean; label?: string }>({ enabled: false });
+  const [oidc, setOidc] = useState<OIDCStatus>({ enabled: false, passwordLogin: true });
   const [ssoError] = useState(() => new URLSearchParams(window.location.search).get('oidc_error') ?? '');
 
   useEffect(() => {
@@ -89,6 +92,13 @@ export function Login({ onLogin }: Props) {
     }
   };
 
+  const passwordForm = !oidc.enabled || oidc.passwordLogin;
+  const alert = (error || ssoError) && (
+    <p role="alert" className="rounded-control border border-danger-line bg-danger-subtle px-3 py-2 text-sm text-danger animate-fade-in-up">
+      {error || oidcErrorText(ssoError)}
+    </p>
+  );
+
   return (
     <main className="min-h-screen bg-ground text-ink flex items-center justify-center px-4">
       <div className="w-full max-w-sm rounded-panel border border-line bg-surface p-6 space-y-6 page-enter">
@@ -104,50 +114,50 @@ export function Login({ onLogin }: Props) {
           <p className="text-sm text-ink-muted">Sign in to continue</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="username" className="text-sm font-medium text-ink">Username</label>
-            <input
-              id="username"
-              type="text"
-              autoComplete="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+        {passwordForm && (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="username" className="text-sm font-medium text-ink">Username</label>
+              <input
+                id="username"
+                type="text"
+                autoComplete="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                className={INPUT}
+              />
+            </div>
+            <PasswordInput
+              id="password"
+              label="Password"
+              value={password}
+              onChange={setPassword}
+              autoComplete="current-password"
+              reveal
               required
-              className={INPUT}
             />
-          </div>
-          <PasswordInput
-            id="password"
-            label="Password"
-            value={password}
-            onChange={setPassword}
-            autoComplete="current-password"
-            reveal
-            required
-          />
 
-          {(error || ssoError) && (
-            <p role="alert" className="rounded-control border border-danger-line bg-danger-subtle px-3 py-2 text-sm text-danger animate-fade-in-up">
-              {error || oidcErrorText(ssoError)}
-            </p>
-          )}
+            {alert}
 
-          <Button type="submit" variant="primary" disabled={loading} className="w-full">
-            {loading ? (
-              <span className="flex items-center justify-center gap-2">
-                <span className="w-4 h-4 border-2 border-accent-foreground/30 border-t-accent-foreground rounded-full animate-spin" aria-hidden="true" />
-                Signing in...
-              </span>
-            ) : 'Sign in'}
-          </Button>
-        </form>
+            <Button type="submit" variant="primary" disabled={loading} className="w-full">
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="w-4 h-4 border-2 border-accent-foreground/30 border-t-accent-foreground rounded-full animate-spin" aria-hidden="true" />
+                  Signing in...
+                </span>
+              ) : 'Sign in'}
+            </Button>
+          </form>
+        )}
 
         {oidc.enabled && (
           <div className="space-y-4">
-            <div className="flex items-center gap-3 text-xs text-ink-muted" aria-hidden="true">
-              <span className="h-px flex-1 bg-line" />or<span className="h-px flex-1 bg-line" />
-            </div>
+            {passwordForm ? (
+              <div className="flex items-center gap-3 text-xs text-ink-muted" aria-hidden="true">
+                <span className="h-px flex-1 bg-line" />or<span className="h-px flex-1 bg-line" />
+              </div>
+            ) : alert}
             <a href={OIDC_LOGIN_PATH} className={SSO_LINK}>Sign in with {oidc.label || 'single sign-on'}</a>
           </div>
         )}

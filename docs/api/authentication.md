@@ -20,6 +20,11 @@ or listed in `CORS_ALLOWED_ORIGINS`; otherwise it answers `403`
 not affected. Cross-origin, `X-Requested-With` needs a CORS preflight, which
 is answered only for those origins.
 
+With single sign-on and `OIDC_PASSWORD_LOGIN=false`, the admin password, and
+the tokens and cookies a password sign-in issued, are refused through the
+dashboard and work only on the backend's own port; see
+[Turning the password off](../guide/single-sign-on.md#turning-the-password-off).
+
 No authentication is needed for `POST /api/auth/login`,
 `POST /api/auth/refresh`, `GET /api/health`, `GET /api/ready`, `GET /health`,
 `GET /livez`, `GET /readyz` and `GET /metrics`. A failed check answers `401`

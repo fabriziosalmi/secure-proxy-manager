@@ -364,8 +364,13 @@ func mountWebSocket(r chi.Router, cfg *config.Config, authSvc *auth.Service, hub
 				http.Error(w, "missing token", http.StatusUnauthorized)
 				return
 			}
-			if _, ok := authSvc.ValidateWSToken(token); !ok {
+			username, ok := authSvc.ValidateWSToken(token)
+			if !ok {
 				http.Error(w, "invalid or expired token", http.StatusUnauthorized)
+				return
+			}
+			if err := authSvc.AdminAllowed(req, username); err != nil {
+				http.Error(w, err.Error(), http.StatusUnauthorized)
 				return
 			}
 			next.ServeHTTP(w, req)
