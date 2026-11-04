@@ -114,8 +114,9 @@ func LoadOIDC(get func(string) string) (OIDC, error) {
 		return OIDC{}, errors.New("OIDC_CLIENT_ID is required with OIDC_ISSUER")
 	}
 	red, err := url.Parse(o.RedirectURL)
-	if err != nil || red.Host == "" || red.Path != "/api/auth/oidc/callback" ||
-		(red.Scheme != "https" && !(red.Scheme == "http" && isLoopbackHost(red.Hostname()))) {
+	// https, or http on a loopback host (a local test setup).
+	schemeOK := err == nil && (red.Scheme == "https" || red.Scheme == "http" && isLoopbackHost(red.Hostname()))
+	if !schemeOK || red.Host == "" || red.Path != "/api/auth/oidc/callback" {
 		return OIDC{}, errors.New("OIDC_REDIRECT_URL: https://<dashboard host>/api/auth/oidc/callback, as registered at the provider")
 	}
 	if len(o.AllowedEmails) == 0 && len(o.AllowedGroups) == 0 {
