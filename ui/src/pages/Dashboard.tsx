@@ -21,7 +21,7 @@ import { Check, Copy } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getData } from '../lib/api';
 import { statusQuery } from '../lib/queries';
-import { proxyAddress } from '../lib/utils';
+import { useProxyAddress } from '../hooks/useProxyAddress';
 import { formatClock, formatCount, formatShare, formatWhen, formatWhenExact } from '../lib/format';
 import type { CacheStats, CveInfo, DashboardSummary, TimelineEntry, WafTrajectory } from '../types';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -59,7 +59,7 @@ function usePageVisible(): boolean {
 }
 
 function ProxyChip() {
-  const proxy = proxyAddress();
+  const proxy = useProxyAddress().address;
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);

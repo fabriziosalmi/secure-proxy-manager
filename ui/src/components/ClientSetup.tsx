@@ -3,7 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import { Monitor, Smartphone, Apple, Terminal, Copy, Check, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
-import { PROXY_PORT, proxyAddress, cn } from '../lib/utils';
+import { PROXY_PORT, cn } from '../lib/utils';
+import { useProxyAddress } from '../hooks/useProxyAddress';
+import { Notice } from './ui/Notice';
 import type { SettingRow } from '../types';
 import { Button } from './ui/Button';
 
@@ -22,9 +24,10 @@ function CopyBtn({ text, label, copied, onCopy }: { text: string; label: string;
 
 export function ClientSetup() {
   const [copied, setCopied] = useState('');
-  const host = window.location.hostname;
+  const proxy = useProxyAddress();
+  const host = proxy.host;
   const proxyPort = String(PROXY_PORT);
-  const proxyAddr = proxyAddress();
+  const proxyAddr = proxy.address;
 
   const settings = useQuery<SettingRow[]>({
     queryKey: ['settings'],
@@ -109,7 +112,7 @@ export function ClientSetup() {
       id: 'ios', icon: Smartphone, label: 'iOS',
       steps: [
         'Open Settings → Wi-Fi → tap your network (i)',
-        'Scroll to HTTP Proxy → Configure Proxy → Manual',
+        `Scroll to HTTP Proxy → Configure Proxy → Automatic, URL ${proxy.pacURL}; or Manual:`,
         `Server: ${host}`,
         `Port: ${proxyPort}`,
         proxyAuthOn ? 'Authentication: Username and password' : 'Authentication: Off',
@@ -138,6 +141,21 @@ export function ClientSetup() {
           <span className="text-xs text-ink-muted">Proxy:</span>
           <code className="text-sm font-bold font-mono text-accent">{proxyAddr}</code>
           <CopyBtn text={proxyAddr} label="proxy" copied={copied} onCopy={(t, l) => void copy(t, l)} />
+        </div>
+
+        {proxy.loopback && (
+          <Notice tone="warning" title="Other devices cannot reach this address" className="mb-3">
+            This page is open on {host}, which is this server to itself. A phone or laptop needs the server&apos;s
+            address on your network: open the dashboard by that address, or set <code className="font-mono">PROXY_IP</code> in
+            <code className="font-mono"> .env</code> to it and restart the backend.
+          </Notice>
+        )}
+
+        {/* Automatic configuration, as nginx serves it on port 80 */}
+        <div className="flex flex-wrap items-center gap-2 mb-3 px-3 py-2 bg-surface-muted border border-line rounded-control">
+          <span className="text-xs text-ink-muted">Automatic configuration (PAC) URL:</span>
+          <code className="text-xs font-mono text-ink break-all">{proxy.pacURL}</code>
+          <CopyBtn text={proxy.pacURL} label="PAC URL" copied={copied} onCopy={(t, l) => void copy(t, l)} />
         </div>
 
         {/* PAC file download */}
