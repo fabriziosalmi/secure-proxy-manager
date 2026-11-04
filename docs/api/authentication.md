@@ -4,6 +4,8 @@ Every protected endpoint accepts any of these:
 
 - **HTTP Basic.** `Authorization: Basic base64(user:pass)`.
 - **JWT bearer.** `Authorization: Bearer <access_token>`.
+- **API token.** `Authorization: Bearer spm_<id>_<secret>`, for scripts and
+  tools; see [API tokens](#api-tokens).
 - **Session cookie (the dashboard).** `spm_session`, set by a login that sends
   `X-SPM-Session: cookie`. It holds an access token and is `HttpOnly` (script
   in the page cannot read it), `SameSite=Strict`, `Path=/api`, `Secure` when
@@ -29,7 +31,104 @@ curl -k -u admin:PASS https://localhost:8443/api/status
 
 # JWT, after POST /api/auth/login
 curl -k -H "Authorization: Bearer $TOKEN" https://localhost:8443/api/status
+
+# API token, created under Settings > Admin and backup
+curl -k -H "Authorization: Bearer spm_..." https://localhost:8443/api/status
 ```
+
+## API tokens
+
+A script, a monitoring system or the MCP server can authenticate with a token
+of its own instead of the admin password. Each token has a name, a scope and
+an expiry, and can be revoked alone.
+
+- **Scope.** A `read` token may call `GET` and `HEAD` routes. A `write` token
+  may call any method. A read token can read the access log and stream it
+  (`GET /api/ws-token`); when GDPR mode is on, client addresses are masked as
+  for the dashboard.
+- **Refused to every token.** The token routes themselves (a token cannot
+  create or revoke tokens), `/api/change-password`, `/api/logout`,
+  `/api/auth/*`, `GET /api/database/export`, `POST /api/database/reset`,
+  `GET /api/maintenance/backup-config`, `POST /api/maintenance/restore-config`,
+  `/api/internal/*` and `/debug/pprof/*`. A token on a route its scope does
+  not allow answers `403`.
+- **Expiry.** 90 days unless the request gives `expires_in_days` (1 to 3650),
+  or `no_expiry: true` for a token that works until it is revoked. An expired
+  or revoked token answers `401`.
+- **Storage.** The value is shown once, in the answer that creates it. The
+  backend keeps only the SHA-256 of its secret (256 random bits) and compares
+  in constant time.
+- **Audit.** Changes made with a token are recorded under the user
+  `token:<name>`, and the token's `last_used_at` is updated at most once a
+  minute.
+- **Failed attempts.** A wrong token counts against the client address like a
+  wrong password (see [Rate limiting](#rate-limiting)).
+
+Only the admin, authenticated by password, session or JWT, can manage
+tokens: in the dashboard under Settings > Admin and backup > API tokens, or
+with these routes.
+
+```
+GET /api/tokens
+```
+
+Every token, revoked and expired ones included, newest first. No value is
+returned: it is not stored.
+
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": "3f9a1c0b7d2e",
+      "name": "grafana",
+      "scope": "read",
+      "created_by": "admin",
+      "created_at": "2026-11-04T09:00:00Z",
+      "expires_at": "2027-02-02T09:00:00Z",
+      "last_used_at": "2026-11-04T09:12:00Z",
+      "revoked_at": null
+    }
+  ],
+  "meta": { "total": 1, "limit": 1, "offset": 0 }
+}
+```
+
+```
+POST /api/tokens
+```
+
+```json
+{ "name": "grafana", "scope": "read", "expires_in_days": 90 }
+```
+
+`name` is 1 to 64 letters, digits, spaces, dots, underscores or hyphens,
+starting with a letter or digit, and unique among the tokens not revoked
+(`409` otherwise). `scope` is `read` or `write`. Give `expires_in_days` or
+`no_expiry`, not both. The answer is `201` with `Cache-Control: no-store`:
+
+```json
+{
+  "status": "success",
+  "message": "Copy the token now: it is not shown again.",
+  "data": {
+    "token": "spm_3f9a1c0b7d2e_...",
+    "id": "3f9a1c0b7d2e",
+    "name": "grafana",
+    "scope": "read",
+    "created_at": "2026-11-04T09:00:00Z",
+    "expires_at": "2027-02-02T09:00:00Z"
+  }
+}
+```
+
+```
+DELETE /api/tokens/{id}
+```
+
+Revokes the token: it is refused from the next request. A token already
+revoked, or an unknown id, answers `404`. The name of a revoked token can be
+given to a new one.
 
 ## Endpoints
 
@@ -136,8 +235,9 @@ GET /api/session
 { "status": "success", "data": { "username": "admin", "via": "cookie", "expires_at": 1793145676 } }
 ```
 
-Who is signed in, how (`cookie`, `bearer` or `basic`) and, for a token, when
-it expires in Unix seconds (`null` for Basic). The dashboard calls it at start,
+Who is signed in, how (`cookie`, `bearer`, `basic` or `token`) and, for a
+token, when it expires in Unix seconds (`null` for Basic and for an API token
+without expiry). With an API token, `username` is `token:<name>`. The dashboard calls it at start,
 since it cannot read its own `HttpOnly` cookie. Without credentials it answers
 `401`.
 
@@ -171,10 +271,10 @@ when the database does not answer within 2 seconds.
 
 ## Rate limiting
 
-Basic authentication attempts, including logins, are counted per client
-address before the password is checked and refunded when it is right. With
-`MAX_LOGIN_ATTEMPTS` (default 5) counted attempts within
-`RATE_LIMIT_WINDOW_SECONDS` (default 300), further attempts answer `429`
-(`too many failed attempts, try again later`) until older attempts leave the
-window. Separately, every request is limited to 20 per second per client
+Basic authentication attempts, including logins, and API token attempts are
+counted per client address before the credential is checked and refunded
+when it is right. With `MAX_LOGIN_ATTEMPTS` (default 5) counted attempts
+within `RATE_LIMIT_WINDOW_SECONDS` (default 300), further attempts are refused
+with `too many failed attempts, try again later` until older attempts leave
+the window: a login answers `429`, any other request `401`. Separately, every request is limited to 20 per second per client
 address with a burst of 60, answered with `429` and `Retry-After: 1`.

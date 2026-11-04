@@ -220,6 +220,22 @@ var schemaStatements = []string{
 		UNIQUE (client_ip, start_ms)
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_waf_trajectories_closed ON waf_trajectories(closed_ms)`,
+	// API tokens (APIToken): what a script or the MCP server authenticates
+	// with instead of the admin password. Only a hash of the secret is kept.
+	`CREATE TABLE IF NOT EXISTS api_tokens (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		scope TEXT NOT NULL,
+		secret_sha256 TEXT NOT NULL,
+		created_by TEXT NOT NULL DEFAULT '',
+		created_at INTEGER NOT NULL,
+		expires_at INTEGER,
+		last_used_at INTEGER,
+		revoked_at INTEGER
+	)`,
+	// A name is unique among the tokens in use, so a revoked token's name can
+	// be given to its replacement.
+	`CREATE UNIQUE INDEX IF NOT EXISTS idx_api_tokens_active_name ON api_tokens(name) WHERE revoked_at IS NULL`,
 }
 
 // createSchema creates every table and index the schema declares. It is

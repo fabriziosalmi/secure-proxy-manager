@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/auth"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 )
@@ -22,23 +24,42 @@ type ctxKey string
 const CtxUsername ctxKey = "username"
 
 // CtxAuthVia is the context key for where the credential came from:
-// auth.ViaBearer, auth.ViaBasic or auth.ViaCookie.
+// auth.ViaBearer, auth.ViaBasic, auth.ViaCookie or auth.ViaToken.
 const CtxAuthVia ctxKey = "auth_via"
 
+// CtxAPIToken is the context key for the *database.APIToken a request
+// authenticated with; absent for the other credentials.
+const CtxAPIToken ctxKey = "api_token"
+
 // Auth requires a valid JWT (Authorization: Bearer, or the browser's session
-// cookie) or a Basic-Auth credential.
+// cookie), a Basic-Auth credential or an API token. A token is held to its
+// scope on the route the router matched (auth.TokenAllows): 403 otherwise.
 func Auth(svc *auth.Service) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			username, via, err := svc.AuthenticateRequest(r)
+			p, err := svc.AuthenticateRequest(r)
 			if err != nil {
 				w.Header().Set("WWW-Authenticate", `Bearer realm="Secure Proxy Manager"`)
 				writeJSON(w, http.StatusUnauthorized,
 					map[string]string{"status": "error", "detail": err.Error()})
 				return
 			}
-			ctx := context.WithValue(r.Context(), CtxUsername, username)
-			ctx = context.WithValue(ctx, CtxAuthVia, via)
+			ctx := context.WithValue(r.Context(), CtxUsername, p.Username)
+			ctx = context.WithValue(ctx, CtxAuthVia, p.Via)
+			if p.Token != nil {
+				var route string
+				if rctx := chi.RouteContext(r.Context()); rctx != nil {
+					route = rctx.RoutePattern()
+				}
+				if !auth.TokenAllows(p.Token.Scope, r.Method, route) {
+					writeJSON(w, http.StatusForbidden, map[string]string{
+						"status": "error",
+						"detail": "this API token (scope " + p.Token.Scope + ") is not allowed to " + r.Method + " this route",
+					})
+					return
+				}
+				ctx = context.WithValue(ctx, CtxAPIToken, p.Token)
+			}
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
