@@ -15,6 +15,43 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.29.0] - 2026-11-04
+
+Single sign-on: admins sign in to the dashboard with an OpenID Connect
+provider, and the local password can be kept off the dashboard.
+
+### Added
+
+- Sign-in with an OpenID Connect provider (Authentik, Keycloak, Dex, Entra
+  ID, Google and others), configured with the `OIDC_*` variables in `.env`
+  and off while `OIDC_ISSUER` is empty. SPM uses the authorization code flow
+  with PKCE and checks the ID token itself. `OIDC_ALLOWED_EMAILS` or
+  `OIDC_ALLOWED_GROUPS` decides who may sign in, and nobody is let in by
+  default. Everyone let in is an admin: SPM has no roles. A sign-in lasts
+  `OIDC_SESSION_DURATION` (default `1h`) and is not renewed. Changing who may
+  sign in, or turning OIDC off, ends every OIDC session at once. The audit
+  log names the person as `oidc:<email>`. **Sign out** also signs out at the
+  provider when it advertises an `end_session_endpoint`. With `OIDC_ISSUER`
+  set, the backend refuses to start when the rest is wrong or missing, and
+  says which variable. See the single sign-on guide.
+- `OIDC_PASSWORD_LOGIN=false` keeps the admin password off the dashboard.
+  Through the dashboard, the password sign-in answers `403` and does not count
+  toward the lockout. Basic authentication, and the tokens and cookies a
+  password sign-in issued, are refused there too. People signed in with the
+  provider, and API tokens, are not affected. The password still works on the
+  backend's own port, `127.0.0.1:5001`, as break-glass. The setting needs
+  `OIDC_ISSUER`.
+- `GET /api/auth/oidc`, `GET /api/auth/oidc/login` and
+  `GET /api/auth/oidc/callback`, the public routes of the sign-in.
+
+### Changed
+
+- The backend refuses to start when `BASIC_AUTH_USERNAME` starts with
+  `oidc:` or `token:`, the forms that name OIDC users and API tokens.
+- `POST /api/change-password` answers `403` for a person signed in with the
+  provider. `POST /api/logout` adds `logout_url` to its answer when the
+  provider has one.
+
 ## [3.28.0] - 2026-11-04
 
 Automation without the admin password: scripts, tools and the MCP server
