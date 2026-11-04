@@ -210,6 +210,9 @@ refuses.
 
 - One entry per line.
 - Hosts files: the name after the address is the entry.
+- Adblock syntax: `||name^` (or with `$important`) is the entry `name`; `!`
+  lines and the `[Adblock Plus]` header are ignored; exceptions (`@@`) and
+  rules with a path, a wildcard or another modifier are skipped.
 - A `#` or `;` after a space starts a comment that runs to the end of the
   line.
 - A domain written as a URL is reduced to its host name.
