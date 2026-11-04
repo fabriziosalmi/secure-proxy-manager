@@ -158,6 +158,7 @@ func TestDashboardReportsTheLast24Hours(t *testing.T) {
 	}
 	if sink == nil {
 		t.Fatalf("top_blocked misses sink.test: %+v", d.TopBlocked)
+		return // staticcheck SA5011 does not read Fatalf as the end of the test
 	}
 	if sink.Count != 10 || len(sink.Reasons) != 2 ||
 		sink.Reasons[0].Reason != "domain_blacklist_dns" || sink.Reasons[0].Count != 9 || sink.Reasons[0].Label != "Domain blacklist (DNS sinkhole)" ||
