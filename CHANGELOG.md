@@ -15,6 +15,26 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.26.3] - 2026-11-04
+
+A fix for lists imported from hosts files.
+
+### Fixed
+
+- A comment after an entry is no longer read as the entry. The list parser
+  took the last field of a line, so a StevenBlack line such as
+  `0.0.0.0 docs.pipenv.org # https://github.com/StevenBlack/hosts/issues/1635`
+  blocked `github.com`, Dan Pollock's hosts file blocked the sites its
+  comments name, and annotated lines (`198.51.100.0/24 ; SBL123456`) were
+  dropped. A `#` or `;` after a space now starts a comment, and a hosts line
+  gives the name after the address. Nothing to do: the next refresh of each
+  list imported from a URL removes the wrong entries and adds the dropped
+  ones. To apply it at once, remove the source under **Where the entries
+  came from** and import its URL again.
+
+No route, field or status code is removed. Nothing is **BREAKING** and
+`X-API-Version` stays 1.
+
 ## [3.26.2] - 2026-11-03
 
 Two fixes found reading a deployment with real traffic.
