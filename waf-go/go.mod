@@ -8,7 +8,7 @@ require (
 	github.com/corazawaf/coraza/v3 v3.8.1
 	github.com/go-icap/icap v0.0.0-20151011115316-ca4fad4ebb28
 	github.com/wasilibs/go-re2 v1.13.0
-	golang.org/x/net v0.61.0
+	golang.org/x/net v0.62.0
 	golang.org/x/text v0.43.0
 	rsc.io/binaryregexp v0.2.0
 )
