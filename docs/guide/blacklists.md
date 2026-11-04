@@ -376,6 +376,14 @@ curl -k -X POST $SPM/api/blacklists/import \
 - One entry per line: the first field of the line.
 - Hosts files: the name after the address is the entry (`0.0.0.0 ads.example`
   imports `ads.example`).
+- Adblock syntax, as lists for AdGuard Home and Pi-hole are published:
+  `||ads.example^` (or `||ads.example^$important`) imports `ads.example`.
+  Lines starting with `!` and the `[Adblock Plus]` header are ignored. An
+  exception (`@@||...`) and a rule with a path, a wildcard or another
+  modifier are skipped and counted: they block less than the whole name, or
+  allow. In those lists `||name^` also covers the name's subdomains; in SPM
+  an entry blocks the exact name (see [Blocked domains](#blocked-domains)),
+  as the plain form of the same list does.
 - A domain written as a URL is reduced to its host name.
 - Blank lines and lines starting with `#` or `;` are ignored. A `#` or `;`
   after a space starts a comment that runs to the end of the line

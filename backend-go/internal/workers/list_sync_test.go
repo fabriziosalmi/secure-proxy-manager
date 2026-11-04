@@ -402,3 +402,23 @@ func TestThousands(t *testing.T) {
 		}
 	}
 }
+
+// An adblock-syntax feed is read by the refresh as by the import: the same
+// feed again changes nothing, and a name it drops is removed. Exceptions,
+// comments and rules narrower than a name are never entries.
+func TestAnAdblockFeedSyncsLikeAPlainOne(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	feed := "[Adblock Plus]\n! Title: test\n||a.test^\n||b.test^$important\n@@||ok.test^\n||c.test/banner^\n||d.test^\n"
+	serveFeeds(t, map[string]string{feedA: feed})
+	syncDomains(db, feedA)
+	expectListed(t, db, "a.test<-url:"+feedA, "b.test<-url:"+feedA, "d.test<-url:"+feedA)
+	if c := syncDomains(db, feedA); c.Added != 0 || c.Removed != 0 {
+		t.Errorf("the same adblock feed again: %+v, want nothing added or removed", c)
+	}
+	serveFeeds(t, map[string]string{feedA: "[Adblock Plus]\n||a.test^\n||b.test^\n||e.test^\n"})
+	if c := syncDomains(db, feedA); c.Added != 1 || c.Removed != 1 {
+		t.Errorf("feed dropped d.test and added e.test: %+v, want one each", c)
+	}
+	expectListed(t, db, "a.test<-url:"+feedA, "b.test<-url:"+feedA, "e.test<-url:"+feedA)
+}
