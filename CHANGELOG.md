@@ -15,6 +15,42 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.27.0] - 2026-11-04
+
+Lists in the format AdGuard Home and Pi-hole users already run, and a device
+setup page that shows an address other devices can reach.
+
+### Added
+
+- Lists in adblock syntax import and refresh as they are meant.
+  `||ads.example^` and `||ads.example^$important` give the name; lines that
+  start with `!` or `[` (`[Adblock Plus 2.0]`) are comments. Exception lines
+  (`@@`), lines with other `$` modifiers and lines with a path
+  (`||ads.example/path^`) are refused and counted, not imported: SPM blocks
+  whole names, so taking them would block more than the list means. Hosts
+  files and plain lists read as before. On HaGeZi Pro, the adblock and the
+  domains variants give the same 247,757 names.
+- `PROXY_IP` is passed to the backend in both compose files, and
+  `GET /api/status` reports it as `proxy_ip`. **Connect a device** shows it
+  as the proxy address. Without it the page showed the host the dashboard was
+  opened on, which is `localhost` on the server itself; it now warns when the
+  address it shows is a loopback one, which no other device can reach.
+- **Connect a device** shows the PAC URL (`http://<address>/wpad.dat`) with a
+  copy button, and the iOS steps name the Automatic option.
+
+### Changed
+
+- The README and the getting-started guide describe running the published
+  images (`deploy/docker-compose.prod.yml`) as well as building from source.
+
+### Fixed
+
+- The getting-started guide and `DEPLOYMENT.md` named the reconcile alert
+  wrongly; it is `SPMWAFReconcilePushFailed`.
+
+`GET /api/status` gains a field; no route, field or status code is removed.
+Nothing is **BREAKING** and `X-API-Version` stays 1.
+
 ## [3.26.3] - 2026-11-04
 
 A fix for lists imported from hosts files.
