@@ -4,8 +4,8 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server that exposes
 part of the [Secure Proxy Manager](https://github.com/fabriziosalmi/secure-proxy-manager)
 management API as tools, so an assistant or agent can query traffic and
 analytics, read the WAF categories and the domain blacklist, and, when you
-allow it, change them. It talks to the backend API with HTTP Basic
-authentication over the stdio transport.
+allow it, change them. It speaks MCP over the stdio transport and
+authenticates to the backend API with an SPM API token.
 
 ## Tools
 
@@ -35,13 +35,36 @@ egress. The output of `spm_dashboard`, `spm_top_domains`, `spm_shadow_it`,
 annotations (`readOnlyHint`, `destructiveHint`) for the client's approval
 prompt. If you enable the mutating tools, do not auto-approve them.
 
+## Authenticate with a token
+
+`SPM_TOKEN` needs spm-mcp 0.4.0 or later and Secure Proxy Manager 3.28.0
+or later; with older versions, use `SPM_USERNAME` and `SPM_PASSWORD`.
+
+Create a token in the dashboard under **Settings > Admin and backup > API
+tokens** (or `POST /api/tokens`) and give it to the server as `SPM_TOKEN`.
+A `read` token is enough for the default read-only server. The mutating tools
+need both `SPM_MCP_READONLY=false` and a `write` token: with a token, the
+server asks `GET /api/session` for its scope at start and registers them only
+when the answer is `write`. A read token, or an answer it cannot read,
+registers none and says so on stderr.
+
+A token is limited to its scope, never reaches the token, password, backup
+or database export routes, can be revoked alone, and the audit log records
+its changes as `token:<name>`. See the
+[authentication API](https://github.com/fabriziosalmi/secure-proxy-manager/blob/main/docs/api/authentication.md#api-tokens).
+
+`SPM_USERNAME` and `SPM_PASSWORD` still work when `SPM_TOKEN` is not set, with
+a warning on stderr. They are deprecated and will be removed in the next
+release.
+
 ## Configure
 
 | Env | Default | Meaning |
 |---|---|---|
 | `SPM_URL` | `http://localhost:5001` | SPM backend API base URL |
-| `SPM_USERNAME` | `admin` | SPM admin user (Basic auth) |
-| `SPM_PASSWORD` | empty | SPM admin password |
+| `SPM_TOKEN` | empty | SPM API token, sent as `Authorization: Bearer` |
+| `SPM_USERNAME` | `admin` | Deprecated: admin user (Basic auth), used only without `SPM_TOKEN` |
+| `SPM_PASSWORD` | empty | Deprecated: admin password, used only without `SPM_TOKEN` |
 | `SPM_VERIFY` | `true` | `false` to skip TLS verification for a self-signed HTTPS URL |
 | `SPM_MCP_READONLY` | `true` | `false`, `0` or `no` to also register the mutating tools |
 
@@ -54,14 +77,13 @@ on the machine that runs the stack. From elsewhere, use
 With [uv](https://docs.astral.sh/uv/), from PyPI:
 
 ```bash
-SPM_URL=http://localhost:5001 SPM_USERNAME=admin SPM_PASSWORD=... uvx spm-mcp
+SPM_URL=http://localhost:5001 SPM_TOKEN=spm_... uvx spm-mcp
 ```
 
 From this directory of a clone:
 
 ```bash
-SPM_URL=http://localhost:5001 SPM_USERNAME=admin SPM_PASSWORD=... \
-  uvx --from . spm-mcp
+SPM_URL=http://localhost:5001 SPM_TOKEN=spm_... uvx --from . spm-mcp
 ```
 
 In an MCP client configuration (for example Claude Desktop):
@@ -74,8 +96,7 @@ In an MCP client configuration (for example Claude Desktop):
       "args": ["spm-mcp"],
       "env": {
         "SPM_URL": "http://localhost:5001",
-        "SPM_USERNAME": "admin",
-        "SPM_PASSWORD": "your-password"
+        "SPM_TOKEN": "spm_..."
       }
     }
   }
