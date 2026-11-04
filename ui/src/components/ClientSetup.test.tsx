@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, fireEvent, waitFor } from '@testing-library/react'
+import { screen, fireEvent, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import toast from 'react-hot-toast'
 import { renderWithProviders } from '../test/helpers'
@@ -66,6 +66,42 @@ describe('ClientSetup', () => {
     expect(successSpy).not.toHaveBeenCalled()
     successSpy.mockRestore()
     errorSpy.mockRestore()
+  })
+
+  it('gives a Linux server the environment, apt, Docker and systemd settings, each with its own copy button', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<ClientSetup />)
+    await user.click(screen.getByRole('tab', { name: 'Linux server' }))
+    const panel = screen.getByRole('tabpanel')
+
+    for (const file of ['/etc/environment', '/etc/apt/apt.conf.d/95proxy', '/etc/systemd/system/docker.service.d/http-proxy.conf', 'sudo systemctl edit <service>']) {
+      expect(within(panel).getByText(file)).toBeInTheDocument()
+    }
+    const env = within(panel).getByText(/^http_proxy=http:\/\//)
+    // /etc/environment takes NAME=value lines: no export, and both cases.
+    expect(env.textContent).not.toMatch(/export/)
+    expect(env.textContent).toMatch(/^HTTPS_PROXY=http:\/\/[^\n]+:3128$/m)
+    expect(within(panel).getByText(/^Acquire::http::Proxy "http:\/\/[^"]+:3128";/)).toBeInTheDocument()
+    expect(within(panel).getAllByRole('button', { name: /^Copy .* configuration$/ })).toHaveLength(4)
+    expect(within(panel).queryByText(/USER:PASSWORD/)).not.toBeInTheDocument()
+  })
+
+  it('tells a Linux server to put the proxy login in the URL when it is on', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.get).mockImplementation((url: string) => Promise.resolve({
+      data: { data: url === 'settings' ? [{ setting_name: 'enable_proxy_auth', setting_value: 'true' }] : {} },
+    }) as never)
+    renderWithProviders(<ClientSetup />)
+    await user.click(screen.getByRole('tab', { name: 'Linux server' }))
+    expect(await screen.findByText(/http:\/\/USER:PASSWORD@/)).toBeInTheDocument()
+  })
+
+  it('does not offer export lines for /etc/environment on the Linux tab', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<ClientSetup />)
+    await user.click(screen.getByRole('tab', { name: 'Linux' }))
+    expect(screen.getByRole('tabpanel')).not.toHaveTextContent('/etc/environment')
+    expect(screen.getByText(/^export http_proxy=/)).toBeInTheDocument()
   })
 
   it('shows Authentication: Username and password on iOS when enable_proxy_auth is true', async () => {

@@ -101,6 +101,51 @@ and link-local addresses and localhost; `GUI_IP_WHITELIST` admits other
 sources. Transparent interception is not supported (see
 [Transparent proxy](/guide/security#transparent-proxy)).
 
+#### Servers without a desktop
+
+Programs read the proxy from the environment; apt and the Docker daemon read
+their own files. Replace `192.168.1.10` with the server's address. The URL is
+`http://` for HTTPS sites too: the proxy speaks plain HTTP and tunnels them.
+With the proxy login on, write it as `http://USER:PASSWORD@192.168.1.10:3128`,
+with the password URL-encoded.
+
+Every program, from the next login: `/etc/environment` takes one
+`NAME=value` per line, without `export`. Some programs read only the
+lowercase names and some only the uppercase ones, so set both.
+
+```
+http_proxy=http://192.168.1.10:3128
+https_proxy=http://192.168.1.10:3128
+no_proxy=localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+HTTP_PROXY=http://192.168.1.10:3128
+HTTPS_PROXY=http://192.168.1.10:3128
+NO_PROXY=localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+```
+
+apt, in `/etc/apt/apt.conf.d/95proxy`:
+
+```
+Acquire::http::Proxy "http://192.168.1.10:3128";
+Acquire::https::Proxy "http://192.168.1.10:3128";
+```
+
+Docker image pulls, in `/etc/systemd/system/docker.service.d/http-proxy.conf`,
+then `sudo systemctl daemon-reload && sudo systemctl restart docker`.
+Containers do not inherit it; pass the variables to those that need them.
+
+```
+[Service]
+Environment="HTTP_PROXY=http://192.168.1.10:3128"
+Environment="HTTPS_PROXY=http://192.168.1.10:3128"
+Environment="NO_PROXY=localhost,127.0.0.1"
+```
+
+A systemd service does not read `/etc/environment`: give it the same
+`[Service]` lines with `sudo systemctl edit <service>`, then restart it.
+
+Settings > Overview > Connect a device shows these with the server's address
+filled in, under Linux server.
+
 ## Verifying the installation
 
 ```bash
