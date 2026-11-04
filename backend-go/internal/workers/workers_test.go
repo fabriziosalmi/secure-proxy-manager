@@ -400,7 +400,7 @@ func TestStartWorkers_Basic(t *testing.T) {
 	defer cancel()
 	StartLogRetention(ctx, db)
 	StartBlacklistRefresh(ctx, db, tmpDir)
-	StartUpdateChecker(ctx, "v1.0.0")
+	StartUpdateChecker(ctx, "v1.0.0", true)
 
 	logFile := filepath.Join(tmpDir, "access.log")
 	StartLogTailer(ctx, db, logFile, tmpDir, hub)

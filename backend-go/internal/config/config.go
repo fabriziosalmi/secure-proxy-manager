@@ -68,6 +68,10 @@ type Config struct {
 
 	// OIDC is sign-in with an OpenID Connect provider; off when not set.
 	OIDC OIDC
+
+	// UpdateCheck asks GitHub for the newest release every 6 hours
+	// (UPDATE_CHECK, default true).
+	UpdateCheck bool
 }
 
 // Load reads environment variables and returns a validated Config.
@@ -134,7 +138,25 @@ func Load() *Config {
 		EncryptionKey:  loadOrGenerateEncKey(),
 		OIDC:           loadOIDCOrExit(),
 	}
+	cfg.UpdateCheck, err = parseUpdateCheck(os.Getenv("UPDATE_CHECK"))
+	if err != nil {
+		log.Fatal().Err(err).Msg("invalid configuration")
+	}
 	return cfg
+}
+
+// parseUpdateCheck reads UPDATE_CHECK: empty is on. A value that is not a
+// bool is refused rather than read as on or off.
+func parseUpdateCheck(v string) (bool, error) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return true, nil
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return false, errors.New("UPDATE_CHECK: true or false")
+	}
+	return b, nil
 }
 
 // DefaultServiceTokenFile is where the backend keeps the generated service

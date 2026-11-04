@@ -160,6 +160,7 @@ services:
       - OIDC_SESSION_DURATION=${OIDC_SESSION_DURATION:-}
       - OIDC_LABEL=${OIDC_LABEL:-}
       - OIDC_PASSWORD_LOGIN=${OIDC_PASSWORD_LOGIN:-}
+      - UPDATE_CHECK=${UPDATE_CHECK:-}
     deploy:
       resources:
         limits:

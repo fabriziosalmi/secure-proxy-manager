@@ -156,3 +156,20 @@ func TestSecretsFollowTheDatabaseDirectory(t *testing.T) {
 		t.Error("encryption key rotated on the second load — encrypted settings would become undecryptable")
 	}
 }
+
+func TestUpdateCheckIsOnUnlessTurnedOff(t *testing.T) {
+	for _, c := range []struct {
+		in      string
+		want    bool
+		wantErr bool
+	}{
+		{"", true, false}, {"  ", true, false}, {"true", true, false}, {"1", true, false},
+		{"false", false, false}, {"0", false, false}, {" FALSE ", false, false},
+		{"off", false, true}, {"no", false, true},
+	} {
+		got, err := parseUpdateCheck(c.in)
+		if (err != nil) != c.wantErr || (err == nil && got != c.want) {
+			t.Errorf("UPDATE_CHECK=%q: %v, %v; want %v, error %v", c.in, got, err, c.want, c.wantErr)
+		}
+	}
+}

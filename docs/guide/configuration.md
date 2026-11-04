@@ -97,6 +97,7 @@ do not pass them. To use one, add it to the backend's `environment:` list.
 | `MAX_LOGIN_ATTEMPTS` | `5` | Failed logins per client address within the window |
 | `RATE_LIMIT_WINDOW_SECONDS` | `300` | The failed-login window |
 | `ENCRYPTION_KEY` | generated | 64 hex characters. Empty: generated once and kept in `data/.enc_key`. Encrypts the alert channel secrets. A `data/.enc_key` that exists but is not 64 hex characters stops the backend with an error naming the file; it is never replaced, because it may be the only key that decrypts the stored secrets |
+| `UPDATE_CHECK` | `true` | `false`: the backend never asks `api.github.com` for the newest release. By default it does 30 seconds after start and every 6 hours, to show an update in the sidebar and raise an `update_available` alert. A value that is not true or false stops the backend |
 | `GEOIP_URL` | empty | Replaces the country feed: `<GEOIP_URL>?cc=<code>` is fetched instead of ipdeny.com and GitHub |
 | `WAF_SERVICE_USERNAME`, `WAF_SERVICE_PASSWORD` | `BASIC_AUTH_*` | Basic credential for the WAF management API, used only when `INTERNAL_ALERT_TOKEN` is empty |
 | `LOG_FORMAT` | JSON | `pretty` for console-formatted logs |

@@ -37,18 +37,26 @@ func GetUpdateInfo() UpdateInfo {
 	return updateInfo
 }
 
-// StartUpdateChecker checks GitHub releases every 6h.
-func StartUpdateChecker(ctx context.Context, repo string) {
+// updateFirstCheck is how long the checker lets the system boot first.
+var updateFirstCheck = 30 * time.Second
+
+// StartUpdateChecker checks GitHub releases every 6h. With enabled false
+// (UPDATE_CHECK=false) it sends nothing: an egress appliance an operator
+// wants silent makes no request of its own to api.github.com.
+func StartUpdateChecker(ctx context.Context, repo string, enabled bool) {
+	if !enabled {
+		log.Info().Msg("update check off (UPDATE_CHECK=false): no request to api.github.com")
+		return
+	}
 	if repo == "" {
 		repo = "fabriziosalmi/secure-proxy-manager"
 	}
 
 	Track(func() {
-		// First check after 30s (let the system boot)
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(30 * time.Second):
+		case <-time.After(updateFirstCheck):
 		}
 		check(repo)
 

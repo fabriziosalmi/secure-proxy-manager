@@ -166,7 +166,7 @@ func run() error {
 	workers.StartProxyWatch(workerCtx, proxyURLHost(cfg.ProxyURL), func(ctx context.Context) bool { return handlers.ProbeProxy(ctx, cfg.ProxyURL) })
 	// Reads the WAF's client signals as trajectories (internal/trajectory).
 	workers.StartTrajectoryWatch(workerCtx, db)
-	workers.StartUpdateChecker(workerCtx, "")
+	workers.StartUpdateChecker(workerCtx, "", cfg.UpdateCheck)
 	workers.CheckSquidCVEs()
 
 	// ── router ───────────────────────────────────────────────────────────────

@@ -60,7 +60,7 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
   tailer, log retention (daily), the blocklist refresh, the list exporter, the
   WAF reconciler (pushes the stored heuristic settings to the WAF every 30
   seconds until it matches), the update checker (GitHub releases, every 6
-  hours) and the Squid CVE check at start.
+  hours; off with `UPDATE_CHECK=false`) and the Squid CVE check at start.
 - It applies list changes by writing `/config/ip_blacklist.txt`,
   `ip_whitelist.txt`, `domain_blacklist.txt`, `dst_allow_ip.txt`,
   `dst_allow_domain.txt`, a checksum manifest `lists.manifest.json`, and the
