@@ -6,13 +6,28 @@ Base URLs:
   `https://localhost:8443/api`
 - Directly to the backend, from the host only: `http://127.0.0.1:5001/api`
 
-Every route needs HTTP Basic, JWT bearer or session cookie authentication (see
-[Authentication](./authentication.md)) except
+Every route needs HTTP Basic, JWT bearer, API token or session cookie
+authentication (see [Authentication](./authentication.md)) except
 `POST /api/auth/login`, `POST /api/auth/refresh`, `GET /api/health`,
 `GET /api/ready`, `GET /health`, `GET /livez`, `GET /readyz` and `GET /metrics`.
 The WebSocket authenticates with a single-use token (see
 [WebSocket](./websocket.md)). A running backend lists every registered route at
 `GET /api/docs` (authenticated).
+
+### OpenAPI
+
+`GET /api/openapi.json` (authenticated) is an OpenAPI 3.1 description of every
+route the running backend registers, built from its router: paths, methods,
+summaries, which routes need authentication, and in `x-spm-token-scope` the
+scope an [API token](./authentication.md#api-tokens) needs (`read`, `write`,
+or `none` when no token may call it). The lists, settings and access-log
+routes carry request and response schemas; the others are described without
+schemas for now.
+
+The same document is published with this site at
+[openapi.json](https://fabriziosalmi.github.io/secure-proxy-manager/openapi.json),
+for client generators and API explorers. It leaves out the runtime profiles
+(`/debug/pprof`), which the live document includes.
 
 Most successful responses are `{"status": "success", "data": ...}`. The
 authentication endpoints (`/api/auth/login`, `/api/auth/refresh`,
