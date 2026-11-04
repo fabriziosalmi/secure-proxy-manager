@@ -158,7 +158,7 @@ export function ApiTokens() {
                 id={`${id}-name`}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="grafana, backup-script"
+                placeholder="e.g. grafana"
                 autoComplete="off"
                 aria-invalid={nameInvalid || undefined}
                 aria-describedby={nameInvalid ? `${id}-name-error` : undefined}
