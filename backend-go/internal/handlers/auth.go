@@ -406,13 +406,16 @@ func (h *AuthHandlers) Session(w http.ResponseWriter, r *http.Request) {
 	if token != "" {
 		expiresAt = h.svc.TokenExpiry(token).Unix()
 	}
-	if t, ok := r.Context().Value(middleware.CtxAPIToken).(*database.APIToken); ok && t.ExpiresAt != nil {
-		expiresAt = t.ExpiresAt.Unix()
+	data := map[string]any{"username": username, "via": via, "expires_at": expiresAt}
+	// A tool holding a token learns its scope here (the MCP server registers
+	// its mutating tools only for a write token).
+	if t, ok := r.Context().Value(middleware.CtxAPIToken).(*database.APIToken); ok {
+		data["scope"] = t.Scope
+		if t.ExpiresAt != nil {
+			data["expires_at"] = t.ExpiresAt.Unix()
+		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"status": "success",
-		"data":   map[string]any{"username": username, "via": via, "expires_at": expiresAt},
-	})
+	writeJSON(w, http.StatusOK, map[string]any{"status": "success", "data": data})
 }
 
 func (h *AuthHandlers) WSToken(w http.ResponseWriter, r *http.Request) {

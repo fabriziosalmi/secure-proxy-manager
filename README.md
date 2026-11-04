@@ -254,10 +254,12 @@ the tools that change the proxy (block a domain, toggle a WAF category, add an
 egress entry, reload) are registered only with `SPM_MCP_READONLY=false`.
 
 ```bash
-SPM_URL=http://localhost:5001 SPM_USERNAME=admin SPM_PASSWORD=... uvx spm-mcp
+SPM_URL=http://localhost:5001 SPM_TOKEN=spm_... uvx spm-mcp
 ```
 
-See [mcp/README.md](mcp/README.md).
+The token is an API token (Settings > Admin and backup > API tokens); a read
+token is enough for the read-only tools. `SPM_TOKEN` needs spm-mcp 0.4.0 or later and Secure Proxy Manager 3.28.0 or later; with older versions, use `SPM_USERNAME` and `SPM_PASSWORD`. See
+[mcp/README.md](mcp/README.md).
 
 ## Security
 

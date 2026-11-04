@@ -162,6 +162,7 @@ func TestAnAPITokenFromCreationToRevocation(t *testing.T) {
 		Data struct {
 			Username  string `json:"username"`
 			Via       string `json:"via"`
+			Scope     string `json:"scope"`
 			ExpiresAt int64  `json:"expires_at"`
 		} `json:"data"`
 	}
@@ -169,7 +170,7 @@ func TestAnAPITokenFromCreationToRevocation(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &session); err != nil || w.Code != http.StatusOK {
 		t.Fatalf("session: %d %s", w.Code, w.Body.String())
 	}
-	if session.Data.Username != "token:grafana" || session.Data.Via != "token" || session.Data.ExpiresAt != reader.Data.ExpiresAt.Unix() {
+	if session.Data.Username != "token:grafana" || session.Data.Via != "token" || session.Data.Scope != "read" || session.Data.ExpiresAt != reader.Data.ExpiresAt.Unix() {
 		t.Errorf("session %+v", session.Data)
 	}
 

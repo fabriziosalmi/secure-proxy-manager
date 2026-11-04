@@ -237,7 +237,8 @@ GET /api/session
 
 Who is signed in, how (`cookie`, `bearer`, `basic` or `token`) and, for a
 token, when it expires in Unix seconds (`null` for Basic and for an API token
-without expiry). With an API token, `username` is `token:<name>`. The dashboard calls it at start,
+without expiry). With an API token, `username` is `token:<name>` and `scope`
+is the token's (`read` or `write`), so a tool can tell what it may do. The dashboard calls it at start,
 since it cannot read its own `HttpOnly` cookie. Without credentials it answers
 `401`.
 

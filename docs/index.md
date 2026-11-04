@@ -67,8 +67,12 @@ Details are in
 ## Manage it from an MCP client
 
 ```bash
-SPM_URL=http://localhost:5001 SPM_USERNAME=admin SPM_PASSWORD=... uvx spm-mcp
+SPM_URL=http://localhost:5001 SPM_TOKEN=spm_... uvx spm-mcp
 ```
+
+`SPM_TOKEN` is an API token (see [API tokens](/api/authentication#api-tokens));
+it needs spm-mcp 0.4.0 or later and Secure Proxy Manager 3.28.0 or later.
+With older versions, use `SPM_USERNAME` and `SPM_PASSWORD`.
 
 Read-only by default; set `SPM_MCP_READONLY=false` to also register the tools
 that block domains, toggle WAF categories, add egress entries and reload the
