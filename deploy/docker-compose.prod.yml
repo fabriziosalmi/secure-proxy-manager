@@ -159,6 +159,7 @@ services:
       - OIDC_SCOPES=${OIDC_SCOPES:-}
       - OIDC_SESSION_DURATION=${OIDC_SESSION_DURATION:-}
       - OIDC_LABEL=${OIDC_LABEL:-}
+      - OIDC_PASSWORD_LOGIN=${OIDC_PASSWORD_LOGIN:-}
     deploy:
       resources:
         limits:

@@ -12,7 +12,7 @@ vi.mock('../lib/api', () => ({
     interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } },
   },
   OIDC_LOGIN_PATH: '/api/auth/oidc/login',
-  oidcStatus: vi.fn().mockResolvedValue({ enabled: false }),
+  oidcStatus: vi.fn().mockResolvedValue({ enabled: false, passwordLogin: true }),
   // Mirrors the real helper: one POST that asks for a cookie session.
   signIn: (username: string, password: string) =>
     (api.post as (...a: unknown[]) => Promise<unknown>)('auth/login', { username, password }, { headers: { 'X-SPM-Session': 'cookie' } }).then(() => undefined),
@@ -186,7 +186,7 @@ describe('Login', () => {
   })
 
   it.each(['light', 'dark'] as const)('offers the OIDC provider by its label and passes axe in %s theme', async (theme) => {
-    vi.mocked(oidcStatus).mockResolvedValueOnce({ enabled: true, label: 'Example ID' })
+    vi.mocked(oidcStatus).mockResolvedValueOnce({ enabled: true, label: 'Example ID', passwordLogin: true })
     document.documentElement.classList.toggle('dark', theme === 'dark')
     try {
       const { container } = renderWithProviders(<Login onLogin={onLogin} />)
@@ -196,6 +196,39 @@ describe('Login', () => {
     } finally {
       document.documentElement.classList.remove('dark')
     }
+  })
+
+  it.each(['light', 'dark'] as const)('offers only the provider when the password is turned off, and passes axe in %s theme', async (theme) => {
+    vi.mocked(oidcStatus).mockResolvedValueOnce({ enabled: true, label: 'Example ID', passwordLogin: false })
+    document.documentElement.classList.toggle('dark', theme === 'dark')
+    window.history.replaceState(null, '', '/?oidc_error=not_allowed')
+    try {
+      const { container } = renderWithProviders(<Login onLogin={onLogin} />)
+      await screen.findByRole('link', { name: 'Sign in with Example ID' })
+      expect(screen.queryByLabelText('Username')).not.toBeInTheDocument()
+      expect(screen.queryByLabelText('Password')).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Sign in' })).not.toBeInTheDocument()
+      // The reason a sign-in failed is still shown, without the form.
+      expect(screen.getByRole('alert')).toHaveTextContent(/not allowed to sign in here/)
+      await expectNoAxeViolations(container)
+    } finally {
+      document.documentElement.classList.remove('dark')
+      window.history.replaceState(null, '', '/')
+    }
+  })
+
+  it('says the password is turned off when the backend refuses it', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.post).mockRejectedValueOnce(Object.assign(new Error('403'), {
+      isAxiosError: true,
+      response: { status: 403, data: { detail: 'password sign-in is turned off on the dashboard' } },
+    }))
+    renderWithProviders(<Login onLogin={onLogin} />)
+    await user.type(screen.getByLabelText('Username'), 'admin')
+    await user.type(screen.getByLabelText('Password'), 'pw')
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Password sign-in is turned off here')
+    expect(onLogin).not.toHaveBeenCalled()
   })
 
   it('says why a single sign-on failed, once', async () => {

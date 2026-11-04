@@ -97,10 +97,12 @@ describe('the session', () => {
 
   it('reads whether OIDC sign-in is offered, and takes a failure as not offered', async () => {
     reply = (c) => answer(c, 200, { status: 'success', data: { enabled: true, label: 'Example ID' } })
-    expect(await oidcStatus()).toEqual({ enabled: true, label: 'Example ID' })
+    expect(await oidcStatus()).toEqual({ enabled: true, label: 'Example ID', passwordLogin: true })
     expect(sent.at(-1)?.url).toBe('auth/oidc')
+    reply = (c) => answer(c, 200, { status: 'success', data: { enabled: true, label: 'Example ID', password_login: false } })
+    expect(await oidcStatus()).toEqual({ enabled: true, label: 'Example ID', passwordLogin: false })
     reply = (c) => answer(c, 502)
-    expect(await oidcStatus()).toEqual({ enabled: false })
+    expect(await oidcStatus()).toEqual({ enabled: false, passwordLogin: true })
   })
 
   it('still signs out locally when the server call fails', async () => {

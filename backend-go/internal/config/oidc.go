@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,6 +35,10 @@ type OIDC struct {
 	Session time.Duration
 	// Label names the provider on the sign-in button.
 	Label string
+	// PasswordOff turns the local admin away from the dashboard
+	// (OIDC_PASSWORD_LOGIN=false): the password, and a session signed in with
+	// it, work only on the backend's own port, as break-glass.
+	PasswordOff bool
 }
 
 // Enabled reports whether OIDC sign-in is configured.
@@ -71,7 +76,20 @@ func splitList(v string, lower bool) []string {
 // LoadOIDC reads the OIDC_* variables through get (os.Getenv in Load).
 func LoadOIDC(get func(string) string) (OIDC, error) {
 	o := OIDC{Issuer: strings.TrimRight(strings.TrimSpace(get("OIDC_ISSUER")), "/")}
+	passwordLogin := true
+	if v := strings.TrimSpace(get("OIDC_PASSWORD_LOGIN")); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return OIDC{}, errors.New("OIDC_PASSWORD_LOGIN: true or false")
+		}
+		passwordLogin = b
+	}
 	if o.Issuer == "" {
+		// Without a provider, turning the password off would lock everyone
+		// out of the dashboard.
+		if !passwordLogin {
+			return OIDC{}, errors.New("OIDC_PASSWORD_LOGIN=false needs OIDC_ISSUER: without a provider nobody could sign in to the dashboard")
+		}
 		for _, k := range []string{"OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_REDIRECT_URL", "OIDC_ALLOWED_EMAILS", "OIDC_ALLOWED_GROUPS"} {
 			if strings.TrimSpace(get(k)) != "" {
 				return OIDC{}, errors.New(k + " is set but OIDC_ISSUER is not: set the issuer, or remove the OIDC_* variables")
@@ -79,6 +97,7 @@ func LoadOIDC(get func(string) string) (OIDC, error) {
 		}
 		return OIDC{}, nil
 	}
+	o.PasswordOff = !passwordLogin
 	o.ClientID = strings.TrimSpace(get("OIDC_CLIENT_ID"))
 	o.ClientSecret = strings.TrimSpace(get("OIDC_CLIENT_SECRET"))
 	o.RedirectURL = strings.TrimSpace(get("OIDC_REDIRECT_URL"))

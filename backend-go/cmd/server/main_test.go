@@ -251,3 +251,45 @@ func TestWSLogsSelectsTheFixedSubprotocol(t *testing.T) {
 		t.Fatalf("reused token: want 401, got err=%v resp=%v", err, resp2)
 	}
 }
+
+// With OIDC_PASSWORD_LOGIN=false, a log-feed token issued to the local admin
+// on the backend's port does not open the feed through the dashboard; one
+// issued to a person signed in with the provider does.
+func TestWSLogsTurnsTheAdminAwayFromTheDashboardWhenThePasswordIsOff(t *testing.T) {
+	authSvc, cfg, db := newTestAuthService(t)
+	defer db.Close()
+	cfg.OIDC = config.OIDC{Issuer: "https://id.example.com", PasswordOff: true}
+	hub := ws.NewHub()
+	defer hub.Close()
+	r := chi.NewRouter()
+	mountWebSocket(r, &config.Config{}, authSvc, hub)
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/api/ws/logs"
+	dashboard := http.Header{"X-Forwarded-For": []string{"198.51.100.7"}, "X-Real-Ip": []string{"198.51.100.7"}}
+
+	dial := func(user string, h http.Header) (int, error) {
+		d := websocket.Dialer{Subprotocols: []string{wsSubprotocol, "spm-ws-token." + authSvc.IssueWSToken(user)}}
+		conn, resp, err := d.Dial(wsURL, h)
+		if conn != nil {
+			conn.Close()
+		}
+		if resp == nil {
+			return 0, err
+		}
+		return resp.StatusCode, err
+	}
+	if code, _ := dial("admin", dashboard); code != http.StatusUnauthorized {
+		t.Errorf("admin through the dashboard: %d, want 401", code)
+	}
+	if code, err := dial("admin", nil); code != http.StatusSwitchingProtocols {
+		t.Errorf("admin on the backend port: %d %v", code, err)
+	}
+	if code, err := dial("oidc:alice@example.com", dashboard); code != http.StatusSwitchingProtocols {
+		t.Errorf("OIDC person through the dashboard: %d %v", code, err)
+	}
+	// An API token may ask for a feed token too (GET /api/ws-token).
+	if code, err := dial("token:grafana", dashboard); code != http.StatusSwitchingProtocols {
+		t.Errorf("API token through the dashboard: %d %v", code, err)
+	}
+}
