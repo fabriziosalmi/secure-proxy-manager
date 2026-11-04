@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Monitor, Smartphone, Apple, Terminal, Copy, Check, Download } from 'lucide-react';
+import { Monitor, Smartphone, Apple, Terminal, Server, Copy, Check, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 import { PROXY_PORT, cn } from '../lib/utils';
@@ -8,6 +8,34 @@ import { useProxyAddress } from '../hooks/useProxyAddress';
 import { Notice } from './ui/Notice';
 import type { SettingRow } from '../types';
 import { Button } from './ui/Button';
+
+interface OSTab {
+  id: string;
+  icon: typeof Monitor;
+  label: string;
+  steps: string[];
+  cmd?: string;
+  /** Configuration snippets, each for one file and with its own copy button. */
+  blocks?: { title: string; file: string; note?: string; cmd: string }[];
+}
+
+function CodeBlock({ text, label, copied, onCopy }: { text: string; label: string; copied: string; onCopy: (text: string, label: string) => void }) {
+  return (
+    <div className="relative">
+      <pre className="bg-surface-muted border border-line rounded-control p-3 pr-9 text-xs font-mono text-ink overflow-x-auto whitespace-pre-wrap break-all">
+        {text}
+      </pre>
+      <button
+        type="button"
+        onClick={() => onCopy(text, label)}
+        aria-label={`Copy ${label}`}
+        className="absolute top-2 right-2 p-1 rounded-control border border-line bg-surface text-ink-muted hover:bg-surface-muted hover:text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
+      >
+        {copied === label ? <Check aria-hidden="true" className="w-3.5 h-3.5 text-success" /> : <Copy aria-hidden="true" className="w-3.5 h-3.5" />}
+      </button>
+    </div>
+  );
+}
 
 function CopyBtn({ text, label, copied, onCopy }: { text: string; label: string; copied: string; onCopy: (text: string, label: string) => void }) {
   return (
@@ -77,7 +105,11 @@ export function ClientSetup() {
     toast.success('PAC file downloaded');
   };
 
-  const tabs = [
+  // The proxy speaks plain HTTP, also for HTTPS sites (CONNECT): every URL below is http://.
+  const proxyURL = `http://${proxyAddr}`; // slopless-disable-line VBC-034 -- the proxy URL is http:// for every client; https would break them
+  const lanBypass = 'localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16';
+
+  const tabs: OSTab[] = [
     {
       id: 'windows', icon: Monitor, label: 'Windows',
       steps: [
@@ -104,9 +136,41 @@ export function ClientSetup() {
     {
       id: 'linux', icon: Terminal, label: 'Linux',
       steps: [
-        'Add to ~/.bashrc or /etc/environment:',
+        'Add to ~/.bashrc for your shell (for every program, apt and Docker, see Linux server):',
       ],
-      cmd: `export http_proxy=http://${proxyAddr}\nexport https_proxy=http://${proxyAddr}\nexport no_proxy=localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16`,  // slopless-disable-line VBC-034 -- http_proxy names the proxy, which speaks plain HTTP; https would break every client
+      cmd: `export http_proxy=${proxyURL}\nexport https_proxy=${proxyURL}\nexport no_proxy=${lanBypass}`,
+    },
+    {
+      id: 'linux-server', icon: Server, label: 'Linux server',
+      steps: [
+        'Programs read the proxy from the environment, apt and the Docker daemon from their own files. Set the ones the server uses.',
+        ...(proxyAuthOn ? [`The proxy login is on: write each URL as http://USER:PASSWORD@${proxyAddr}, with the password URL-encoded.`] : []), // slopless-disable-line VBC-034 -- the proxy URL is http:// for every client
+      ],
+      blocks: [
+        {
+          title: 'Every program, from the next login',
+          file: '/etc/environment',
+          note: 'One NAME=value per line, no export. Some programs read only the lowercase names, some only the uppercase ones.',
+          cmd: `http_proxy=${proxyURL}\nhttps_proxy=${proxyURL}\nno_proxy=${lanBypass}\nHTTP_PROXY=${proxyURL}\nHTTPS_PROXY=${proxyURL}\nNO_PROXY=${lanBypass}`,
+        },
+        {
+          title: 'apt',
+          file: '/etc/apt/apt.conf.d/95proxy',
+          cmd: `Acquire::http::Proxy "${proxyURL}";\nAcquire::https::Proxy "${proxyURL}";`,
+        },
+        {
+          title: 'Docker image pulls',
+          file: '/etc/systemd/system/docker.service.d/http-proxy.conf',
+          note: 'Then: sudo systemctl daemon-reload && sudo systemctl restart docker. Containers do not inherit it; pass the variables to those that need them.',
+          cmd: `[Service]\nEnvironment="HTTP_PROXY=${proxyURL}"\nEnvironment="HTTPS_PROXY=${proxyURL}"\nEnvironment="NO_PROXY=localhost,127.0.0.1"`,
+        },
+        {
+          title: 'One systemd service',
+          file: 'sudo systemctl edit <service>',
+          note: 'Then: sudo systemctl restart <service>. A service does not read /etc/environment.',
+          cmd: `[Service]\nEnvironment="HTTP_PROXY=${proxyURL}"\nEnvironment="HTTPS_PROXY=${proxyURL}"\nEnvironment="NO_PROXY=${lanBypass}"`,
+        },
+      ],
     },
     {
       id: 'ios', icon: Smartphone, label: 'iOS',
@@ -216,21 +280,17 @@ export function ClientSetup() {
           </ol>
 
           {/* Command */}
-          {active.cmd && (
-            <div className="relative">
-              <pre className="bg-surface-muted border border-line rounded-control p-3 pr-9 text-xs font-mono text-ink overflow-x-auto whitespace-pre-wrap break-all">
-                {active.cmd}
-              </pre>
-              <button
-                type="button"
-                onClick={() => void copy(active.cmd!, 'cmd')}
-                aria-label="Copy command"
-                className="absolute top-2 right-2 p-1 rounded-control border border-line bg-surface text-ink-muted hover:bg-surface-muted hover:text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
-              >
-                {copied === 'cmd' ? <Check aria-hidden="true" className="w-3.5 h-3.5 text-success" /> : <Copy aria-hidden="true" className="w-3.5 h-3.5" />}
-              </button>
+          {active.cmd && <CodeBlock text={active.cmd} label="command" copied={copied} onCopy={(t, l) => void copy(t, l)} />}
+
+          {active.blocks?.map((b) => (
+            <div key={b.file} className="mt-3 flex flex-col gap-1.5">
+              <p className="text-xs text-ink-secondary">
+                <span className="font-semibold text-ink">{b.title}</span>: <code className="font-mono break-all">{b.file}</code>
+              </p>
+              <CodeBlock text={b.cmd} label={`${b.title} configuration`} copied={copied} onCopy={(t, l) => void copy(t, l)} />
+              {b.note && <p className="text-xs text-ink-muted">{b.note}</p>}
             </div>
-          )}
+          ))}
         </div>
       </div>
     </div>
