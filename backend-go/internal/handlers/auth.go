@@ -45,6 +45,9 @@ type AuthHandlers struct {
 	// so a lockout is audited and alerted once per window, not per request.
 	lockoutMu      sync.Mutex
 	lockoutAlerted map[string]time.Time
+
+	// oidc is the OpenID Connect provider, when OIDC sign-in is configured.
+	oidc oidcClient
 }
 
 func NewAuthHandlers(store AuthStore, svc *auth.Service, cfg *config.Config, notify NotifyQueue, hub *ws.Hub) *AuthHandlers {
@@ -81,6 +84,7 @@ func (h *AuthHandlers) Register(r chi.Router) {
 	authMW := middleware.Auth(h.svc)
 	r.Post("/api/auth/login", h.Login)
 	r.Post("/api/auth/refresh", h.RefreshToken)
+	h.registerOIDC(r)
 	r.With(authMW).Post("/api/logout", h.Logout)
 	r.With(authMW).Post("/api/change-password", h.ChangePassword)
 	r.With(authMW).Get("/api/ws-token", h.WSToken)
@@ -298,7 +302,15 @@ func (h *AuthHandlers) Logout(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Logged out successfully"})
+	resp := map[string]string{"status": "success", "message": "Logged out successfully"}
+	// A person signed in with the identity provider is also signed out there,
+	// when the provider says how: the dashboard sends the browser to it.
+	if strings.HasPrefix(username, auth.OIDCUserPrefix) {
+		if u := h.oidcLogoutURL(r.Context()); u != "" {
+			resp["logout_url"] = u
+		}
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 var pwdStrong = regexp.MustCompile(`[0-9]`)
@@ -323,6 +335,12 @@ func (h *AuthHandlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	username, _ := r.Context().Value(middleware.CtxUsername).(string)
+	// A person signed in with the identity provider has no password here;
+	// the local admin's is changed by the local admin.
+	if strings.HasPrefix(username, auth.OIDCUserPrefix) {
+		writeError(w, http.StatusForbidden, "signed in with the identity provider: the local admin's password is changed by signing in as the local admin")
+		return
+	}
 
 	stored, err := h.store.PasswordHash(username)
 	if err != nil {

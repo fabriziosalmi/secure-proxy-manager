@@ -330,7 +330,7 @@ func (s *Service) ValidateJWT(tokenStr string) (string, error) {
 	if username == "" {
 		return "", errors.New("missing subject")
 	}
-	if err := s.checkPasswordBinding(claims, username); err != nil {
+	if err := s.sessionBinding(claims, username); err != nil {
 		return "", err
 	}
 	return username, nil

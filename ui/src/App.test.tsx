@@ -14,6 +14,8 @@ vi.mock('./lib/api', () => ({
   loadSession: vi.fn(() => Promise.resolve(null)),
   getErrorMessage: (_e: unknown, f: string) => f,
   signOut: vi.fn(() => Promise.resolve()),
+  OIDC_LOGIN_PATH: '/api/auth/oidc/login',
+  oidcStatus: vi.fn(() => Promise.resolve({ enabled: false })),
 }))
 
 import { api, loadSession } from './lib/api'

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { signIn } from '../lib/api';
+import { useEffect, useState } from 'react';
+import { OIDC_LOGIN_PATH, oidcStatus, signIn } from '../lib/api';
 import { Button } from '../components/ui/Button';
 import { PasswordInput } from '../components/settings/ChangePassword';
 
@@ -31,11 +31,48 @@ function describeLoginError(err: unknown): string {
   return 'The backend did not answer. Check that the backend container is running and healthy.';
 }
 
+// What a failed OIDC sign-in comes back with (?oidc_error=, handlers/oidc.go).
+const OIDC_ERRORS: Record<string, string> = {
+  state: 'The sign-in expired or was started in another browser. Try again.',
+  provider: 'The identity provider refused the sign-in.',
+  exchange: 'The identity provider\'s answer could not be verified. Try again; if it happens again, check the OIDC settings.',
+  token: 'The identity provider\'s answer could not be verified. Try again; if it happens again, check the OIDC settings.',
+  not_allowed: 'Your account is not allowed to sign in here. An admin can add your email or group to OIDC_ALLOWED_EMAILS or OIDC_ALLOWED_GROUPS.',
+  unverified_email: 'Your email address is not verified at the identity provider.',
+  no_email: 'The identity provider sent no email address: the client needs the email scope.',
+  unavailable: 'The identity provider could not be reached.',
+};
+
+function oidcErrorText(code: string): string {
+  return OIDC_ERRORS[code] ?? 'Single sign-on failed.';
+}
+
+const SSO_LINK =
+  'inline-flex h-9 w-full items-center justify-center rounded-control border border-line-strong bg-surface px-3.5 ' +
+  'text-sm font-semibold text-ink-secondary transition-colors hover:bg-surface-muted hover:text-ink ' +
+  'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface';
+
 export function Login({ onLogin }: Props) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [oidc, setOidc] = useState<{ enabled: boolean; label?: string }>({ enabled: false });
+  const [ssoError] = useState(() => new URLSearchParams(window.location.search).get('oidc_error') ?? '');
+
+  useEffect(() => {
+    let live = true;
+    void oidcStatus().then((s) => { if (live) setOidc(s); });
+    return () => { live = false; };
+  }, []);
+
+  // The reason is shown once; a reload does not show it again.
+  useEffect(() => {
+    if (!ssoError) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('oidc_error');
+    window.history.replaceState(null, '', url.pathname + url.search + url.hash);
+  }, [ssoError]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,9 +127,9 @@ export function Login({ onLogin }: Props) {
             required
           />
 
-          {error && (
+          {(error || ssoError) && (
             <p role="alert" className="rounded-control border border-danger-line bg-danger-subtle px-3 py-2 text-sm text-danger animate-fade-in-up">
-              {error}
+              {error || oidcErrorText(ssoError)}
             </p>
           )}
 
@@ -105,6 +142,15 @@ export function Login({ onLogin }: Props) {
             ) : 'Sign in'}
           </Button>
         </form>
+
+        {oidc.enabled && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 text-xs text-ink-muted" aria-hidden="true">
+              <span className="h-px flex-1 bg-line" />or<span className="h-px flex-1 bg-line" />
+            </div>
+            <a href={OIDC_LOGIN_PATH} className={SSO_LINK}>Sign in with {oidc.label || 'single sign-on'}</a>
+          </div>
+        )}
       </div>
     </main>
   );

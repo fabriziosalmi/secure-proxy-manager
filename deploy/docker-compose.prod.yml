@@ -147,6 +147,18 @@ services:
       - WAF_POLICY_FILE=${WAF_POLICY_FILE:-/config/waf_policy.json}
       - SECRET_KEY=${SECRET_KEY}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-https://localhost:8443}
+      # Sign-in with an OpenID Connect provider; off while OIDC_ISSUER is empty
+      # (see docs/guide/single-sign-on.md).
+      - OIDC_ISSUER=${OIDC_ISSUER:-}
+      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
+      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
+      - OIDC_REDIRECT_URL=${OIDC_REDIRECT_URL:-}
+      - OIDC_ALLOWED_EMAILS=${OIDC_ALLOWED_EMAILS:-}
+      - OIDC_ALLOWED_GROUPS=${OIDC_ALLOWED_GROUPS:-}
+      - OIDC_GROUPS_CLAIM=${OIDC_GROUPS_CLAIM:-}
+      - OIDC_SCOPES=${OIDC_SCOPES:-}
+      - OIDC_SESSION_DURATION=${OIDC_SESSION_DURATION:-}
+      - OIDC_LABEL=${OIDC_LABEL:-}
     deploy:
       resources:
         limits:

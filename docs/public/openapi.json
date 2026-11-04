@@ -1034,6 +1034,51 @@
         ]
       }
     },
+    "/api/auth/oidc": {
+      "get": {
+        "operationId": "get_api_auth_oidc",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "security": [],
+        "summary": "Whether sign-in with the OIDC provider is offered: data.enabled and, when it is, data.label for the button",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/oidc/callback": {
+      "get": {
+        "operationId": "get_api_auth_oidc_callback",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "security": [],
+        "summary": "Where the provider sends the browser back: checks state, code, ID token and nonce, lets in a person OIDC_ALLOWED_EMAILS or OIDC_ALLOWED_GROUPS names, sets the session cookie (user oidc:\u003cemail\u003e) and redirects to /; on a failure redirects to /?oidc_error=\u003creason\u003e",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/oidc/login": {
+      "get": {
+        "operationId": "get_api_auth_oidc_login",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "security": [],
+        "summary": "Start an OIDC sign-in: redirects to the provider with a fresh state, nonce and PKCE challenge (404 when OIDC is not configured)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/auth/refresh": {
       "post": {
         "operationId": "post_api_auth_refresh",
