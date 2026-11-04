@@ -200,7 +200,10 @@ printf "  550 mixed requests: %dms = %.1f req/s\n" "$mixed_ms" "$mixed_rps"
 echo ""
 echo "═══ SECTION 6: WAF INTELLIGENCE SNAPSHOT ════════════════════════════"
 echo ""
-curl -s --max-time 5 "http://${1:-192.168.100.253}:8080/stats" 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "  (WAF stats endpoint unreachable from outside Docker network)"
+# Read into a variable, then formatted: nothing fetched is piped into an
+# interpreter.
+waf_stats=$(curl -s --max-time 5 "http://${1:-192.168.100.253}:8080/stats" 2>/dev/null) || waf_stats=""
+python3 -m json.tool <<<"$waf_stats" 2>/dev/null || echo "  (WAF stats endpoint unreachable from outside Docker network)"
 
 # ═════════════════════════════════════════════════════════════════════════════
 echo ""

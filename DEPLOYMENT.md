@@ -55,8 +55,12 @@ curl -fsSL https://raw.githubusercontent.com/fabriziosalmi/secure-proxy-manager/
 
 1. installs Docker (`get.docker.com`), the Compose plugin and `git` when they
    are missing;
-2. clones the repository to `/opt/secure-proxy-manager`, or on a re-run pulls
-   it with `git pull --ff-only`;
+2. clones the newest release, the highest `vX.Y.Z` tag, to
+   `/opt/secure-proxy-manager`, or on a re-run moves the clone to it (detached).
+   `SPM_VERSION=vX.Y.Z` installs that release instead. `main` is never
+   installed: its compose file can be ahead of the release images. An
+   installation made by an earlier installer tracked `main` and moves to the
+   release too;
 3. copies `deploy/docker-compose.prod.yml` to `compose.prod.yml` and selects it
    with `COMPOSE_FILE=compose.prod.yml` in `.env`;
 4. on a first run writes `.env` with `BASIC_AUTH_USERNAME=admin`, a random
@@ -298,15 +302,16 @@ releases need a change before they work correctly, listed under **Action
 required**; the commands below do not apply it. Upgrading from 3.11.x, for
 example, needs `INTERNAL_ALERT_TOKEN` in `.env`.
 
-On an installer host, run `deploy/install.sh` again: it pulls the code and
-the images, adds variables an older `.env` lacks, and copies `data/` first.
+On an installer host, run `deploy/install.sh` again: it moves the code to the
+newest release, pulls its images, adds variables an older `.env` lacks, and
+copies `data/` first.
 In a clone:
 
 ```bash
 # 1. Stop the stack, then back up. A copy of data/ taken while the backend runs
 #    is not a consistent snapshot of a WAL-mode database.
 docker compose down
-cp -a data data.backup && cp -a config config.backup
+sudo cp -a data data.backup && sudo cp -a config config.backup && sudo cp -a ssl ssl.backup
 
 # 2. Pull the latest code
 git pull origin main

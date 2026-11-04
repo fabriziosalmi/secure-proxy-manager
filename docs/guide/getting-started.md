@@ -13,14 +13,17 @@ curl -fsSL https://raw.githubusercontent.com/fabriziosalmi/secure-proxy-manager/
 
 `deploy/install.sh` must run as root. It installs Docker (through
 `get.docker.com`) and the Compose plugin and `git` (through `apt-get` or
-`yum`) when they are missing, clones the repository to
-`/opt/secure-proxy-manager` whatever directory you run it from, and writes a
+`yum`) when they are missing, clones the newest release (the highest
+`vX.Y.Z` tag, not `main`) to `/opt/secure-proxy-manager` whatever directory
+you run it from, and writes a
 `.env` with the user `admin`, a random password, `SECRET_KEY` and
 `INTERNAL_ALERT_TOKEN`. It uses the production compose file
 (`deploy/docker-compose.prod.yml`, copied to `compose.prod.yml`), checks that
 the host ports are free, pulls the release images and starts the stack. The
 credentials are printed at the end and stay in `/opt/secure-proxy-manager/.env`.
-Read the script before you run it.
+Read the script before you run it. The script itself is read from `main`; to
+install a given release, run it with `SPM_VERSION`, for example
+`curl -fsSL ... | sudo SPM_VERSION=v3.29.0 bash`.
 
 ## Option 2: from a clone
 
@@ -174,8 +177,9 @@ git pull
 docker compose up -d --build
 ```
 
-On a host installed with `install.sh`, run the installer again: it pulls the
-new release and adds variables an older `.env` lacks. See
+On a host installed with `install.sh`, run the installer again: it moves the
+clone to the newest release, pulls its images and adds variables an older
+`.env` lacks. See
 [DEPLOYMENT.md](https://github.com/fabriziosalmi/secure-proxy-manager/blob/main/DEPLOYMENT.md#updating).
 
 ## Metrics
