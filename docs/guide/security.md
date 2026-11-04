@@ -249,3 +249,14 @@ curl -k -X POST https://localhost:8443/api/change-password \
 
 The new password must have at least 8 characters, a digit and a character that
 is neither a letter nor a digit. It is stored as a bcrypt hash.
+
+## API tokens for scripts and tools
+
+A script, a monitoring system or the MCP server does not need the admin
+password: give each one its own token under **Settings > Admin and backup >
+API tokens**. A `read` token can only read; a `write` token can also change
+settings and lists. Neither can manage tokens, change the password, export or
+reset the database, or back up and restore the configuration. Tokens expire
+after 90 days unless you choose otherwise, changes made with one are in the
+audit log as `token:<name>`, and revoking one stops it at once. See
+[API tokens](/api/authentication#api-tokens).

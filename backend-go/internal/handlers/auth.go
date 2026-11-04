@@ -387,8 +387,8 @@ func (h *AuthHandlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Session is the signed-in session: who, how (cookie, bearer or basic) and,
-// for a token, when it expires. The UI cannot read its HttpOnly cookie, so it
+// Session is the signed-in session: who, how (cookie, bearer, basic or
+// token) and, for a token, when it expires. The UI cannot read its HttpOnly cookie, so it
 // asks here at start and plans the expiry warning from expires_at.
 func (h *AuthHandlers) Session(w http.ResponseWriter, r *http.Request) {
 	username, _ := r.Context().Value(middleware.CtxUsername).(string)
@@ -405,6 +405,9 @@ func (h *AuthHandlers) Session(w http.ResponseWriter, r *http.Request) {
 	var expiresAt any // null for Basic, which does not expire
 	if token != "" {
 		expiresAt = h.svc.TokenExpiry(token).Unix()
+	}
+	if t, ok := r.Context().Value(middleware.CtxAPIToken).(*database.APIToken); ok && t.ExpiresAt != nil {
+		expiresAt = t.ExpiresAt.Unix()
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status": "success",

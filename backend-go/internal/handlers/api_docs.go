@@ -130,7 +130,10 @@ var routeDocs = map[string]docMeta{
 	"POST /api/waf/policy/observe-rules":           {auth: true, desc: "Leave one rule {rule} to log only in the WAF policy file, validated and reloaded like an exception; data.added is false when it is already there"},
 	"PUT /api/waf/policy":                          {auth: true, desc: "Replace the WAF policy file with {policy, sha256}: sha256 is the digest GET returned (\"\" when there was no file), and a file changed since is refused with 409; validated and reloaded like an exception"},
 	"GET /api/ws-token":                            {auth: true, desc: "Get one-time WebSocket auth token for live log streaming"},
-	"GET /api/session":                             {auth: true, desc: "The signed-in session: username, how it authenticated (cookie, bearer or basic) and expires_at (Unix seconds, null for Basic)"},
+	"GET /api/session":                             {auth: true, desc: "The signed-in session: username, how it authenticated (cookie, bearer, basic or token) and expires_at (Unix seconds, null for Basic and for a token without expiry)"},
+	"GET /api/tokens":                              {auth: true, desc: "API tokens, revoked and expired ones included, newest first: id, name, scope (read or write), created_by, created_at, expires_at, last_used_at, revoked_at; the values are not stored. Not reachable with a token"},
+	"POST /api/tokens":                             {auth: true, desc: "Create an API token {name, scope: read|write, expires_in_days? (1 to 3650, default 90), no_expiry?}; data.token is its value, shown this once (send it as Authorization: Bearer). A read token may GET and HEAD; neither scope reaches the token, password, session, database export and reset, backup and restore, internal and profiling routes. Not reachable with a token"},
+	"DELETE /api/tokens/{id}":                      {auth: true, desc: "Revoke an API token: it stops working at once. Not reachable with a token"},
 	"GET /api/ws/logs":                             {auth: false, desc: "WebSocket: real-time log stream (offer the subprotocols spm.v1 and spm-ws-token.<token>, token from /api/ws-token; the server selects spm.v1)"},
 	"GET /health":                                  {auth: false, desc: "Legacy health check (simple)"},
 }

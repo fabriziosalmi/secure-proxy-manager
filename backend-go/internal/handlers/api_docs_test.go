@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/auth"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 )
@@ -24,7 +26,12 @@ func buildFullRouterWithAuth(t *testing.T, authMW func(http.Handler) http.Handle
 	t.Helper()
 	db, svc, cfg, cleanup := setupTestDB(t)
 	t.Cleanup(cleanup)
+	return buildFullRouterOn(db, svc, cfg, authMW)
+}
 
+// buildFullRouterOn is buildFullRouterWithAuth on a given database and
+// auth service, for tests that put rows (API tokens) in it first.
+func buildFullRouterOn(db *sql.DB, svc *auth.Service, cfg *config.Config, authMW func(http.Handler) http.Handler) chi.Router {
 	r := chi.NewRouter()
 	NewAuthHandlers(authStore(db), svc, cfg, nil, nil).Register(r)
 	NewLogHandlers(db).Register(r, authMW)
@@ -37,6 +44,8 @@ func buildFullRouterWithAuth(t *testing.T, authMW func(http.Handler) http.Handle
 	NewDNSDetectHandlers(db).Register(r, authMW)
 	NewEgressProviderHandlers(db, cfg).Register(r, authMW)
 	NewWAFPolicyHandlers(db, cfg).Register(r, authMW)
+	NewTrajectoryHandlers(db).Register(r, authMW)
+	NewTokenHandlers(db).Register(r, authMW)
 	RegisterAPIDocs(r, authMW)
 	return r
 }
