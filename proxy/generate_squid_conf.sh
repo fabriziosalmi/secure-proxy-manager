@@ -133,13 +133,72 @@ load_settings() {
 # ── Directory setup ──────────────────────────────────────────────────────────
 
 mkdir -p /etc/squid/blacklists/ip /etc/squid/blacklists/domain /etc/squid/whitelists/ip
-mkdir -p /config/ssl_db
-# ssl_db must be writable by the proxy user (squid SSL bump) and readable by
-# the backend health checker — 750 with proxy ownership is the safe minimum.
-chown proxy:proxy /config/ssl_db
-chmod 750 /config/ssl_db
+# ── SSL-bump CA ─────────────────────────────────────────────────────────────
 
-# ── SSL certificates ────────────────────────────────────────────────────────
+# The CA's private key, and the certificate database that holds a key for
+# every host Squid mints a certificate for, live in /ssl: a mount only this
+# container has. /config is shared. The backend runs as root and holds the
+# proxy group, and dnsmasq runs as root with CAP_DAC_OVERRIDE, so both can read
+# whatever sits there whatever its mode; with the key, code running in either
+# could sign a certificate every client of the proxy trusts. The certificate is
+# public and stays in /config, where the backend serves it for download.
+SSL_CERT=/config/ssl_cert.pem
+SSL_DIR=/ssl
+SSL_STATUS="${SSL_STATUS:-/config/ssl_ca_status.json}"
+
+key_modulus()  { openssl rsa  -in "$1" -noout -modulus 2>/dev/null | openssl sha256 2>/dev/null | awk '{print $NF}'; }
+cert_modulus() { openssl x509 -in "$1" -noout -modulus 2>/dev/null | openssl sha256 2>/dev/null | awk '{print $NF}'; }
+
+if mountpoint -q "$SSL_DIR"; then
+    SSL_KEY="$SSL_DIR/ssl_key.pem"
+    SSL_DB="$SSL_DIR/ssl_db"
+    KEY_ISOLATED=true
+    # The certificate helper runs as proxy and must reach the database.
+    chown root:proxy "$SSL_DIR"
+    chmod 750 "$SSL_DIR"
+
+    # A key left in /config by an older version moves here once, unchanged,
+    # so the certificate the clients installed keeps working. When /ssl
+    # already has one, the key that matches the certificate stays.
+    if [ -f /config/ssl_key.pem ]; then
+        cert_mod="$( [ -f "$SSL_CERT" ] && cert_modulus "$SSL_CERT")"
+        if [ ! -f "$SSL_KEY" ] || { [ -n "$cert_mod" ] \
+            && [ "$(key_modulus /config/ssl_key.pem)" = "$cert_mod" ] \
+            && [ "$(key_modulus "$SSL_KEY")" != "$cert_mod" ]; }; then
+            # A failed move must stop here: going on would generate a new CA
+            # below and every client would have to install it again.
+            if ! { (umask 077; cp /config/ssl_key.pem "$SSL_KEY.new") \
+                && chmod 400 "$SSL_KEY.new" && mv -f "$SSL_KEY.new" "$SSL_KEY"; }; then
+                rm -f "$SSL_KEY.new"
+                echo "CRITICAL: could not move the CA key from /config to $SSL_DIR" >&2
+                exit 1
+            fi
+            # Certificates the database holds were signed by whatever key was
+            # here before.
+            rm -rf "$SSL_DB"
+            echo "Moved the CA key from /config to $SSL_DIR."
+        fi
+        rm -f /config/ssl_key.pem
+    fi
+    # The old database holds a private key for every host it minted a
+    # certificate for. It is a cache: rebuilt below, signed by the same CA.
+    if [ -e /config/ssl_db ]; then
+        rm -rf /config/ssl_db
+        echo "Removed /config/ssl_db; the certificate database is now in $SSL_DB."
+    fi
+else
+    # An older compose file with this image. Generating the key in the
+    # container's own layer would give a new CA on every recreate, so the
+    # old location stays until the mount is added.
+    SSL_KEY=/config/ssl_key.pem
+    SSL_DB=/config/ssl_db
+    KEY_ISOLATED=false
+    echo "WARNING: $SSL_DIR is not mounted, so the SSL-bump CA key stays in /config, where the backend and dns containers can read it. Add ./ssl:/ssl to the proxy service (DEPLOYMENT.md, 'The SSL-bump CA')." >&2
+fi
+
+mkdir -p "$SSL_DB"
+chown proxy:proxy "$SSL_DB"
+chmod 750 "$SSL_DB"
 
 # Reject the CA private key that was historically committed to this repository.
 # Any deployment still carrying it shares one public keypair with every other
@@ -148,59 +207,73 @@ chmod 750 /config/ssl_db
 # survives PEM re-encoding), delete it and the cert DB it signed so a fresh,
 # unique CA is generated below.
 KNOWN_BAD_KEY_MODULUS_SHA256="b3443bfd0d20cec31e7a87eb77d7ebd6864253037091c69bf1d069368e089c31"
-if [ -f /config/ssl_key.pem ]; then
-    current_modulus_sha256="$(openssl rsa -in /config/ssl_key.pem -noout -modulus 2>/dev/null | openssl sha256 2>/dev/null | awk '{print $NF}')"
-    if [ "$current_modulus_sha256" = "$KNOWN_BAD_KEY_MODULUS_SHA256" ]; then
+if [ -f "$SSL_KEY" ]; then
+    if [ "$(key_modulus "$SSL_KEY")" = "$KNOWN_BAD_KEY_MODULUS_SHA256" ]; then
         echo "SECURITY: detected the known-compromised committed CA key: deleting and regenerating a unique CA." >&2
-        rm -f /config/ssl_key.pem /config/ssl_cert.pem
-        rm -rf /config/ssl_db/* 2>/dev/null || true
+        rm -f "$SSL_KEY" "$SSL_CERT"
+        rm -rf "${SSL_DB:?}"/* 2>/dev/null || true
     fi
 fi
 
-if [ ! -f /config/ssl_cert.pem ] || [ ! -f /config/ssl_key.pem ]; then
+if [ ! -f "$SSL_CERT" ] || [ ! -f "$SSL_KEY" ]; then
     echo "Generating SSL certificates for HTTPS filtering..."
     # umask 077 in a subshell so the key is NEVER created world-readable. The
     # chmod below used to be the only protection, and it runs two commands
     # later — an interruption in between left a 0644 private key on a
     # bind-mounted host directory permanently, because the next boot sees both
     # files present and skips this whole block (SECURE-SEC-05).
-    (umask 077; openssl genrsa -out /config/ssl_key.pem 2048)
+    (umask 077; openssl genrsa -out "$SSL_KEY" 2048)
     # 825 days, not 3650. A ten-year CA with no rotation procedure outlives the
     # deployment: if it leaks there is no rehearsed way back, and every client
     # has it installed. 825 days is the CA/Browser Forum maximum for a leaf and
     # a lifetime an operator will actually be prompted to replace
     # (SECURE-SEC-03). See DEPLOYMENT.md "Rotating the SSL-bump CA".
-    openssl req -new -key /config/ssl_key.pem -x509 -days 825 -out /config/ssl_cert.pem \
+    openssl req -new -key "$SSL_KEY" -x509 -days 825 -out "$SSL_CERT" \
         -subj "/C=US/ST=CA/L=SanFrancisco/O=SecureProxy/CN=secure-proxy.local"
-    chmod 400 /config/ssl_key.pem
-    chmod 444 /config/ssl_cert.pem
+    chmod 400 "$SSL_KEY"
+    chmod 444 "$SSL_CERT"
+    # A new CA has signed none of the certificates in the database.
+    rm -rf "${SSL_DB:?}"/* 2>/dev/null || true
     echo "SSL certificates generated."
 else
     echo "Using existing SSL certificates."
 fi
 
 # security_file_certgen -c creates the database (index.txt, size, certs/) and
-# refuses a directory that already exists, which /config/ssl_db always is by
+# refuses a directory that already exists, which $SSL_DB always is by
 # here (created above). It was called on that directory, failed with "Cannot
 # create /config/ssl_db" and left it empty, while this script printed
 # "initialized"; with SSL-bump on, the certificate helper then crashed and
 # Squid stopped ("sslcrtd_program helpers are crashing too rapidly"). The test
 # also looked for a db/ subdirectory the tool never creates. The database is
 # built beside the directory and moved in.
-if [ ! -f /config/ssl_db/index.txt ]; then
+if [ ! -f "$SSL_DB/index.txt" ]; then
     echo "Initializing SSL certificate database..."
-    rm -rf /config/ssl_db.new
-    if /usr/lib/squid/security_file_certgen -c -s /config/ssl_db.new -M 4MB >/dev/null \
-        && rm -rf /config/ssl_db/* && mv /config/ssl_db.new/* /config/ssl_db/; then
-        chown -R proxy:proxy /config/ssl_db
+    rm -rf "$SSL_DB.new"
+    if /usr/lib/squid/security_file_certgen -c -s "$SSL_DB.new" -M 4MB >/dev/null \
+        && rm -rf "${SSL_DB:?}"/* && mv "$SSL_DB.new"/* "$SSL_DB"/; then
+        chown -R proxy:proxy "$SSL_DB"
         echo "SSL certificate database initialized."
     else
         echo "WARNING: the SSL certificate database could not be created; SSL-bump will not work"
     fi
-    rm -rf /config/ssl_db.new
+    rm -rf "$SSL_DB.new"
 else
     echo "Using existing SSL certificate database."
 fi
+
+# For the backend, which cannot see /ssl: whether the key is out of /config
+# and whether the database exists (GET /api/maintenance/check-cert-security).
+write_ssl_status() {
+    local tmp db=false
+    [ -f "$SSL_DB/index.txt" ] && db=true
+    tmp="$(mktemp "${SSL_STATUS}.XXXXXX" 2>/dev/null)" || return 0
+    printf '{"version":1,"key_isolated":%s,"db":%s,"written_at":%d}\n' "$KEY_ISOLATED" "$db" "$(date +%s)" > "$tmp" \
+        && chmod 0644 "$tmp" && mv -f "$tmp" "$SSL_STATUS"
+    rm -f "$tmp" 2>/dev/null
+    return 0
+}
+write_ssl_status
 
 # ── Empty blacklist placeholders ─────────────────────────────────────────────
 
@@ -678,7 +751,7 @@ if [ -f /config/ssl_bump_enabled ]; then
     echo "SSL Bump ENABLED: injecting HTTPS interception config"
 
     # The port reads TLS (ssl-bump) and mints a certificate per host
-    sed -i 's/^http_port 3128$/http_port 3128 ssl-bump \\\n  cert=\/config\/ssl_cert.pem \\\n  key=\/config\/ssl_key.pem \\\n  generate-host-certificates=on \\\n  dynamic_cert_mem_cache_size=4MB/' "$SQUID_CONF"
+    sed -i "s#^http_port 3128\$#http_port 3128 ssl-bump \\\\\n  cert=${SSL_CERT} \\\\\n  key=${SSL_KEY} \\\\\n  generate-host-certificates=on \\\\\n  dynamic_cert_mem_cache_size=4MB#" "$SQUID_CONF"
 
     # Appended at the end, like the peek block below: Squid reads the ssl_bump
     # rules as their own list, so where they sit among the http_access lines
@@ -686,7 +759,7 @@ if [ -f /config/ssl_bump_enabled ]; then
     SSL_BUMP_BLOCK=$(cat <<'SSLEOF'
 
 # ── SSL Bump (HTTPS Inspection) ────────────────────────────────────────────
-sslcrtd_program /usr/lib/squid/security_file_certgen -s /config/ssl_db -M 4MB
+sslcrtd_program /usr/lib/squid/security_file_certgen -s @SSL_DB@ -M 4MB
 sslcrtd_children 3 startup=1 idle=1
 
 # Peek at TLS ClientHello to get SNI, then bump (intercept) the connection
@@ -701,7 +774,7 @@ ssl_bump bump all
 
 SSLEOF
 )
-    echo "$SSL_BUMP_BLOCK" >> "$SQUID_CONF"
+    echo "${SSL_BUMP_BLOCK//@SSL_DB@/$SSL_DB}" >> "$SQUID_CONF"
 
     echo "SSL Bump config injected. WAF can now inspect HTTPS content."
 elif [ -f /config/tls_peek_enabled ]; then
@@ -710,19 +783,19 @@ elif [ -f /config/tls_peek_enabled ]; then
     # The port reads TLS (ssl-bump) but never mints a certificate: every
     # connection is spliced after the peek, so the CA is only the option
     # Squid requires on an ssl-bump port and signs nothing.
-    sed -i 's/^http_port 3128$/http_port 3128 ssl-bump cert=\/config\/ssl_cert.pem key=\/config\/ssl_key.pem/' "$SQUID_CONF"
+    sed -i "s#^http_port 3128\$#http_port 3128 ssl-bump cert=${SSL_CERT} key=${SSL_KEY}#" "$SQUID_CONF"
 
     # After the peek Squid sends the CONNECT through REQMOD a second time;
     # these two headers carry the server name and the client's first bytes
     # to the WAF (waf-go/internal/inspect/hello.go). A tunnel whose first
     # bytes are not TLS (SSH to port 443) passes, uninspected as it was
     # before the peek.
-    cat >> "$SQUID_CONF" <<'PEEKEOF'
+    sed "s#@SSL_DB@#${SSL_DB}#" >> "$SQUID_CONF" <<'PEEKEOF'
 
 # ── TLS server names (peek, then splice: nothing is decrypted) ─────────────
 # Squid starts the certificate helper on any ssl-bump port; without its own
 # database it crashes until Squid stops. One process, signing nothing here.
-sslcrtd_program /usr/lib/squid/security_file_certgen -s /config/ssl_db -M 4MB
+sslcrtd_program /usr/lib/squid/security_file_certgen -s @SSL_DB@ -M 4MB
 sslcrtd_children 1 startup=1 idle=1
 acl step1 at_step SslBump1
 ssl_bump peek step1

@@ -424,11 +424,16 @@ List entries are checked with the same rules as the endpoints that add them. An 
 GET /api/maintenance/check-cert-security
 ```
 
-Reports whether `/config/ssl_cert.pem` exists and whether `/config/ssl_db`
-holds a certificate database. It does not read the certificate.
+Reports whether `/config/ssl_cert.pem` exists. It does not read the
+certificate. The CA key and the certificate database are in the proxy's own
+`/ssl` mount, which the backend cannot see, so `db_found` and `key_isolated`
+come from the record the proxy writes at every start,
+`/config/ssl_ca_status.json`. Without that record both are `false` and
+`issues` says the proxy has not reported. `key_isolated` is `false` when the
+proxy runs without the `./ssl:/ssl` mount and keeps the key in `/config`.
 
 ```json
-{ "status": "success", "message": "Certificate security check completed", "data": { "issues": [], "cert_found": true, "db_found": true } }
+{ "status": "success", "message": "Certificate security check completed", "data": { "issues": [], "cert_found": true, "db_found": true, "key_isolated": true } }
 ```
 
 `status` is `"error"`, still with HTTP 200, when `issues` is not empty.

@@ -531,28 +531,27 @@ func (h *MaintenanceHandlers) DownloadCA(w http.ResponseWriter, r *http.Request)
 	io.Copy(w, f) //nolint:errcheck
 }
 
+// CheckCertSecurity reports whether the SSL-bump CA certificate exists and,
+// from the proxy's own record (ssl_ca_status.json), whether its certificate
+// database exists and whether the CA key is out of /config. The key and the
+// database live in a mount only the proxy has, so the backend cannot look.
 func (h *MaintenanceHandlers) CheckCertSecurity(w http.ResponseWriter, r *http.Request) {
 	var issues []string
-	certFound := false
-	for _, p := range []string{h.cfg.ConfigDir + "/ssl_cert.pem", "config/ssl_cert.pem"} {
-		if _, err := os.Stat(p); err == nil {
-			certFound = true
-			break
-		}
-	}
+	_, err := os.Stat(filepath.Join(h.cfg.ConfigDir, "ssl_cert.pem"))
+	certFound := err == nil
 	if !certFound {
 		issues = append(issues, "SSL certificate not found")
 	}
-	dbFound := false
-	for _, p := range []string{h.cfg.ConfigDir + "/ssl_db", "config/ssl_db"} {
-		if info, err := os.Stat(p); err == nil && info.IsDir() {
-			if entries, _ := os.ReadDir(p); len(entries) > 0 {
-				dbFound = true
-				break
-			}
-		}
+	ca := readSSLCAStatus(h.cfg.ConfigDir)
+	dbFound := ca != nil && ca.DB
+	keyIsolated := ca != nil && ca.KeyIsolated
+	switch {
+	case ca == nil:
+		issues = append(issues, "The proxy has not reported on its CA: it has not started, or it predates this check")
+	case !keyIsolated:
+		issues = append(issues, "The CA private key is in /config, where other services can read it: mount ./ssl:/ssl on the proxy")
 	}
-	if !dbFound {
+	if ca != nil && !dbFound {
 		issues = append(issues, "SSL certificate database not found or empty")
 	}
 	status := "success"
@@ -561,7 +560,7 @@ func (h *MaintenanceHandlers) CheckCertSecurity(w http.ResponseWriter, r *http.R
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status": status, "message": "Certificate security check completed",
-		"data": map[string]any{"issues": issues, "cert_found": certFound, "db_found": dbFound},
+		"data": map[string]any{"issues": issues, "cert_found": certFound, "db_found": dbFound, "key_isolated": keyIsolated},
 	})
 }
 

@@ -121,8 +121,10 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
   `reconfigure_rc` null.
 - ICAP: REQMOD with `bypass=0` (fail closed) unless `WAF_FAIL_OPEN=1`, and
   RESPMOD with `bypass=1`.
-- The SSL-bump CA is `/config/ssl_cert.pem` and `ssl_key.pem`, generated on
-  first start when absent (RSA 2048, 825 days).
+- The SSL-bump CA is `/config/ssl_cert.pem` and `/ssl/ssl_key.pem`, generated
+  on first start when absent (RSA 2048, 825 days). The key and the
+  certificate database (`/ssl/ssl_db`) are in `./ssl`, which only the proxy
+  mounts; a key an earlier version left in `/config` is moved there.
 - `startup.sh` installs iptables rules that redirect ports 80 and 443 to 3128
   inside the container, but Squid has no intercept port, so redirected
   traffic is not served (see [Transparent proxy](./security.md#transparent-proxy)).

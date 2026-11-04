@@ -590,3 +590,74 @@ func TestRestoreConfigDoesNotCountEgressProvidersInRestoredEntries(t *testing.T)
 		t.Errorf("restored_egress_providers = %v, want 1", out["restored_egress_providers"])
 	}
 }
+
+// The CA key and its certificate database live in the proxy's own /ssl mount,
+// so the backend reports what the proxy recorded in ssl_ca_status.json.
+func TestCheckCertSecurityReportsWhereTheProxyKeepsTheCAKey(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	h := NewMaintenanceHandlers(db, cfg)
+	if err := os.WriteFile(filepath.Join(cfg.ConfigDir, "ssl_cert.pem"), []byte("cert"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	type data struct {
+		Issues      []string `json:"issues"`
+		CertFound   bool     `json:"cert_found"`
+		DBFound     bool     `json:"db_found"`
+		KeyIsolated bool     `json:"key_isolated"`
+	}
+	check := func() (string, data) {
+		w := httptest.NewRecorder()
+		h.CheckCertSecurity(w, httptest.NewRequest("GET", "/api/maintenance/check-cert-security", nil))
+		var resp struct {
+			Status string `json:"status"`
+			Data   data   `json:"data"`
+		}
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil || w.Code != http.StatusOK {
+			t.Fatalf("code %d, decode %v", w.Code, err)
+		}
+		return resp.Status, resp.Data
+	}
+	record := func(body string) {
+		if err := os.WriteFile(filepath.Join(cfg.ConfigDir, "ssl_ca_status.json"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if st, d := check(); st != "error" || d.DBFound || d.KeyIsolated || len(d.Issues) != 1 {
+		t.Errorf("no record: %s %+v; want error, nothing claimed, one issue", st, d)
+	}
+
+	record(`{"version":1,"key_isolated":true,"db":true,"written_at":1}`)
+	if st, d := check(); st != "success" || !d.CertFound || !d.DBFound || !d.KeyIsolated || len(d.Issues) != 0 {
+		t.Errorf("isolated: %s %+v; want success with everything found", st, d)
+	}
+
+	record(`{"version":1,"key_isolated":false,"db":true,"written_at":1}`)
+	st, d := check()
+	if st != "error" || d.KeyIsolated || !d.DBFound || len(d.Issues) != 1 || !strings.Contains(d.Issues[0], "./ssl:/ssl") {
+		t.Errorf("key in /config: %s %+v; want error naming the mount", st, d)
+	}
+
+	record(`{"version":1,"key_isolated":true,"db":false,"written_at":1}`)
+	if st, d := check(); st != "error" || d.DBFound || len(d.Issues) != 1 {
+		t.Errorf("no database: %s %+v; want error, one issue", st, d)
+	}
+
+	// A record this backend does not understand claims nothing.
+	for _, bad := range []string{`{"version":2,"key_isolated":true,"db":true}`, `{"version":1,"db":true}`, `not json`} {
+		record(bad)
+		if st, d := check(); st != "error" || d.DBFound || d.KeyIsolated {
+			t.Errorf("record %q: %s %+v; want nothing claimed", bad, st, d)
+		}
+	}
+
+	// The old database in /config is no longer evidence of anything.
+	record(`{"version":1,"key_isolated":true,"db":false,"written_at":1}`)
+	if err := os.MkdirAll(filepath.Join(cfg.ConfigDir, "ssl_db", "certs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, d := check(); d.DBFound {
+		t.Errorf("a leftover /config/ssl_db counted as the database: %+v", d)
+	}
+}

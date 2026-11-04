@@ -271,8 +271,9 @@ pass it to both.
 
 ## SSL bump CA (HTTPS inspection)
 
-If `/config/ssl_cert.pem` or `/config/ssl_key.pem` is missing, the proxy
-generates an RSA 2048 CA valid for 825 days at start. To use your own CA, or to
+If `config/ssl_cert.pem` or `ssl/ssl_key.pem` is missing, the proxy
+generates an RSA 2048 CA valid for 825 days at start. The key is in `ssl/`,
+which only the proxy mounts. To use your own CA, or to
 rotate this one, follow
 [Rotating the SSL-bump CA](https://github.com/fabriziosalmi/secure-proxy-manager/blob/main/DEPLOYMENT.md#rotating-the-ssl-bump-ca).
 

@@ -115,6 +115,19 @@ echo "── core smoke ──"
 code=$(curl -s -m 10 -u "$AUTH" -o /dev/null -w '%{http_code}' "$API/api/status")
 [ "$code" = 200 ] && ok "backend /api/status (200)" || bad "backend /api/status (got $code)"
 
+# The SSL-bump CA key and the certificate database are in the proxy's own
+# /ssl mount. /config is shared, and the backend (root, proxy group) and dns
+# (root, CAP_DAC_OVERRIDE) read whatever sits there.
+docker compose exec -T proxy test -f /ssl/ssl_key.pem \
+  && ok "the CA key is in the proxy's /ssl" || bad "the CA key is in the proxy's /ssl"
+for svc in backend dns waf web; do
+  seen=$(docker compose exec -T "$svc" sh -c 'for f in /config/ssl_key.pem /config/ssl_db /ssl; do [ -e "$f" ] && echo "$f"; done' 2>&1)
+  [ -z "$seen" ] && ok "$svc cannot reach the CA key or the certificate database" \
+    || bad "$svc reaches the CA material: $seen"
+done
+grep -q '"key_isolated":true' config/ssl_ca_status.json 2>/dev/null \
+  && ok "the proxy reports the CA key isolated" || bad "the proxy reports the CA key isolated"
+
 # Forward-proxy egress — HTTP and HTTPS. example.com is a stable target.
 hc=$(curl -s -m 20 -x "$PROXY" -o /dev/null -w '%{http_code}' http://example.com/)
 [ "$hc" = 200 ] && ok "proxy HTTP egress (200)" || bad "proxy HTTP egress (got $hc)"

@@ -105,12 +105,13 @@ step() { # name, command...
 
 export GOFLAGS=-p=2
 
-# Stack runs leave state in config/, data/ and logs/, much of it gitignored
-# (dnsmasq.d/blocklist.hosts, ssl_db, *.pos offsets, the SQLite file), which
-# plain git clean -fd keeps: a later smoke then starts on the previous run's
-# blacklist and log offsets. This runs only inside a worktree.
+# Stack runs leave state in config/, data/, logs/ and ssl/, much of it
+# gitignored (dnsmasq.d/blocklist.hosts, the CA and its database, *.pos
+# offsets, the SQLite file), which plain git clean -fd keeps: a later smoke
+# then starts on the previous run's blacklist and log offsets. This runs only
+# inside a worktree.
 reset_state() {
-  git checkout -q -- config logs && git clean -fdxq config data logs && git checkout -q -- config logs
+  git checkout -q -- config logs && git clean -fdxq config data logs ssl && git checkout -q -- config logs
 }
 reset_state
 
