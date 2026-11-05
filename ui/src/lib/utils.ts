@@ -42,6 +42,23 @@ export function proxyAddress(proxyIP?: string): string {
   return `${proxyHost(proxyIP)}:${PROXY_PORT}`
 }
 
+/**
+ * What a device configures, from the server's PROXY_IP (empty: the host this
+ * page was opened on). nginx serves the PAC file and the /setup page on plain
+ * HTTP, port 80: a device being set up does not trust this server's HTTPS
+ * certificate yet (port 80 redirects /setup to HTTPS itself).
+ */
+export function proxyEndpoints(proxyIP?: string): { host: string; address: string; loopback: boolean; pacURL: string; setupURL: string } {
+  const host = proxyHost(proxyIP)
+  return {
+    host,
+    address: proxyAddress(proxyIP),
+    loopback: isLoopbackHost(host),
+    pacURL: `http://${host}/wpad.dat`, // slopless-disable-line VBC-034 -- devices fetch the PAC file over plain HTTP on port 80 (WPAD)
+    setupURL: `http://${host}/setup`, // slopless-disable-line VBC-034 -- port 80 redirects to the HTTPS page; typed on a device that has no bookmark
+  }
+}
+
 /** A host no other device can reach this server by (the server itself). */
 export function isLoopbackHost(host: string): boolean {
   const h = host.replace(/^\[|\]$/g, '').toLowerCase()

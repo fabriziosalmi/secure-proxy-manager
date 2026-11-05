@@ -113,8 +113,15 @@ self-signed certificate. `http://<host>` and port 8011 redirect to HTTPS.
   other rule is evaluated. To admit another source, list it in
   `GUI_IP_WHITELIST` (addresses or CIDRs, comma or space separated). Allowed
   IPs in the UI are destinations, not clients.
-- Settings > Overview > Connect a device shows per-platform steps and a PAC
-  file.
+- `http://<host>/setup`, opened on the device without signing in, shows
+  per-platform steps, the PAC file and, with SSL inspection on, the CA
+  certificate with its fingerprint. Settings > Overview > Connect a device
+  shows the same in the dashboard.
+- The PAC file sends everything that is not local to the proxy and nothing
+  else: while the proxy is down, a device using it does not go around the
+  filtering. `PAC_FALLBACK_DIRECT=true` adds the direct fallback back. A
+  browser that cannot fetch the PAC file at all connects directly whatever it
+  says, so enforce egress on the network too.
 
 ```bash
 curl -x http://localhost:3128 -I http://example.com
@@ -128,7 +135,7 @@ From `docker-compose.yml`:
 | Host binding | Container port | Service | Notes |
 |--------------|----------------|---------|-------|
 | `443`, `8443` | `8443` | `web` | HTTPS: the UI and `/api/` |
-| `80`, `8011` | `8011` | `web` | Redirects to HTTPS except `/health`, `/wpad.dat`, `/.well-known/acme-challenge/` |
+| `80`, `8011` | `8011` | `web` | Redirects to HTTPS except `/health`, `/wpad.dat`, `/ca.crt`, `/.well-known/acme-challenge/` |
 | `127.0.0.1:5001` | `5000` | `backend` | Host only; nginx proxies it, WebSocket included |
 | `${PROXY_BIND_IP:-0.0.0.0}:3128` | `3128` | `proxy` | Point clients here |
 | none | `1344`, `8080` | `waf` | ICAP, and health, metrics and management |

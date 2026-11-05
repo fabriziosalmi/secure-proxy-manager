@@ -95,6 +95,15 @@ var openAPISchemas = map[string]any{
 		"properties": map[string]any{"status": map[string]any{"const": "success"}, "message": oaStr},
 		"required":   []string{"status", "message"},
 	},
+	"ClientSetup": oaData(oaObject(map[string]any{
+		"proxy_ip":   oaStr,
+		"proxy_auth": oaBool,
+		"inspection": map[string]any{"enum": []string{"bump", "peek", "off"}},
+		"ca": map[string]any{"oneOf": []any{
+			map[string]any{"type": "null"},
+			oaObject(map[string]any{"sha256": oaStr, "not_after": oaStr}, "sha256", "not_after"),
+		}},
+	}, "proxy_ip", "proxy_auth", "inspection", "ca")),
 	"ListMeta": oaObject(map[string]any{"total": oaInt, "limit": oaInt, "offset": oaInt, "internal": oaInt}, "total", "limit", "offset"),
 
 	"IPEntry":         oaListEntry("ip", false),
@@ -162,6 +171,7 @@ var routeSchemas = map[string]routeSchema{
 	"GET /api/egress-allowlist":         {response: "EgressEntryList"},
 	"POST /api/egress-allowlist":        {request: "NewEgressEntry", response: "Message"},
 	"GET /api/settings":                 {response: "SettingList"},
+	"GET /api/client-setup":             {response: "ClientSetup"},
 	"POST /api/settings":                {request: "SettingsUpdate", response: "SettingsUpdated"},
 	"PUT /api/settings/{name}":          {request: "SettingValue", response: "Message"},
 	"GET /api/logs":                     {response: "LogList"},

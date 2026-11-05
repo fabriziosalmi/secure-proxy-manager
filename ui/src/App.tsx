@@ -45,6 +45,7 @@ const Logs = lazy(() => import('./pages/Logs').then(m => ({ default: m.Logs })))
 const Settings = lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
 const Analytics = lazy(() => import('./pages/Analytics').then(m => ({ default: m.Analytics })));
 const Audit = lazy(() => import('./pages/Audit').then(m => ({ default: m.Audit })));
+const PublicSetup = lazy(() => import('./pages/PublicSetup'));
 const Clients = lazy(() => import('./pages/Clients').then(m => ({ default: m.Clients })));
 const EgressAllowlist = lazy(() => import('./pages/EgressAllowlist').then(m => ({ default: m.EgressAllowlist })));
 
@@ -259,10 +260,21 @@ function AppContent({ queryClient }: { queryClient: QueryClient }) {
 
 function App() {
   const [queryClient] = useState(createAppQueryClient);
+  // /setup is opened on a device being configured, which has no session: it
+  // is rendered before, and instead of, the sign-in check.
+  const publicSetup = window.location.pathname === '/setup';
   return (
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
-        <AppContent queryClient={queryClient} />
+        {publicSetup ? (
+          <ErrorBoundary>
+            <Suspense fallback={<PageLoader />}>
+              <PublicSetup />
+            </Suspense>
+          </ErrorBoundary>
+        ) : (
+          <AppContent queryClient={queryClient} />
+        )}
         <Toaster
           position="bottom-right"
           toastOptions={{

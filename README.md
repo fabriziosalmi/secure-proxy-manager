@@ -100,8 +100,10 @@ curl -x http://localhost:3128 -I http://example.com
 ```
 
 To send a device through the proxy, set its HTTP and HTTPS proxy to
-`<host>:3128`. Settings > Overview > Connect a device has per-platform
-instructions and a PAC file. The proxy accepts clients from private IPv4
+`<host>:3128`, or open `http://<host>/setup` on the device: that page needs no
+sign-in and has per-platform instructions, the PAC file and, with SSL
+inspection on, the CA certificate with its fingerprint. The dashboard shows
+the same under Settings > Overview > Connect a device. The proxy accepts clients from private IPv4
 ranges, IPv6 unique-local and link-local addresses and localhost; add other
 sources with `GUI_IP_WHITELIST`.
 
@@ -110,7 +112,7 @@ sources with `GUI_IP_WHITELIST`.
 | Host port | Service | Notes |
 |---|---|---|
 | 443, 8443 | `web` (HTTPS) | The UI and the API under `/api/` |
-| 80, 8011 | `web` (HTTP) | Redirects to `https://<host>:8443`, except `/health`, `/wpad.dat` and `/.well-known/acme-challenge/` |
+| 80, 8011 | `web` (HTTP) | Redirects to `https://<host>:8443`, except `/health`, `/wpad.dat`, `/ca.crt` and `/.well-known/acme-challenge/` |
 | 3128 | `proxy` | Bound to `PROXY_BIND_IP` (default `0.0.0.0`) |
 | 127.0.0.1:5001 | `backend` | Reachable from the host only |
 

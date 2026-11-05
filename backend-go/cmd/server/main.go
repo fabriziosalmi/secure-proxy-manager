@@ -198,6 +198,7 @@ func run() error {
 
 	// Register handler groups.
 	handlers.NewAuthHandlers(database.NewAuthStore(db), authSvc, cfg, notify, hub).Register(r)
+	handlers.NewClientSetupHandlers(db, cfg).Register(r)
 	// The stack's own addresses (loopback, the subnets the backend shares
 	// with the proxy): not clients, so no client count includes them.
 	classifier := sources.NewClassifier(cfg.ProxyHost, proxyURLHost(cfg.ProxyURL))

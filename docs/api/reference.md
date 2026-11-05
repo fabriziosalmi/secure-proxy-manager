@@ -9,7 +9,7 @@ Base URLs:
 Every route needs HTTP Basic, JWT bearer, API token or session cookie
 authentication (see [Authentication](./authentication.md)) except
 `POST /api/auth/login`, `POST /api/auth/refresh`, `GET /api/health`,
-`GET /api/ready`, `GET /health`, `GET /livez`, `GET /readyz` and `GET /metrics`.
+`GET /api/client-setup`, `GET /api/client-setup/ca.crt`, `GET /api/ready`, `GET /health`, `GET /livez`, `GET /readyz` and `GET /metrics`.
 The WebSocket authenticates with a single-use token (see
 [WebSocket](./websocket.md)). A running backend lists every registered route at
 `GET /api/docs` (authenticated).
@@ -70,6 +70,8 @@ depends on changes, unlike `version` in `/api/health`, which is the release.
 | `GET`  | `/api/ws-token` | Issue a single-use WebSocket token |
 | `GET`  | `/api/session` | Who is signed in, how (`cookie`, `bearer`, `basic`) and `expires_at` |
 | `GET`  | `/api/health` | Status, version, commit (no auth) |
+| `GET`  | `/api/client-setup` | What a device needs (the `/setup` page): `proxy_ip`, `proxy_auth`, `inspection` (`bump`, `peek`, `off`) and `ca` (`sha256`, `not_after`, or `null`) (no auth) |
+| `GET`  | `/api/client-setup/ca.crt` | The SSL-bump CA certificate as `secure-proxy-ca.crt`, `404` until the proxy has one; nginx also serves it at `/ca.crt` on ports 8011 and 8443 (no auth) |
 | `GET`  | `/api/ready`, `/readyz` | `200` when the database answers, `503` otherwise (no auth) |
 | `GET`  | `/health`, `/livez` | `200` while the process runs (no auth) |
 | `GET`  | `/metrics` | Prometheus metrics (no auth; nginx does not proxy it) |

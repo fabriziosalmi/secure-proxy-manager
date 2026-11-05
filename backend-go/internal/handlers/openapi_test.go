@@ -207,8 +207,9 @@ func TestOpenAPISchemasMatchRealResponses(t *testing.T) {
 		"GET /api/ip-blacklist", "GET /api/ip-whitelist", "GET /api/domain-blacklist", "GET /api/domain-whitelist",
 		"GET /api/egress-allowlist", "GET /api/settings", "GET /api/logs", "GET /api/logs/stats",
 		"DELETE /api/ip-blacklist/{id}", "DELETE /api/ip-whitelist/{id}", "DELETE /api/domain-blacklist/{id}",
-		"DELETE /api/domain-whitelist/{id}",
+		"DELETE /api/domain-whitelist/{id}", "GET /api/client-setup",
 	}
+	writeTestCA(t, cfg.ConfigDir) // so the CA object, not only null, is checked
 	if len(order) != len(routeSchemas) {
 		t.Fatalf("the test calls %d routes, routeSchemas has %d: every route given a schema is checked", len(order), len(routeSchemas))
 	}
@@ -240,6 +241,7 @@ func TestOpenAPISchemasMatchRealResponses(t *testing.T) {
 		"GET /api/logs":             {`"event_id":"evt-1"`, `"event_id":null`, `"resolved_ip":null`, `"resolved_ip":"93.184.216.34"`, `"blocked":true`},
 		"GET /api/ip-blacklist":     {`"source_id":null`, `"source_kind":"manual"`},
 		"GET /api/domain-blacklist": {`"description":null`},
+		"GET /api/client-setup":     {`"sha256":"`},
 	} {
 		for _, w := range want {
 			if !strings.Contains(seen[key], w) {

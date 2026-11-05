@@ -96,10 +96,14 @@ Set the proxy on each device to:
 - **Port:** `3128`
 
 Set `PROXY_IP` in `.env` to that address. Settings > Overview > Connect a
-device then shows it with the steps per platform, a PAC file and the URL
-devices can load it from (`http://<address>/wpad.dat`); without `PROXY_IP` it
+device then shows it with the steps per platform, a PAC file, the URL
+devices can load it from (`http://<address>/wpad.dat`) and the page to open on
+a device without signing in (`http://<address>/setup`); without `PROXY_IP` it
 shows the host the dashboard was opened on, and warns when that is
-`localhost`. The proxy accepts clients from private IPv4 ranges, IPv6 unique-local
+`localhost`. With SSL inspection on, both pages offer the CA certificate
+(`http://<address>/ca.crt`) with its SHA-256 fingerprint and the steps to trust
+it on each platform; compare the fingerprint before trusting a certificate
+fetched over plain HTTP. The proxy accepts clients from private IPv4 ranges, IPv6 unique-local
 and link-local addresses and localhost; `GUI_IP_WHITELIST` admits other
 sources. Transparent interception is not supported (see
 [Transparent proxy](/guide/security#transparent-proxy)).

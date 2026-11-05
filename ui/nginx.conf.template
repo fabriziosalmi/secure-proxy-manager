@@ -10,7 +10,10 @@ server {
         return 200 '{"status":"healthy","service":"secure-proxy-ui"}';
     }
 
-    # WPAD auto-discovery — browsers request http://wpad.local/wpad.dat
+    # WPAD auto-discovery: browsers request http://wpad.local/wpad.dat.
+    # PAC_FALLBACK is empty, or "; DIRECT" with PAC_FALLBACK_DIRECT=true
+    # (docker-entrypoint.sh): without it a browser does not bypass a proxy
+    # that is down.
     location = /wpad.dat {
         access_log off;
         default_type application/x-ns-proxy-autoconfig;
@@ -19,8 +22,20 @@ server {
   if (isInNet(host, "172.16.0.0", "255.240.0.0")) return "DIRECT";
   if (isInNet(host, "192.168.0.0", "255.255.0.0")) return "DIRECT";
   if (host === "localhost" || host === "127.0.0.1") return "DIRECT";
-  return "PROXY $host:3128; DIRECT";
+  return "PROXY $host:3128${PAC_FALLBACK}";
 }';
+    }
+
+    # The SSL-bump CA certificate, for devices to install (/setup). Public:
+    # Squid presents it on every bumped connection anyway. Also on plain HTTP,
+    # for a device that does not trust this dashboard's certificate yet;
+    # /setup shows the fingerprint to compare.
+    location = /ca.crt {
+        limit_req zone=api burst=20 nodelay;
+        proxy_pass         http://spm_backend/api/client-setup/ca.crt;
+        proxy_set_header   Host            $host;
+        proxy_set_header   X-Real-IP       $remote_addr;
+        proxy_set_header   X-Forwarded-For $remote_addr;
     }
 
     # Let's Encrypt ACME challenge (must be on HTTP)
@@ -97,8 +112,20 @@ server {
   if (isInNet(host, "172.16.0.0", "255.240.0.0")) return "DIRECT";
   if (isInNet(host, "192.168.0.0", "255.255.0.0")) return "DIRECT";
   if (host === "localhost" || host === "127.0.0.1") return "DIRECT";
-  return "PROXY $host:3128; DIRECT";
+  return "PROXY $host:3128${PAC_FALLBACK}";
 }';
+    }
+
+    # The SSL-bump CA certificate, for devices to install (/setup). Public:
+    # Squid presents it on every bumped connection anyway. Also on plain HTTP,
+    # for a device that does not trust this dashboard's certificate yet;
+    # /setup shows the fingerprint to compare.
+    location = /ca.crt {
+        limit_req zone=api burst=20 nodelay;
+        proxy_pass         http://spm_backend/api/client-setup/ca.crt;
+        proxy_set_header   Host            $host;
+        proxy_set_header   X-Real-IP       $remote_addr;
+        proxy_set_header   X-Forwarded-For $remote_addr;
     }
 
     # WebSocket upgrade — must come before the generic /api/ block

@@ -27,6 +27,36 @@ export interface StatusData {
 
 export type { ProxyAuthStatus };
 
+/**
+ * What a device needs to use the proxy: GET /api/client-setup, which answers
+ * without a login (the /setup page runs on the device being configured).
+ */
+export interface ClientSetupData {
+  proxy_ip: string;
+  proxy_auth: boolean;
+  /** Only bump needs the CA on the device: peek decrypts nothing. */
+  inspection: 'bump' | 'peek' | 'off';
+  ca: { sha256: string; not_after: string } | null;
+}
+
+export const clientSetupQuery = {
+  queryKey: ['client-setup'] as const,
+  queryFn: () => getData<ClientSetupData>('client-setup'),
+};
+
+/**
+ * The PAC file exactly as nginx serves it to devices (/wpad.dat, same
+ * origin), so a download or a copy is never a second, drifting copy.
+ */
+export const pacFileQuery = {
+  queryKey: ['pac-file'] as const,
+  queryFn: async () => {
+    const res = await fetch('/wpad.dat', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`The server answered ${res.status} for /wpad.dat`);
+    return res.text();
+  },
+};
+
 export const statusQuery = {
   queryKey: ['status'] as const,
   queryFn: () => getData<StatusData>('status'),

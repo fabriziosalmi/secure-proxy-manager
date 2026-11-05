@@ -1,6 +1,67 @@
 {
   "components": {
     "schemas": {
+      "ClientSetup": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "additionalProperties": false,
+            "properties": {
+              "ca": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "not_after": {
+                        "type": "string"
+                      },
+                      "sha256": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "sha256",
+                      "not_after"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "inspection": {
+                "enum": [
+                  "bump",
+                  "peek",
+                  "off"
+                ]
+              },
+              "proxy_auth": {
+                "type": "boolean"
+              },
+              "proxy_ip": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "proxy_ip",
+              "proxy_auth",
+              "inspection",
+              "ca"
+            ],
+            "type": "object"
+          },
+          "status": {
+            "const": "success"
+          }
+        },
+        "required": [
+          "status",
+          "data"
+        ],
+        "type": "object"
+      },
       "DomainEntry": {
         "additionalProperties": false,
         "properties": {
@@ -1267,6 +1328,43 @@
           "change-password"
         ],
         "x-spm-token-scope": "none"
+      }
+    },
+    "/api/client-setup": {
+      "get": {
+        "operationId": "get_api_client_setup",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientSetup"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "security": [],
+        "summary": "What a device needs to use the proxy (the /setup page): proxy address, whether it asks for a login, inspection mode, CA fingerprint and expiry",
+        "tags": [
+          "client-setup"
+        ]
+      }
+    },
+    "/api/client-setup/ca.crt": {
+      "get": {
+        "operationId": "get_api_client_setup_ca_crt",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "security": [],
+        "summary": "The SSL-bump CA certificate (PEM, .crt), for devices to install; 404 until the proxy has one",
+        "tags": [
+          "client-setup"
+        ]
       }
     },
     "/api/clients/statistics": {

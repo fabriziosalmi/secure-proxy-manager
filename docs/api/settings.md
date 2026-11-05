@@ -448,7 +448,9 @@ GET /api/security/download-ca
 
 Returns `/config/ssl_cert.pem` as the attachment `secure-proxy-ca.pem`, or
 `404` when the proxy has not generated it yet. Clients must trust it while
-HTTPS inspection is on.
+HTTPS inspection is on. Devices get the same certificate without a login at
+`/ca.crt` (`GET /api/client-setup/ca.crt`), and its fingerprint from
+`GET /api/client-setup`.
 
 ---
 
