@@ -46,8 +46,7 @@ const (
 )
 
 // sourceListQueries holds every statement that names a list table, one set
-// per table, built from the constant names in entrySourceTables, so no table
-// name is ever built from input.
+// per table, each written out, so no table name is ever built from input.
 type sourceListQueries struct {
 	summary          string
 	anyBySource      string // args: source, source
@@ -63,37 +62,80 @@ type sourceListQueries struct {
 	link              string // args: source, value, source (LinkStatement)
 }
 
-func listQueries(list, col, sources SQLText) sourceListQueries {
-	// #nosec G202 -- every name is a constant of entrySourceTables
-	return sourceListQueries{
-		summary: string(`SELECT source_id, COUNT(*), COALESCE(MIN(d),''), COALESCE(MAX(d),'') FROM (
-			SELECT source_id, added_date AS d FROM ` + list + `
-			UNION ALL SELECT source_id, added_date FROM ` + sources + `) GROUP BY source_id`),
-		anyBySource: string(`SELECT COUNT(*) FROM (SELECT 1 FROM ` + list + ` WHERE source_id = ?
-			UNION ALL SELECT 1 FROM ` + sources + ` WHERE source_id = ? LIMIT 1)`),
-		deleteBySource:   string("DELETE FROM " + list + " WHERE source_id = ?"),
-		deleteUnrecorded: string("DELETE FROM " + list + " WHERE source_id IS NULL"),
-		promote: string(`UPDATE ` + list + ` SET source_id = (SELECT MIN(x.source_id) FROM ` + sources + ` x
-				WHERE x.entry_id = ` + list + `.id AND x.source_id <> ` + list + `.source_id)
-			WHERE source_id = ? AND EXISTS (SELECT 1 FROM ` + sources + ` x
-				WHERE x.entry_id = ` + list + `.id AND x.source_id <> ` + list + `.source_id)`),
-		promoteUnrecorded: string(`UPDATE ` + list + ` SET source_id = (SELECT MIN(x.source_id) FROM ` + sources + ` x WHERE x.entry_id = ` + list + `.id)
-			WHERE source_id IS NULL AND EXISTS (SELECT 1 FROM ` + sources + ` x WHERE x.entry_id = ` + list + `.id)`),
-		dropPromoted: string(`DELETE FROM ` + sources + ` WHERE EXISTS (SELECT 1 FROM ` + list + ` t
-			WHERE t.id = ` + sources + `.entry_id AND t.source_id = ` + sources + `.source_id)`),
-		unlinkSource: string("DELETE FROM " + sources + " WHERE source_id = ?"),
-		link: string(`INSERT OR IGNORE INTO ` + sources + `(entry_id, source_id)
-			SELECT id, ? FROM ` + list + ` WHERE ` + col + ` = ? AND (source_id IS NULL OR source_id <> ?)`),
-	}
+var sourceLists = map[string]sourceListQueries{
+	"ip_blacklist": {
+		summary: `SELECT source_id, COUNT(*), COALESCE(MIN(d),''), COALESCE(MAX(d),'') FROM (
+			SELECT source_id, added_date AS d FROM ip_blacklist
+			UNION ALL SELECT source_id, added_date FROM ip_blacklist_sources) GROUP BY source_id`,
+		anyBySource: `SELECT COUNT(*) FROM (SELECT 1 FROM ip_blacklist WHERE source_id = ?
+			UNION ALL SELECT 1 FROM ip_blacklist_sources WHERE source_id = ? LIMIT 1)`,
+		deleteBySource:   "DELETE FROM ip_blacklist WHERE source_id = ?",
+		deleteUnrecorded: "DELETE FROM ip_blacklist WHERE source_id IS NULL",
+		promote: `UPDATE ip_blacklist SET source_id = (SELECT MIN(x.source_id) FROM ip_blacklist_sources x WHERE x.entry_id = ip_blacklist.id AND x.source_id <> ip_blacklist.source_id)
+			WHERE source_id = ? AND EXISTS (SELECT 1 FROM ip_blacklist_sources x WHERE x.entry_id = ip_blacklist.id AND x.source_id <> ip_blacklist.source_id)`,
+		promoteUnrecorded: `UPDATE ip_blacklist SET source_id = (SELECT MIN(x.source_id) FROM ip_blacklist_sources x WHERE x.entry_id = ip_blacklist.id)
+			WHERE source_id IS NULL AND EXISTS (SELECT 1 FROM ip_blacklist_sources x WHERE x.entry_id = ip_blacklist.id)`,
+		dropPromoted: `DELETE FROM ip_blacklist_sources WHERE EXISTS (SELECT 1 FROM ip_blacklist t
+			WHERE t.id = ip_blacklist_sources.entry_id AND t.source_id = ip_blacklist_sources.source_id)`,
+		unlinkSource: "DELETE FROM ip_blacklist_sources WHERE source_id = ?",
+		link: `INSERT OR IGNORE INTO ip_blacklist_sources(entry_id, source_id)
+			SELECT id, ? FROM ip_blacklist WHERE ip = ? AND (source_id IS NULL OR source_id <> ?)`,
+	},
+	"domain_blacklist": {
+		summary: `SELECT source_id, COUNT(*), COALESCE(MIN(d),''), COALESCE(MAX(d),'') FROM (
+			SELECT source_id, added_date AS d FROM domain_blacklist
+			UNION ALL SELECT source_id, added_date FROM domain_blacklist_sources) GROUP BY source_id`,
+		anyBySource: `SELECT COUNT(*) FROM (SELECT 1 FROM domain_blacklist WHERE source_id = ?
+			UNION ALL SELECT 1 FROM domain_blacklist_sources WHERE source_id = ? LIMIT 1)`,
+		deleteBySource:   "DELETE FROM domain_blacklist WHERE source_id = ?",
+		deleteUnrecorded: "DELETE FROM domain_blacklist WHERE source_id IS NULL",
+		promote: `UPDATE domain_blacklist SET source_id = (SELECT MIN(x.source_id) FROM domain_blacklist_sources x WHERE x.entry_id = domain_blacklist.id AND x.source_id <> domain_blacklist.source_id)
+			WHERE source_id = ? AND EXISTS (SELECT 1 FROM domain_blacklist_sources x WHERE x.entry_id = domain_blacklist.id AND x.source_id <> domain_blacklist.source_id)`,
+		promoteUnrecorded: `UPDATE domain_blacklist SET source_id = (SELECT MIN(x.source_id) FROM domain_blacklist_sources x WHERE x.entry_id = domain_blacklist.id)
+			WHERE source_id IS NULL AND EXISTS (SELECT 1 FROM domain_blacklist_sources x WHERE x.entry_id = domain_blacklist.id)`,
+		dropPromoted: `DELETE FROM domain_blacklist_sources WHERE EXISTS (SELECT 1 FROM domain_blacklist t
+			WHERE t.id = domain_blacklist_sources.entry_id AND t.source_id = domain_blacklist_sources.source_id)`,
+		unlinkSource: "DELETE FROM domain_blacklist_sources WHERE source_id = ?",
+		link: `INSERT OR IGNORE INTO domain_blacklist_sources(entry_id, source_id)
+			SELECT id, ? FROM domain_blacklist WHERE domain = ? AND (source_id IS NULL OR source_id <> ?)`,
+	},
+	"ip_whitelist": {
+		summary: `SELECT source_id, COUNT(*), COALESCE(MIN(d),''), COALESCE(MAX(d),'') FROM (
+			SELECT source_id, added_date AS d FROM ip_whitelist
+			UNION ALL SELECT source_id, added_date FROM ip_whitelist_sources) GROUP BY source_id`,
+		anyBySource: `SELECT COUNT(*) FROM (SELECT 1 FROM ip_whitelist WHERE source_id = ?
+			UNION ALL SELECT 1 FROM ip_whitelist_sources WHERE source_id = ? LIMIT 1)`,
+		deleteBySource:   "DELETE FROM ip_whitelist WHERE source_id = ?",
+		deleteUnrecorded: "DELETE FROM ip_whitelist WHERE source_id IS NULL",
+		promote: `UPDATE ip_whitelist SET source_id = (SELECT MIN(x.source_id) FROM ip_whitelist_sources x WHERE x.entry_id = ip_whitelist.id AND x.source_id <> ip_whitelist.source_id)
+			WHERE source_id = ? AND EXISTS (SELECT 1 FROM ip_whitelist_sources x WHERE x.entry_id = ip_whitelist.id AND x.source_id <> ip_whitelist.source_id)`,
+		promoteUnrecorded: `UPDATE ip_whitelist SET source_id = (SELECT MIN(x.source_id) FROM ip_whitelist_sources x WHERE x.entry_id = ip_whitelist.id)
+			WHERE source_id IS NULL AND EXISTS (SELECT 1 FROM ip_whitelist_sources x WHERE x.entry_id = ip_whitelist.id)`,
+		dropPromoted: `DELETE FROM ip_whitelist_sources WHERE EXISTS (SELECT 1 FROM ip_whitelist t
+			WHERE t.id = ip_whitelist_sources.entry_id AND t.source_id = ip_whitelist_sources.source_id)`,
+		unlinkSource: "DELETE FROM ip_whitelist_sources WHERE source_id = ?",
+		link: `INSERT OR IGNORE INTO ip_whitelist_sources(entry_id, source_id)
+			SELECT id, ? FROM ip_whitelist WHERE ip = ? AND (source_id IS NULL OR source_id <> ?)`,
+	},
+	"domain_whitelist": {
+		summary: `SELECT source_id, COUNT(*), COALESCE(MIN(d),''), COALESCE(MAX(d),'') FROM (
+			SELECT source_id, added_date AS d FROM domain_whitelist
+			UNION ALL SELECT source_id, added_date FROM domain_whitelist_sources) GROUP BY source_id`,
+		anyBySource: `SELECT COUNT(*) FROM (SELECT 1 FROM domain_whitelist WHERE source_id = ?
+			UNION ALL SELECT 1 FROM domain_whitelist_sources WHERE source_id = ? LIMIT 1)`,
+		deleteBySource:   "DELETE FROM domain_whitelist WHERE source_id = ?",
+		deleteUnrecorded: "DELETE FROM domain_whitelist WHERE source_id IS NULL",
+		promote: `UPDATE domain_whitelist SET source_id = (SELECT MIN(x.source_id) FROM domain_whitelist_sources x WHERE x.entry_id = domain_whitelist.id AND x.source_id <> domain_whitelist.source_id)
+			WHERE source_id = ? AND EXISTS (SELECT 1 FROM domain_whitelist_sources x WHERE x.entry_id = domain_whitelist.id AND x.source_id <> domain_whitelist.source_id)`,
+		promoteUnrecorded: `UPDATE domain_whitelist SET source_id = (SELECT MIN(x.source_id) FROM domain_whitelist_sources x WHERE x.entry_id = domain_whitelist.id)
+			WHERE source_id IS NULL AND EXISTS (SELECT 1 FROM domain_whitelist_sources x WHERE x.entry_id = domain_whitelist.id)`,
+		dropPromoted: `DELETE FROM domain_whitelist_sources WHERE EXISTS (SELECT 1 FROM domain_whitelist t
+			WHERE t.id = domain_whitelist_sources.entry_id AND t.source_id = domain_whitelist_sources.source_id)`,
+		unlinkSource: "DELETE FROM domain_whitelist_sources WHERE source_id = ?",
+		link: `INSERT OR IGNORE INTO domain_whitelist_sources(entry_id, source_id)
+			SELECT id, ? FROM domain_whitelist WHERE domain = ? AND (source_id IS NULL OR source_id <> ?)`,
+	},
 }
-
-var sourceLists = func() map[string]sourceListQueries {
-	m := map[string]sourceListQueries{}
-	for _, t := range entrySourceTables {
-		m[string(t.list)] = listQueries(t.list, t.col, t.sources)
-	}
-	return m
-}()
 
 // ErrUnknownList is returned for a list that has no provenance.
 var ErrUnknownList = errors.New("unknown list")
