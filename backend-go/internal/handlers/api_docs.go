@@ -88,6 +88,8 @@ var routeDocs = map[string]docMeta{
 	"PUT /api/egress-providers/{name}":             {auth: true, desc: "Enable or disable egress provider ({enabled, confirm_shared})"},
 	"POST /api/egress-providers/{name}/refresh":    {auth: true, desc: "Immediately fetch and refresh an egress provider"},
 	"POST /api/egress-providers/{name}/apply-held": {auth: true, desc: "Apply a held update (>25% growth) for an egress provider"},
+	"GET /api/client-setup":                        {auth: false, desc: "What a device needs to use the proxy (the /setup page): proxy address, whether it asks for a login, inspection mode, CA fingerprint and expiry"},
+	"GET /api/client-setup/ca.crt":                 {auth: false, desc: "The SSL-bump CA certificate (PEM, .crt), for devices to install; 404 until the proxy has one"},
 	"GET /api/health":                              {auth: false, desc: "Health check: returns version, runtime, update/CVE info"},
 	"POST /api/internal/alert":                     {auth: true, desc: "Receive security alert from WAF/proxy"},
 	"GET /api/waf/trajectories":                    {auth: true, desc: "Trajectories the correlator read from the WAF's client signals, latest first (?days=1..90, default 7)"},
@@ -148,18 +150,20 @@ var routeDocs = map[string]docMeta{
 // auth middleware: /metrics is for the internal network (nginx does not
 // proxy it), and the WebSocket checks its own single-use token.
 var publicRoutes = map[string]bool{
-	"POST /api/auth/login":        true,
-	"POST /api/auth/refresh":      true,
-	"GET /api/auth/oidc":          true,
-	"GET /api/auth/oidc/login":    true,
-	"GET /api/auth/oidc/callback": true,
-	"GET /api/health":             true,
-	"GET /api/ready":              true,
-	"GET /health":                 true,
-	"GET /livez":                  true,
-	"GET /readyz":                 true,
-	"GET /metrics":                true,
-	"GET /api/ws/logs":            true,
+	"POST /api/auth/login":         true,
+	"POST /api/auth/refresh":       true,
+	"GET /api/auth/oidc":           true,
+	"GET /api/auth/oidc/login":     true,
+	"GET /api/auth/oidc/callback":  true,
+	"GET /api/health":              true,
+	"GET /api/client-setup":        true,
+	"GET /api/client-setup/ca.crt": true,
+	"GET /api/ready":               true,
+	"GET /health":                  true,
+	"GET /livez":                   true,
+	"GET /readyz":                  true,
+	"GET /metrics":                 true,
+	"GET /api/ws/logs":             true,
 }
 
 // RegisterAPIDocs publishes the catalogue. The handler walks the router at

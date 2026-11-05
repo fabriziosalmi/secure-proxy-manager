@@ -128,6 +128,22 @@ done
 grep -q '"key_isolated":true' config/ssl_ca_status.json 2>/dev/null \
   && ok "the proxy reports the CA key isolated" || bad "the proxy reports the CA key isolated"
 
+# What a device fetches through nginx, with no login: the PAC file, which no
+# longer sends a browser around a proxy that is down; the CA certificate,
+# byte for byte the proxy's; its fingerprint in /api/client-setup; /setup.
+pac=$(curl -s -m 10 http://127.0.0.1:8011/wpad.dat | grep 'return "PROXY')
+[ "$pac" = '  return "PROXY 127.0.0.1:3128";' ] && ok "the PAC file has no DIRECT fallback" \
+  || bad "the PAC file has no DIRECT fallback (got: $pac)"
+served=$(curl -s -m 10 http://127.0.0.1:8011/ca.crt | openssl x509 -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2)
+proxy_fp=$(openssl x509 -in config/ssl_cert.pem -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2)
+[ -n "$proxy_fp" ] && [ "$served" = "$proxy_fp" ] && ok "/ca.crt on port 80, without a login, is the proxy's CA" \
+  || bad "/ca.crt is the proxy's CA (served: $served, proxy: $proxy_fp)"
+described=$(curl -sk -m 10 https://127.0.0.1:8443/api/client-setup | python3 -c 'import json,sys; print((json.load(sys.stdin)["data"]["ca"] or {}).get("sha256",""))' 2>/dev/null)
+[ -n "$proxy_fp" ] && [ "$described" = "$proxy_fp" ] && ok "/api/client-setup, without a login, gives the CA fingerprint" \
+  || bad "/api/client-setup gives the CA fingerprint (got: $described)"
+code=$(curl -sk -m 10 -o /dev/null -w '%{http_code}' https://127.0.0.1:8443/setup)
+[ "$code" = 200 ] && ok "/setup is served without a login (200)" || bad "/setup is served without a login (got $code)"
+
 # Forward-proxy egress — HTTP and HTTPS. example.com is a stable target.
 hc=$(curl -s -m 20 -x "$PROXY" -o /dev/null -w '%{http_code}' http://example.com/)
 [ "$hc" = 200 ] && ok "proxy HTTP egress (200)" || bad "proxy HTTP egress (got $hc)"

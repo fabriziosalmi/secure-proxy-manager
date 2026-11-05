@@ -19,6 +19,7 @@ services:
       # Let's Encrypt (optional): set both to enable auto-HTTPS with real certs
       - LETSENCRYPT_DOMAIN=${LETSENCRYPT_DOMAIN:-}
       - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL:-}
+      - PAC_FALLBACK_DIRECT=${PAC_FALLBACK_DIRECT:-}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8011/health"]
       interval: 30s

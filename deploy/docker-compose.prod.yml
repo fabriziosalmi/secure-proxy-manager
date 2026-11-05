@@ -16,6 +16,7 @@ services:
       - REQUEST_TIMEOUT=${REQUEST_TIMEOUT:-120}
       - LETSENCRYPT_DOMAIN=${LETSENCRYPT_DOMAIN:-}
       - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL:-}
+      - PAC_FALLBACK_DIRECT=${PAC_FALLBACK_DIRECT:-}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8011/health"]
       interval: 30s

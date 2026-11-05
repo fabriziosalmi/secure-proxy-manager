@@ -201,8 +201,8 @@ self-signed one at start. The image has no certbot, so it does not obtain Let's
 Encrypt certificates itself.
 
 To terminate TLS on your own reverse proxy (Caddy, Traefik, nginx), point it at
-port 8443. Port 8011 redirects everything except `/health`, `/wpad.dat` and
-ACME challenge paths to `https://<host>:8443`, so a reverse proxy pointed at it
+port 8443. Port 8011 redirects everything except `/health`, `/wpad.dat`,
+`/ca.crt` and ACME challenge paths to `https://<host>:8443`, so a reverse proxy pointed at it
 gets redirects, not the UI. Forward the WebSocket upgrade for `/api/ws/`:
 
 ```nginx
@@ -233,8 +233,18 @@ server {
 Transparent (intercepting) proxying is not supported. Squid listens on 3128 as
 an explicit forward proxy only: there is no `intercept` port, so traffic
 redirected to it with iptables is not served, and there is no setting for it in
-the UI. Configure clients explicitly or with the PAC file (Settings > Overview >
-Connect a device).
+the UI. Configure clients explicitly or with the PAC file (`http://<host>/setup`,
+or Settings > Overview > Connect a device). The PAC file has no direct fallback
+unless `PAC_FALLBACK_DIRECT=true`, so a device using it stops, rather than
+going around the filtering, while the proxy is down; a browser that cannot
+fetch the PAC file at all still connects directly.
+
+`GET /api/client-setup`, `/ca.crt` and `/setup` answer without a login, to
+anyone who can reach the web ports: the proxy's address, whether it asks for a
+login, the inspection mode and the CA certificate with its fingerprint. A
+client of the proxy learns all of it anyway (a 407, the certificate on every
+inspected connection). The CA key is never served: it is in a mount only the
+proxy has.
 
 ## Changing the admin password
 

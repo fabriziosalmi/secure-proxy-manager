@@ -56,7 +56,7 @@ Docker with the Compose v2 plugin (`docker compose`).
 
 | Host port | Service | Notes |
 |---|---|---|
-| `80`, `8011` | `web` (HTTP) | Redirect to `https://<host>:8443`; `/health`, `/wpad.dat` and ACME challenge paths are answered directly |
+| `80`, `8011` | `web` (HTTP) | Redirect to `https://<host>:8443`; `/health`, `/wpad.dat`, `/ca.crt` and ACME challenge paths are answered directly |
 | `443`, `8443` | `web` (HTTPS) | The UI and `/api/` |
 | `3128` | `proxy` | Configure clients to use this |
 | `127.0.0.1:5001` | `backend` | Localhost only, not reachable from the network |

@@ -36,6 +36,26 @@ describe('App', () => {
     clearStorage()
   })
 
+  // /setup runs on the device being configured, which has no session.
+  it('opens /setup without a session, and never asks the backend for one', async () => {
+    window.history.pushState({}, '', '/setup')
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response('function FindProxyForURL(url, host) {}', { status: 200 }))))
+    vi.mocked(api.get).mockImplementation((url: string) => Promise.resolve({
+      data: { data: url === 'client-setup' ? { proxy_ip: '192.0.2.10', proxy_auth: false, inspection: 'off', ca: null } : [] },
+    }) as never)
+    try {
+      render(<App />)
+      expect(await screen.findByRole('heading', { name: 'Connect this device' })).toBeInTheDocument()
+      expect(await screen.findByText('192.0.2.10:3128')).toBeInTheDocument()
+      expect(screen.queryByText(/sign in to continue/i)).toBeNull()
+      expect(loadSession).not.toHaveBeenCalled()
+      for (const [url] of vi.mocked(api.get).mock.calls) expect(url).toBe('client-setup')
+    } finally {
+      window.history.pushState({}, '', '/')
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('shows login page when not authenticated', async () => {
     render(<App />)
     expect(await screen.findByText(/sign in to continue/i)).toBeInTheDocument()

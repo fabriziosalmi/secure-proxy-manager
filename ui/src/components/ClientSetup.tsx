@@ -2,11 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Monitor, Smartphone, Apple, Terminal, Server, Copy, Check, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { api } from '../lib/api';
-import { PROXY_PORT, cn } from '../lib/utils';
-import { useProxyAddress } from '../hooks/useProxyAddress';
+import { clientSetupQuery, pacFileQuery } from '../lib/queries';
+import { PROXY_PORT, cn, proxyEndpoints } from '../lib/utils';
 import { Notice } from './ui/Notice';
-import type { SettingRow } from '../types';
 import { Button } from './ui/Button';
 
 interface OSTab {
@@ -17,6 +15,8 @@ interface OSTab {
   cmd?: string;
   /** Configuration snippets, each for one file and with its own copy button. */
   blocks?: { title: string; file: string; note?: string; cmd: string }[];
+  /** How this system trusts the CA certificate, shown when SSL inspection is on. */
+  ca: string[];
 }
 
 function CodeBlock({ text, label, copied, onCopy }: { text: string; label: string; copied: string; onCopy: (text: string, label: string) => void }) {
@@ -50,24 +50,22 @@ function CopyBtn({ text, label, copied, onCopy }: { text: string; label: string;
   );
 }
 
+/**
+ * How to point a device at the proxy. The same component runs in the
+ * dashboard and on the /setup page, which has no session: everything it reads
+ * comes from GET /api/client-setup, which needs no login.
+ */
 export function ClientSetup() {
   const [copied, setCopied] = useState('');
-  const proxy = useProxyAddress();
+  const setup = useQuery(clientSetupQuery);
+  const pac = useQuery(pacFileQuery);
+  const proxy = proxyEndpoints(setup.data?.proxy_ip);
   const host = proxy.host;
   const proxyPort = String(PROXY_PORT);
   const proxyAddr = proxy.address;
-
-  const settings = useQuery<SettingRow[]>({
-    queryKey: ['settings'],
-    queryFn: () => {
-      const req = api.get('settings');
-      if (!req || typeof req.then !== 'function') return Promise.resolve([]);
-      return req.then((r) => (r?.data?.data ?? []) as SettingRow[]);
-    },
-  });
-  const proxyAuthOn = settings.data?.some(
-    (s) => s.setting_name === 'enable_proxy_auth' && s.setting_value === 'true',
-  ) ?? false;
+  const proxyAuthOn = setup.data?.proxy_auth ?? false;
+  const bump = setup.data?.inspection === 'bump';
+  const ca = setup.data?.ca ?? null;
 
   const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const copy = async (text: string, label: string) => {
@@ -86,18 +84,9 @@ export function ClientSetup() {
   };
   useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
 
-  const pacContent = `function FindProxyForURL(url, host) {
-  // Direct access for local network
-  if (isInNet(host, "10.0.0.0", "255.0.0.0")) return "DIRECT";
-  if (isInNet(host, "172.16.0.0", "255.240.0.0")) return "DIRECT";
-  if (isInNet(host, "192.168.0.0", "255.255.0.0")) return "DIRECT";
-  if (host === "localhost" || host === "127.0.0.1") return "DIRECT";
-  // Use proxy for everything else
-  return "PROXY ${proxyAddr}; DIRECT";
-}`;
-
   const downloadPAC = () => {
-    const blob = new Blob([pacContent], { type: 'application/x-ns-proxy-autoconfig' });
+    if (pac.data === undefined) return;
+    const blob = new Blob([pac.data], { type: 'application/x-ns-proxy-autoconfig' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = 'proxy.pac'; a.click();
@@ -108,6 +97,11 @@ export function ClientSetup() {
   // The proxy speaks plain HTTP, also for HTTPS sites (CONNECT): every URL below is http://.
   const proxyURL = `http://${proxyAddr}`; // slopless-disable-line VBC-034 -- the proxy URL is http:// for every client; https would break them
   const lanBypass = 'localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16';
+  const caURL = `http://${host}/ca.crt`; // slopless-disable-line VBC-034 -- nginx serves the CA on port 80 too: the device does not trust this server's HTTPS yet
+  const linuxCA = [
+    `Debian and Ubuntu: sudo curl -fsSo /usr/local/share/ca-certificates/secure-proxy-ca.crt ${caURL} && sudo update-ca-certificates`,
+    'Compare its fingerprint with the one above before you trust it: openssl x509 -in /usr/local/share/ca-certificates/secure-proxy-ca.crt -noout -fingerprint -sha256',
+  ];
 
   const tabs: OSTab[] = [
     {
@@ -121,6 +115,10 @@ export function ClientSetup() {
         'Click Save',
       ],
       cmd: `netsh winhttp set proxy ${proxyAddr}`,
+      ca: [
+        'Open secure-proxy-ca.crt → Install Certificate → Local Machine',
+        'Place all certificates in the following store → Trusted Root Certification Authorities → Finish',
+      ],
     },
     {
       id: 'macos', icon: Apple, label: 'macOS',
@@ -132,6 +130,10 @@ export function ClientSetup() {
         'Click OK → Apply',
       ],
       cmd: `networksetup -setwebproxy Wi-Fi ${host} ${proxyPort}\nnetworksetup -setsecurewebproxy Wi-Fi ${host} ${proxyPort}`,
+      ca: [
+        'Open secure-proxy-ca.crt: Keychain Access adds it to the System keychain',
+        'Double-click the certificate → Trust → When using this certificate: Always Trust',
+      ],
     },
     {
       id: 'linux', icon: Terminal, label: 'Linux',
@@ -139,6 +141,7 @@ export function ClientSetup() {
         'Add to ~/.bashrc for your shell (for every program, apt and Docker, see Linux server):',
       ],
       cmd: `export http_proxy=${proxyURL}\nexport https_proxy=${proxyURL}\nexport no_proxy=${lanBypass}`,
+      ca: linuxCA,
     },
     {
       id: 'linux-server', icon: Server, label: 'Linux server',
@@ -171,6 +174,7 @@ export function ClientSetup() {
           cmd: `[Service]\nEnvironment="HTTP_PROXY=${proxyURL}"\nEnvironment="HTTPS_PROXY=${proxyURL}"\nEnvironment="NO_PROXY=${lanBypass}"`,
         },
       ],
+      ca: linuxCA,
     },
     {
       id: 'ios', icon: Smartphone, label: 'iOS',
@@ -181,6 +185,10 @@ export function ClientSetup() {
         `Port: ${proxyPort}`,
         proxyAuthOn ? 'Authentication: Username and password' : 'Authentication: Off',
       ],
+      ca: [
+        'Open secure-proxy-ca.crt in Safari → Allow, then Settings → Profile Downloaded → Install',
+        'Settings → General → About → Certificate Trust Settings → turn on full trust for it',
+      ],
     },
     {
       id: 'android', icon: Smartphone, label: 'Android',
@@ -190,6 +198,10 @@ export function ClientSetup() {
         `Hostname: ${host}`,
         `Port: ${proxyPort}`,
         'Bypass: localhost,127.0.0.1',
+      ],
+      ca: [
+        'Settings → Security → More security settings → Encryption & credentials → Install a certificate → CA certificate, then pick secure-proxy-ca.crt',
+        'Browsers trust it; many apps trust only the system certificates and will refuse inspected connections',
       ],
     },
   ];
@@ -222,15 +234,50 @@ export function ClientSetup() {
           <CopyBtn text={proxy.pacURL} label="PAC URL" copied={copied} onCopy={(t, l) => void copy(t, l)} />
         </div>
 
-        {/* PAC file download */}
-        <div className="flex flex-wrap gap-2 mb-4">
-          <Button size="sm" icon={<Download />} onClick={downloadPAC}>
+        {/* PAC file download: the file nginx serves, not a copy */}
+        <div className="flex flex-wrap gap-2 mb-3">
+          <Button size="sm" icon={<Download />} onClick={downloadPAC} disabled={pac.data === undefined}>
             Download PAC File
           </Button>
-          <Button size="sm" icon={<Copy />} onClick={() => void copy(pacContent, 'pac')}>
+          <Button size="sm" icon={<Copy />} onClick={() => pac.data !== undefined && void copy(pac.data, 'pac')} disabled={pac.data === undefined}>
             Copy PAC
           </Button>
         </div>
+        {pac.isError && (
+          <p className="text-xs text-danger mb-3">This server did not serve its PAC file (/wpad.dat), so devices using the PAC URL cannot load it either.</p>
+        )}
+
+        {/* The page a device opens without signing in */}
+        <div className="flex flex-wrap items-center gap-2 mb-4 px-3 py-2 bg-surface-muted border border-line rounded-control">
+          <span className="text-xs text-ink-muted">On the device, without signing in:</span>
+          <code className="text-xs font-mono text-ink break-all">{proxy.setupURL}</code>
+          <CopyBtn text={proxy.setupURL} label="setup URL" copied={copied} onCopy={(t, l) => void copy(t, l)} />
+        </div>
+
+        {bump && (
+          <Notice tone="warning" title="This proxy decrypts HTTPS: each device must trust its CA certificate" className="mb-4">
+            {ca ? (
+              <div className="flex flex-col gap-2">
+                <span>
+                  Without it, HTTPS sites show certificate errors. Install it only after checking that its SHA-256
+                  fingerprint matches the one here.
+                </span>
+                <code className="text-xs font-mono break-all">{ca.sha256}</code>
+                <span className="text-xs">Expires {new Date(ca.not_after).toLocaleDateString()}.</span>
+                <div>
+                  <Button size="sm" icon={<Download />} onClick={() => { window.location.href = '/ca.crt'; }}>
+                    Download CA certificate
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <span>The proxy has not created its CA certificate yet. Reload this page after the proxy has restarted.</span>
+            )}
+          </Notice>
+        )}
+        {setup.data?.inspection === 'peek' && (
+          <p className="text-xs text-ink-muted mb-4">TLS peek is on: the proxy reads the name of each HTTPS site and decrypts nothing, so there is no certificate to install.</p>
+        )}
 
         {/* OS tabs */}
         <div role="tablist" aria-label="Operating system" className="flex flex-wrap gap-1 mb-3 border-b border-line pb-2">
@@ -278,6 +325,20 @@ export function ClientSetup() {
               </li>
             ))}
           </ol>
+
+          {bump && ca && (
+            <>
+              <p className="text-xs font-semibold text-ink mb-1.5">Trust the CA certificate</p>
+              <ol className="space-y-1.5 mb-3">
+                {active.ca.map((step, i) => (
+                  <li key={i} className="flex gap-2 text-xs text-ink-secondary">
+                    <span className="text-ink-muted font-semibold shrink-0">{i + 1}.</span>
+                    <span className="break-all">{step}</span>
+                  </li>
+                ))}
+              </ol>
+            </>
+          )}
 
           {/* Command */}
           {active.cmd && <CodeBlock text={active.cmd} label="command" copied={copied} onCopy={(t, l) => void copy(t, l)} />}

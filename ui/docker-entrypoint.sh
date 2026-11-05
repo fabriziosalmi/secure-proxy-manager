@@ -117,8 +117,25 @@ else
     echo "[entrypoint] Self-signed certificate generated (valid 1 year)"
 fi
 
+# What the PAC file tells a browser to do when the proxy does not answer. It
+# used to end with "; DIRECT": with the proxy down, every device using the PAC
+# file went out without any filtering. Now it does not, unless the operator
+# asks for availability over filtering.
+case "$(printf '%s' "${PAC_FALLBACK_DIRECT:-false}" | tr '[:upper:]' '[:lower:]')" in
+    false) PAC_FALLBACK="" ;;
+    true)
+        PAC_FALLBACK="; DIRECT"
+        echo "[entrypoint] PAC_FALLBACK_DIRECT=true: devices using the PAC file connect directly, without filtering, when the proxy does not answer"
+        ;;
+    *)
+        echo "[entrypoint] ERROR: PAC_FALLBACK_DIRECT must be true or false, not '${PAC_FALLBACK_DIRECT}'" >&2
+        exit 1
+        ;;
+esac
+export PAC_FALLBACK
+
 # Substitute env vars into the nginx template
-envsubst '${BACKEND_HOST} ${BACKEND_PORT} ${BACKEND_RESOLVE} ${NGINX_RESOLVER} ${REQUEST_TIMEOUT}' \
+envsubst '${BACKEND_HOST} ${BACKEND_PORT} ${BACKEND_RESOLVE} ${NGINX_RESOLVER} ${REQUEST_TIMEOUT} ${PAC_FALLBACK}' \
     < /etc/nginx/templates/default.conf.template \
     > /etc/nginx/conf.d/default.conf
 

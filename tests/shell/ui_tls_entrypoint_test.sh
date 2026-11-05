@@ -70,5 +70,39 @@ c=$(code GET /api/internal/anything)
 c=$(code GET /api/health)
 [ "$c" = 502 ] && ok "the rest of /api/ is still proxied to the backend" || bad "the rest of /api/ is still proxied to the backend" "got $c, want 502 from the proxy pass"
 
+echo "── the CA certificate for devices ──"
+# Proxied to the backend on both ports (502 here: no backend), not redirected
+# from plain HTTP to HTTPS: a device fetches it before it trusts anything.
+c=$(docker exec "$NAME" curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8011/ca.crt)
+[ "$c" = 502 ] && ok "/ca.crt on plain HTTP is proxied to the backend" || bad "/ca.crt on plain HTTP is proxied to the backend" "got $c, want 502 (301 is the redirect to HTTPS)"
+c=$(code GET /ca.crt)
+[ "$c" = 502 ] && ok "/ca.crt on HTTPS is proxied to the backend" || bad "/ca.crt on HTTPS is proxied to the backend" "got $c"
+
+echo "── the PAC file when the proxy does not answer ──"
+# pac_return SCHEME PORT: the PAC file's last return, the one for everything
+# that is not local.
+pac_return() { docker exec "$NAME" curl -sk "$1://127.0.0.1:$2/wpad.dat" | grep 'return "PROXY'; }
+want='  return "PROXY 127.0.0.1:3128";'
+[ "$(pac_return http 8011)" = "$want" ] && [ "$(pac_return https 8443)" = "$want" ] \
+  && ok "by default it never sends the browser around the proxy (no DIRECT)" \
+  || bad "by default no DIRECT" "http: $(pac_return http 8011) https: $(pac_return https 8443)"
+
+if start -e PAC_FALLBACK_DIRECT=true; then
+  want='  return "PROXY 127.0.0.1:3128; DIRECT";'
+  [ "$(pac_return http 8011)" = "$want" ] && [ "$(pac_return https 8443)" = "$want" ] \
+    && ok "PAC_FALLBACK_DIRECT=true puts DIRECT back" \
+    || bad "PAC_FALLBACK_DIRECT=true puts DIRECT back" "http: $(pac_return http 8011) https: $(pac_return https 8443)"
+else
+  bad "starts with PAC_FALLBACK_DIRECT=true" "$(docker logs "$NAME" 2>&1 | tail -3)"
+fi
+
+if start -e PAC_FALLBACK_DIRECT=maybe; then
+  bad "PAC_FALLBACK_DIRECT=maybe is refused" "the container started"
+else
+  logs_contain "PAC_FALLBACK_DIRECT must be true or false, not 'maybe'" \
+    && ok "PAC_FALLBACK_DIRECT=maybe: refuses to start and says why" \
+    || bad "PAC_FALLBACK_DIRECT=maybe says why" "$(docker logs "$NAME" 2>&1 | tail -3)"
+fi
+
 printf "\n  %d passed, %d failed\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

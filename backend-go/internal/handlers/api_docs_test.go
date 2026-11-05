@@ -34,6 +34,7 @@ func buildFullRouterWithAuth(t *testing.T, authMW func(http.Handler) http.Handle
 func buildFullRouterOn(db *sql.DB, svc *auth.Service, cfg *config.Config, authMW func(http.Handler) http.Handler) chi.Router {
 	r := chi.NewRouter()
 	NewAuthHandlers(authStore(db), svc, cfg, nil, nil).Register(r)
+	NewClientSetupHandlers(db, cfg).Register(r)
 	NewLogHandlers(db).Register(r, authMW)
 	NewSettingsHandlers(db, cfg).Register(r, authMW)
 	NewBlacklistHandlers(db, cfg).Register(r, authMW)
