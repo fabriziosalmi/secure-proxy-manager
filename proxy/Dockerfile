@@ -31,7 +31,11 @@ RUN rm -f /usr/bin/pebble && ! command -v pebble
 # CI passes a changing value so each publish re-pulls the security index.
 ARG SQUID_FLOOR_FOR=26.04
 ARG SQUID_MIN_VERSION=7.2-2ubuntu2.2
-ARG APT_REFRESH=2026-06-29
+ARG APT_REFRESH=2026-11-05
+# apt and libapt-pkg7.0: the Ubuntu 26.04 base ships 3.2.0 (CVE-2026-109518,
+# HIGH); the security pocket has 3.2.1ubuntu0.1. Installed explicitly, with a
+# floor, so the build fails rather than ships if the base or the mirror lags.
+ARG APT_MIN_VERSION=3.2.1ubuntu0.1
 
 RUN . /etc/os-release && if [ "$VERSION_ID" != "$SQUID_FLOOR_FOR" ]; then \
       echo "FATAL: SQUID_MIN_VERSION was written for Ubuntu $SQUID_FLOOR_FOR but this image is $VERSION_ID - update the floor for the new release before building"; \
@@ -44,6 +48,8 @@ RUN echo "Acquire::http::Pipeline-Depth 0;" > /etc/apt/apt.conf.d/99fixbadproxy 
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     apt-get install -y --fix-missing \
+    apt \
+    libapt-pkg7.0 \
     squid-openssl \
     squid-common \
     iproute2 \
@@ -59,6 +65,14 @@ RUN echo "Acquire::http::Pipeline-Depth 0;" > /etc/apt/apt.conf.d/99fixbadproxy 
          echo "FATAL: squid-openssl $squid_v is older than $SQUID_MIN_VERSION (CVE-2026-47729 Squidbleed unpatched) — refusing to build an unpatched proxy image"; \
          exit 1; \
        fi \
+    && for pkg in apt libapt-pkg7.0; do \
+         v="$(dpkg-query -W -f='${Version}' "$pkg")"; \
+         echo "$pkg installed: $v (require >= $APT_MIN_VERSION)"; \
+         if ! dpkg --compare-versions "$v" ge "$APT_MIN_VERSION"; then \
+           echo "FATAL: $pkg $v is older than $APT_MIN_VERSION (CVE-2026-109518)"; \
+           exit 1; \
+         fi; \
+       done \
     && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /etc/squid/blacklists/ip /etc/squid/blacklists/domain /config /usr/share/squid/icons
