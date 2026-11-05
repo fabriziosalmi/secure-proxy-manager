@@ -77,6 +77,17 @@ depends on changes, unlike `version` in `/api/health`, which is the release.
 | `GET`  | `/metrics` | Prometheus metrics (no auth; nginx does not proxy it) |
 | `GET`  | `/api/docs` | The list of registered routes |
 
+## Client groups
+
+| Method | Path | Description |
+|---|---|---|
+| `GET`    | `/api/client-groups` | Every client group |
+| `POST`   | `/api/client-groups` | Create a group ([Client groups](./blacklists.md#client-groups)) |
+| `GET`    | `/api/client-groups/{id}` | One group |
+| `PUT`    | `/api/client-groups/{id}` | Replace a group |
+| `DELETE` | `/api/client-groups/{id}` | Delete a group |
+| `PUT`    | `/api/ip-blacklist/sources/{id}/scope`, `/api/domain-blacklist/sources/{id}/scope` | Whether a source applies to every client (`global`) or only to the groups that use it (`groups`) |
+
 ## Lists
 
 `{list}` is one of `ip-blacklist`, `domain-blacklist`, `ip-whitelist`,

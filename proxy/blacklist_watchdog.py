@@ -531,6 +531,7 @@ def sync_lists_cli():
     verified as the poll loop does, then write the record and the gate."""
     state = ListsState(load_lists_record())
     sync_lists(state)
+    sync_groups(state)
     save_lists_state(state)
     return 0
 
@@ -992,6 +993,124 @@ def sync_lists(state):
     return changed
 
 
+# ── Client groups ────────────────────────────────────────────────────────────
+#
+# The backend writes the client groups' files under /config/groups and lists
+# each in the manifest as "groups/<name>" (backend-go/internal/database/
+# client_groups.go): groups.conf, the index the generator builds the rules from;
+# g<ID>_src.txt, a group's members; s<ID>_ip.txt and s<ID>_domain.txt, the
+# entries of a list that applies to groups only. They are copied here verified,
+# as the lists are, and normalized as the lists are (Squid warns once for every
+# entry another covers, and aborts past 1000 early messages). A file the
+# manifest no longer lists is removed. A change of groups.conf, or of the set of
+# files, changes the rules: squid.conf is regenerated. A change of a members or
+# list file only needs a reconfigure.
+GROUPS_DIR = "/etc/squid/groups"
+GROUPS_SYNCED = f"{GROUPS_DIR}/.synced.json"
+GROUP_FILE_RE = re.compile(r"^groups/(groups\.conf|g[0-9]{1,9}_src\.txt|s[0-9]{1,9}_(ip|domain)\.txt)$")
+
+
+def load_groups_synced():
+    try:
+        with open(GROUPS_SYNCED) as fh:
+            doc = json.load(fh)
+        return doc if isinstance(doc, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def normalize_group_file(path):
+    """Write a group file in the form Squid has nothing to warn about."""
+    with open(path, encoding="utf-8", errors="replace") as f:
+        lines = f.read().splitlines()
+    name = os.path.basename(path)
+    if name.endswith("_domain.txt"):
+        write_lines_atomic(path, normalize_domain_lines(lines))
+    elif name.endswith(".txt"):
+        out, bad = normalize_ip_lines(lines)
+        if bad:
+            print(f"[watchdog] {name}: {bad} lines are not an address or network, left out", flush=True)
+        write_lines_atomic(path, out)
+
+
+def sync_groups(state):
+    """Copy the client groups' files the manifest lists, verified. Returns
+    (changed, structure): a file was copied or removed, and the rules changed
+    (groups.conf, or the set of files), which takes a regeneration.
+
+    Nothing happens without a valid manifest that names a groups file: a
+    backend that predates groups writes none, and an unreadable manifest
+    vouches for nothing (the copies Squid has stay)."""
+    kind, sums = load_manifest()
+    if kind != "ok":
+        return False, False
+    names = sorted(n for n in sums if n.startswith("groups/"))
+    if not names:
+        return False, False
+    os.makedirs(GROUPS_DIR, exist_ok=True)
+    synced = load_groups_synced()
+    changed = structure = False
+    wanted = set()
+    for name in names:
+        if not GROUP_FILE_RE.match(name):
+            note_refusal(state.refused, name, None, "not a client group file name")
+            continue
+        base = name.split("/", 1)[1]
+        wanted.add(base)
+        dst = f"{GROUPS_DIR}/{base}"
+        if synced.get(base) == sums[name] and os.path.exists(dst):
+            continue
+        src = f"{CONFIG_DIR}/{name}"
+        try:
+            atomic_copy(src, dst, sums[name])
+            normalize_group_file(dst)
+        except ChecksumMismatch as exc:
+            note_refusal(state.refused, src, mtime(src), f"checksum mismatch, keeping previous copy: {exc}")
+            continue
+        except OSError as exc:
+            print(f"[watchdog] group file copy failed, will retry: {exc}", flush=True)
+            continue
+        state.refused.pop(src, None)
+        if base == "groups.conf" or base not in synced:
+            structure = True
+        synced[base] = sums[name]
+        changed = True
+        print(f"[watchdog] synced {src} -> {dst}", flush=True)
+    for base in list(synced):
+        if base not in wanted:
+            try:
+                os.unlink(f"{GROUPS_DIR}/{base}")
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                print(f"[watchdog] could not remove {base}: {exc}", flush=True)
+                continue
+            del synced[base]
+            changed = structure = True
+            print(f"[watchdog] removed group file {base}: the manifest no longer lists it", flush=True)
+    if changed:
+        try:
+            write_lines_atomic(GROUPS_SYNCED, [json.dumps(synced, sort_keys=True)])
+        except OSError as exc:
+            print(f"[watchdog] could not write {GROUPS_SYNCED}: {exc}", flush=True)
+    return changed, structure
+
+
+def regenerate_for_groups():
+    """The groups' rules changed: regenerate squid.conf and reconfigure. A
+    generation or a parse that fails keeps the running configuration."""
+    try:
+        gen_res, applied = generate_checked()
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(f"[watchdog] client groups: regeneration error: {exc}", flush=True)
+        return
+    if gen_res.returncode != 0 or not applied:
+        print("[watchdog] client groups: the regenerated config was refused, keeping the running one", flush=True)
+        print(gen_res.stderr.decode("utf-8", "replace")[:2000], flush=True)
+        return
+    reconfigure_squid()
+
+
 def reconfigure_squid():
     """Run `squid -k reconfigure`. Returns its exit code, or None when it did
     not finish (it timed out or could not be run).
@@ -1209,6 +1328,11 @@ def poll_once(state):
     check_clear_cache_trigger(state)
     if sync_lists(state):
         refresh_domain_acl()
+        state.reconfigure_pending = True
+    groups_changed, groups_structure = sync_groups(state)
+    if groups_structure:
+        regenerate_for_groups()
+    elif groups_changed:
         state.reconfigure_pending = True
     if save_lists_state(state):
         state.reconfigure_pending = True

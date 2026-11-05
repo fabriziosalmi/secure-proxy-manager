@@ -150,6 +150,51 @@ hc=$(curl -s -m 20 -x "$PROXY" -o /dev/null -w '%{http_code}' http://example.com
 sc=$(curl -s -m 20 -x "$PROXY" -o /dev/null -w '%{http_code}' https://example.com/)
 [ "$sc" = 200 ] && ok "proxy HTTPS egress (200)" || bad "proxy HTTPS egress (got $sc)"
 
+# Client groups, end to end: a pasted list set to groups only leaves the
+# global lists and the DNS sinkhole; a group whose member is this client gets
+# its rules in Squid (backend export, verified sync, regeneration) and blocks
+# the list's domain for it; deleting the group takes the rules out again.
+GROUP_HOST='e2e-group.example'
+curl -s -m 10 -u "$AUTH" -X POST -H 'Content-Type: application/json' \
+  -d "{\"type\":\"domain\",\"content\":\"${GROUP_HOST}\"}" "$API/api/blacklists/import" >/dev/null
+gsrc=$(curl -s -m 10 -u "$AUTH" "$API/api/domain-blacklist/sources" | python3 -c '
+import json, sys
+rows = [s for s in json.load(sys.stdin)["data"] if s.get("kind") == "paste" and s.get("id")]
+print(max(s["id"] for s in rows) if rows else "")' 2>/dev/null)
+curl -s -m 10 -u "$AUTH" -X PUT -H 'Content-Type: application/json' -d '{"scope":"groups"}' \
+  "$API/api/domain-blacklist/sources/${gsrc}/scope" >/dev/null
+curl -s -m 20 -x "$PROXY" -o /dev/null http://example.com/
+me=$(docker compose exec -T proxy tail -n 1 /var/log/squid/access.log 2>/dev/null | awk '{print $3}')
+gid=$(curl -s -m 10 -u "$AUTH" -X POST -H 'Content-Type: application/json' \
+  -d "{\"name\":\"e2e\",\"members\":[\"${me}\"],\"lists\":[${gsrc:-0}]}" "$API/api/client-groups" \
+  | python3 -c 'import json, sys; print(json.load(sys.stdin)["data"]["id"])' 2>/dev/null)
+applied=0
+for _ in $(seq 1 20); do # up to ~40s
+  if docker compose exec -T proxy grep -qxF "http_access deny spm_g${gid} spm_s${gsrc}_domain spm_r_group_list" /etc/squid/squid.conf 2>/dev/null \
+     && docker compose exec -T proxy grep -qxF "$GROUP_HOST" "/etc/squid/groups/s${gsrc}_domain.txt" 2>/dev/null; then
+    applied=1; break
+  fi
+  sleep 2
+done
+[ -n "$gid" ] && [ -n "$me" ] && [ "$applied" = 1 ] \
+  && ok "a client group reaches Squid: its list copied verified, its rule generated (member ${me})" \
+  || bad "a client group did not reach Squid within 40s (group ${gid:-none}, source ${gsrc:-none}, member ${me:-none})"
+docker compose exec -T proxy grep -qxF "$GROUP_HOST" /etc/squid/blacklists/domain/local.txt 2>/dev/null \
+  && bad "a groups-only list reached the global domain list" || ok "a groups-only list stays out of the global domain list"
+grep -q " ${GROUP_HOST}$" config/dnsmasq.d/blocklist.hosts 2>/dev/null \
+  && bad "a groups-only list reached the DNS sinkhole" || ok "a groups-only list stays out of the DNS sinkhole"
+gc=$(curl -s -m 20 -x "$PROXY" -o /dev/null -w '%{http_code}' "http://${GROUP_HOST}/")
+greason=$(docker compose exec -T proxy tail -n 1 /var/log/squid/access.log 2>/dev/null | awk '{print $12}')
+[ "$gc" = 403 ] && [ "$greason" = group_list ] && ok "the group's member is denied the list's domain (403 group_list)" \
+  || bad "the group's member got ${gc} (${greason:-no reason}) for ${GROUP_HOST}, want 403 group_list"
+curl -s -m 10 -u "$AUTH" -X DELETE "$API/api/client-groups/${gid:-0}" >/dev/null
+gone=0
+for _ in $(seq 1 20); do
+  docker compose exec -T proxy grep -q "spm_g${gid} " /etc/squid/squid.conf 2>/dev/null || { gone=1; break; }
+  sleep 2
+done
+[ "$gone" = 1 ] && ok "deleting the group takes its rules out of Squid" || bad "the deleted group's rules are still in squid.conf after 40s"
+
 # Live blacklist reload. Domains are blocked by the dnsmasq sinkhole (answer
 # 0.0.0.0), not by a Squid ACL. This used to blacklist ci-block.invalid, which
 # never resolves, and expect 403: the request failed with 503 whether or not
@@ -198,14 +243,21 @@ bc=$(curl -s -m 20 -x "$PROXY" -o /dev/null -w '%{http_code}' "http://${BLOCK_HO
                  || bad "blacklisted host still served through the proxy (200)"
 
 # Log pipeline — generate some proxied traffic, then the dashboard must count it
-# (this fails if the backend cannot read Squid's access.log).
+# (this fails if the backend cannot read Squid's access.log). These requests
+# come from the Docker host, through the bridge gateway, which the backend
+# counts as the stack's own traffic once its classifier knows the stack's
+# subnets (backend-go/internal/sources, refreshed 30 s after start): counted
+# as clients before that, as internal after. The check used to read
+# total_requests only, the clients, and passed only when it ran within those
+# 30 s; both counts together are what the backend read.
 for _ in 1 2 3 4 5; do curl -s -m 15 -x "$PROXY" -o /dev/null http://example.com/ || true; done
 sleep 5
-total=$(curl -s -m 10 -u "$AUTH" "$API/api/dashboard/summary" | grep -o '"total_requests":[0-9]*' | grep -o '[0-9]*' | head -1)
-if [ "${total:-0}" -gt 0 ] 2>/dev/null; then
-  ok "log pipeline feeds dashboard (total_requests=${total})"
+summary=$(curl -s -m 10 -u "$AUTH" "$API/api/dashboard/summary")
+total=$(printf '%s' "$summary" | python3 -c 'import json, sys; d = json.load(sys.stdin)["data"]; print(d["total_requests"] + d["last_24h_internal_requests"])' 2>/dev/null)
+if [ "${total:-0}" -ge 5 ] 2>/dev/null; then
+  ok "log pipeline feeds dashboard (${total} requests, clients and the stack's own)"
 else
-  bad "log pipeline empty (total_requests=${total:-0})"
+  bad "log pipeline empty (${total:-0} requests, clients and the stack's own; want at least the 5 just made)"
 fi
 
 # Audit log — the blacklist add above must be recorded.

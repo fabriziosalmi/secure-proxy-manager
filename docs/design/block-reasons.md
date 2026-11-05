@@ -189,6 +189,9 @@ start-up without the step.
 | `port_policy` | `deny !Safe_ports` (`:346`), `deny CONNECT !SSL_ports` (`:388`) |
 | `protocol_policy` | `deny Dangerous_methods`, `deny !Safe_methods`, `deny ftp_proto` (`:341-345`). Not in the original list: methods and the FTP scheme are neither ports nor "other" |
 | `lists_unverified` | `deny spm_lists_gate`, the fail-closed lists gate: a blocklist the backend's manifest did not vouch for at boot has no copy in Squid, so `/etc/squid/lists_gate.txt` holds `all` and every client request is denied until the watchdog copies a verified list. Added after this branch; search the generator for `spm_r_lists_unverified` |
+| `group_list` | `deny spm_g<ID> spm_s<SID>_<ip\|domain>`: a client group's member, a destination on a list that applies to groups only (`client_groups.go`); search the generator for `spm_r_group_list` |
+| `group_time` | `deny spm_g<ID> !spm_g<ID>_hours`: a client group's member outside its window |
+| `group_egress` | `deny spm_g<ID> !egress_dst_allow_ip !egress_dst_allow_dom`: a member of an allowlist-only group, a destination not on the default-deny allowlist |
 | `other` | `deny manager` (`:356`), `deny all` (`:402`), a `TCP_DENIED` line without a note, an unknown note |
 | `domain_blacklist_dns_reconstructed` | not written at ingestion: a pre-reason `/503` to a listed name, reassigned once at start-up (schema version 3, section 7) |
 | `none` | not blocked |

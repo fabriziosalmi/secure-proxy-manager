@@ -446,6 +446,47 @@ check  "whitelisted external client → public site"       200 none          cod
 check  "other external client → public site"             403 source_gate   code   "$PFX-ext" "$EXT_OTHER"  http://pub.test/
 check  "other external client → whitelisted IP (CONNECT :8443)" 403 source_gate tunnel "$PFX-ext" "$EXT_OTHER" "$EXT_CLIENT:8443"
 
+echo "── client groups ──"
+# A group of one LAN client ($GROUP_CLIENT), the other LAN client outside it.
+# The group's files and a manifest vouching for every list, as the backend
+# writes them; the generator's verified sync copies them (sync_groups).
+GROUP_CLIENT=192.168.77.51
+group_seed() { # groups.conf line, extra shell
+  printf '%s' "
+    mkdir -p /config/groups
+    echo $GROUP_CLIENT > /config/groups/g1_src.txt
+    echo pub.test > /config/groups/s7_domain.txt
+    printf '%s\n' '$1' > /config/groups/groups.conf
+    ${2:-}
+    for f in ip_blacklist ip_whitelist domain_blacklist dst_allow_ip dst_allow_domain; do [ -f /config/\$f.txt ] || : > /config/\$f.txt; done
+    python3 -I -c '
+import hashlib, json, os
+names = [\"ip_blacklist.txt\", \"ip_whitelist.txt\", \"domain_blacklist.txt\", \"dst_allow_ip.txt\", \"dst_allow_domain.txt\"]
+names += [\"groups/\" + n for n in sorted(os.listdir(\"/config/groups\"))]
+files = {n: {\"sha256\": hashlib.sha256(open(\"/config/\" + n, \"rb\").read()).hexdigest(), \"bytes\": 0} for n in names}
+json.dump({\"version\": 1, \"generated_at\": 1, \"files\": files}, open(\"/config/lists.manifest.json\", \"w\"))'"
+}
+start_proxy "$(group_seed 'group 1 days=- start=- end=- allowlist_only=0 domain=7 ip=-')" || exit 1
+check  "group member → a domain on the group's list"     403 group_list    code   "$PFX-lan" "$GROUP_CLIENT" http://pub.test/
+check  "group member → the same, CONNECT :8443"          403 group_list    tunnel "$PFX-lan" "$GROUP_CLIENT" pub.test:8443
+check  "other LAN client → the same domain"              200 none          code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/
+check  "group member → LAN service, not on the list"     200 none          code   "$PFX-lan" "$GROUP_CLIENT" "http://$LAN_SVC/"
+
+grp_h=$(( ( $(date -u +%-H) + 12 ) % 24 ))
+start_proxy "$(group_seed "$(printf 'group 1 days=SMTWHFA start=%02d:00 end=%02d:01 allowlist_only=0 domain=- ip=-' "$grp_h" "$grp_h")")" || exit 1
+check  "group member outside its hours"                  403 group_time    code   "$PFX-lan" "$GROUP_CLIENT" http://pub.test/
+check  "other LAN client at the same time"               200 none          code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/
+
+start_proxy "$(group_seed 'group 1 days=- start=- end=- allowlist_only=1 domain=- ip=-' 'echo www.pub.test > /config/dst_allow_domain.txt')" || exit 1
+check  "allowlist-only member → a name not on the allowlist" 403 group_egress code "$PFX-lan" "$GROUP_CLIENT" http://pub.test/
+check  "allowlist-only member → an allowlisted name"     200 none          code   "$PFX-lan" "$GROUP_CLIENT" http://www.pub.test/
+check  "allowlist-only member → LAN service"             200 none          code   "$PFX-lan" "$GROUP_CLIENT" "http://$LAN_SVC/"
+check  "other LAN client → the name not on the allowlist" 200 none         code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/
+
+start_proxy "$(group_seed 'group 1 days=- start=- end=- allowlist_only=0 domain=9 ip=-')" || exit 1
+check  "group whose list has no verified copy: denied"   403 lists_unverified code "$PFX-lan" "$GROUP_CLIENT" http://pub.test/
+check  "other LAN client meanwhile"                      200 none          code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/
+
 echo "── egress default-deny still applies ──"
 start_proxy 'touch /config/egress_default_deny; echo pub.test > /config/dst_allow_domain.txt' || exit 1
 check  "LAN client → allowlisted domain"                 200 none          code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/

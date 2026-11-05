@@ -1330,6 +1330,205 @@
         "x-spm-token-scope": "none"
       }
     },
+    "/api/client-groups": {
+      "get": {
+        "operationId": "get_api_client_groups",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Client groups: members (addresses or networks), lists that apply to the group only, a time window and allowlist-only egress, on top of the policy every client gets",
+        "tags": [
+          "client-groups"
+        ],
+        "x-spm-token-scope": "read"
+      },
+      "post": {
+        "operationId": "post_api_client_groups",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Create a client group ({name, description, members, lists, schedule: {days, start, end} or null, allowlist_only})",
+        "tags": [
+          "client-groups"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/client-groups/{id}": {
+      "delete": {
+        "operationId": "delete_api_client_groups_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Delete a client group",
+        "tags": [
+          "client-groups"
+        ],
+        "x-spm-token-scope": "write"
+      },
+      "get": {
+        "operationId": "get_api_client_groups_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "One client group",
+        "tags": [
+          "client-groups"
+        ],
+        "x-spm-token-scope": "read"
+      },
+      "put": {
+        "operationId": "put_api_client_groups_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Replace a client group (the same body as the create)",
+        "tags": [
+          "client-groups"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
     "/api/client-setup": {
       "get": {
         "operationId": "get_api_client_setup",
@@ -2201,6 +2400,51 @@
           }
         },
         "summary": "Remove a source of the domain blacklist ({id} or 'unrecorded'): the entries no other source lists go, the others stay under one of theirs; then re-export the lists",
+        "tags": [
+          "domain-blacklist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/domain-blacklist/sources/{id}/scope": {
+      "put": {
+        "operationId": "put_api_domain_blacklist_sources_id_scope",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Set whether a domain blacklist source applies to every client ({scope: 'global'}) or only to the client groups that use it ({scope: 'groups'}); a groups-only source is enforced by the proxy, not the DNS sinkhole",
         "tags": [
           "domain-blacklist"
         ],
@@ -3516,6 +3760,51 @@
           }
         },
         "summary": "Remove a source of the IP blacklist ({id} or 'unrecorded'): the entries no other source lists go, the others stay under one of theirs; then re-export the lists",
+        "tags": [
+          "ip-blacklist"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/ip-blacklist/sources/{id}/scope": {
+      "put": {
+        "operationId": "put_api_ip_blacklist_sources_id_scope",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Set whether an IP blacklist source applies to every client ({scope: 'global'}) or only to the client groups that use it ({scope: 'groups'})",
         "tags": [
           "ip-blacklist"
         ],

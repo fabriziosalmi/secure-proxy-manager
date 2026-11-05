@@ -384,7 +384,10 @@ const WHY: Record<string, string> = {
   protocol_policy: 'The method or protocol is not allowed (FTP, or a method such as PUT or DELETE).',
   lists_unverified:
     'A blocklist did not match the manifest the backend wrote with it, so the proxy refused every request ' +
-    'until a verified copy was loaded.',
+    '(for a list a client group uses, every request from that group) until a verified copy was loaded.',
+  group_list: 'The client is in a client group, and the destination is on a list that applies to that group.',
+  group_time: 'The client is in a client group whose access is limited to set hours, and the request came outside them.',
+  group_egress: 'The client is in a client group that may reach only the default-deny allowlist, and the destination is not on it.',
   other: 'A proxy rule blocked it that the proxy did not name.',
   unclassified: 'Logged before the proxy recorded why it blocked a request, so the rule is not known.',
 };

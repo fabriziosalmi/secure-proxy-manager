@@ -672,6 +672,57 @@ print("count=%d uncovered=%s" % (len(squid_files), ",".join(uncovered) if uncove
   && ok "every template in /usr/share/squid/errors/en has an SPM page or is listed as stock" \
   || bad "every template in /usr/share/squid/errors/en has an SPM page or is listed as stock" "$cov_out"
 
+echo "── client groups ──"
+# The backend's files under /config/groups, vouched for by the manifest, as
+# the watchdog's verified sync copies them (sync_groups).
+groups_run() { # groups.conf content, extra shell
+  docker run --rm --memory 256m --tmpfs /ssl --entrypoint /bin/bash "$IMAGE" -c "
+    mkdir -p /config/groups /etc/squid
+    printf '192.168.77.51\n10.9.0.0/16\nfd00:1::/64\n' > /config/groups/g1_src.txt
+    printf 'pub.test\n*.games.example\n' > /config/groups/s7_domain.txt
+    printf '203.0.113.0/24\n' > /config/groups/s8_ip.txt
+    printf '10.20.0.0/16\n' > /config/groups/g2_src.txt
+    : > /config/groups/g3_src.txt
+    printf '%b' '$1' > /config/groups/groups.conf
+    for f in ip_blacklist ip_whitelist domain_blacklist dst_allow_ip dst_allow_domain; do : > /config/\$f.txt; done
+    python3 -I -c '
+import hashlib, json, os
+names = [\"ip_blacklist.txt\", \"ip_whitelist.txt\", \"domain_blacklist.txt\", \"dst_allow_ip.txt\", \"dst_allow_domain.txt\"]
+names += [\"groups/\" + n for n in sorted(os.listdir(\"/config/groups\"))]
+files = {}
+for n in names:
+    b = open(\"/config/\" + n, \"rb\").read()
+    files[n] = {\"sha256\": hashlib.sha256(b).hexdigest(), \"bytes\": len(b)}
+json.dump({\"version\": 1, \"generated_at\": 1, \"files\": files}, open(\"/config/lists.manifest.json\", \"w\"))'
+    /usr/local/bin/generate_squid_conf.sh >/tmp/gen.log 2>&1; echo \"gen_rc=\$?\"
+    $2
+  " 2>/dev/null
+}
+got="$(groups_run 'group 1 days=MTWHF start=07:00 end=21:00 allowlist_only=1 domain=7 ip=8\ngroup 2 days=- start=- end=- allowlist_only=0 domain=7,9 ip=-\ngroup 3 days=- start=- end=- allowlist_only=0 domain=7 ip=-\n' '
+  grep -E "^(acl spm_|http_access deny spm_g|http_access allow localnet)" /etc/squid/squid.conf
+  grep -c "^acl spm_s7_domain " /etc/squid/squid.conf | sed "s/^/s7_acls=/"
+  cat /etc/squid/groups/s7_domain.txt | tr "\n" " " | sed "s/^/s7=/"; echo
+  cat /etc/squid/groups/g1_src.txt | tr "\n" " " | sed "s/^/g1=/"; echo
+  squid -k parse >/dev/null 2>&1; echo "parse_rc=$?"')"
+for want in 'gen_rc=0' 'acl spm_g1 src "/etc/squid/groups/g1_src.txt"' 'acl spm_g1_hours time MTWHF 07:00-21:00' \
+  'http_access deny spm_g1 !spm_g1_hours spm_r_group_time' 'http_access deny spm_g1 spm_s7_domain spm_r_group_list' \
+  'http_access deny spm_g1 spm_s8_ip spm_r_group_list' 'http_access deny spm_g2 spm_s7_domain spm_r_group_list' \
+  'http_access deny spm_g2 spm_r_lists_unverified' 's7_acls=1' 's7=pub.test games.example ' \
+  'g1=10.9.0.0/16 192.168.77.51 fd00:1::/64 ' 'parse_rc=0'; do
+  grep -qxF -- "$want" <<<"$got" && ok "groups: $want" || bad "groups: $want" "$(tr '\n' '|' <<<"$got")"
+done
+# The allowlist-only rule sits right before the catch-all allow, like the
+# global egress rule: LAN and IP exceptions are allowed above it.
+grep -A1 -xF 'http_access deny spm_g1 !egress_dst_allow_ip !egress_dst_allow_dom spm_r_group_egress' <<<"$got" | tail -1 | grep -qxF 'http_access allow localnet spm_r_none' \
+  && ok "groups: allowlist-only right before allow localnet" || bad "groups: allowlist-only placement" "$(tr '\n' '|' <<<"$got")"
+grep -q 'spm_g3' <<<"$got" && bad "groups: a group with no members has no rules" "$(tr '\n' '|' <<<"$got")" || ok "groups: a group with no members has no rules"
+for line in 'group 1 days=MX start=07:00 end=21:00 allowlist_only=0 domain=- ip=-' \
+            'group 1 days=- start=- end=- allowlist_only=0 domain=7;touch /tmp/x ip=-' \
+            'group 1 days=MTWHF start=21:00 end=07:00 allowlist_only=0 domain=- ip=-'; do
+  got="$(groups_run "$line\n" 'grep -c "^http_access deny spm_g" /etc/squid/squid.conf 2>/dev/null | sed "s/^/rules=/"')"
+  grep -q 'gen_rc=0' <<<"$got" && bad "groups: refused line: $line" "$(tr '\n' '|' <<<"$got")" || ok "groups: generation fails on: $line"
+done
+
 echo "── entrypoint: an empty cache_dir with the CA in use ──"
 # startup.sh creates the cache_dir with squid -z. Run as proxy, squid -z could
 # not read the CA key (root 400) when SSL bump or TLS peek was on and stopped

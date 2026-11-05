@@ -413,6 +413,9 @@ acl spm_r_content_filter annotate_transaction spm_reason=content_filter
 acl spm_r_direct_ip annotate_transaction spm_reason=direct_ip
 acl spm_r_egress_policy annotate_transaction spm_reason=egress_policy
 acl spm_r_lists_unverified annotate_transaction spm_reason=lists_unverified
+acl spm_r_group_list annotate_transaction spm_reason=group_list
+acl spm_r_group_time annotate_transaction spm_reason=group_time
+acl spm_r_group_egress annotate_transaction spm_reason=group_egress
 acl spm_r_other annotate_transaction spm_reason=other
 
 # Protocol guard: Squid's built-in FTP gateway is the Squidbleed
@@ -1073,6 +1076,98 @@ if ! python3 -I "$SPM_LISTS" --sync-lists; then
 fi
 normalize_ip_lists /etc/squid/blacklists/ip/local.txt /etc/squid/whitelists/ip/local.txt /etc/squid/allowlists/dst_ip/local.txt
 refresh_domain_acl
+
+# ── Client groups ─────────────────────────────────────────────────────────
+#
+# After the verified sync above, which copies them (sync_groups): the backend
+# exports the groups (backend-go/internal/database/client_groups.go): groups.conf, one
+# line per group; g<ID>_src.txt, its members; s<ID>_ip.txt and s<ID>_domain.txt,
+# the lists that apply to groups only. A group only tightens: its rules are
+# denies on top of the global ones. Lists and the time window go with the other
+# policies, before any allow; allowlist-only egress goes where the global egress
+# rule goes, so LAN destinations and IP exceptions stay reachable.
+#
+# Every line of groups.conf must match the pattern in full, or the generation
+# fails and the running configuration stays: a config without a group's rules
+# would be weaker than the one the operator set. A list a group uses that has no
+# verified copy yet denies the group everything (lists_unverified) rather than
+# letting it through.
+GROUPS_DIR=/etc/squid/groups
+GROUPS_INDEX="$GROUPS_DIR/groups.conf"
+GROUP_LINE_RE='^group [0-9]{1,9} days=(-|[SMTWHFA]{1,7}) start=(-|([01][0-9]|2[0-3]):[0-5][0-9]) end=(-|([01][0-9]|2[0-3]):[0-5][0-9]) allowlist_only=[01] domain=(-|[0-9]{1,9}(,[0-9]{1,9})*) ip=(-|[0-9]{1,9}(,[0-9]{1,9})*)$'
+if [ -s "$GROUPS_INDEX" ]; then
+    group_acls=""
+    group_rules=""
+    group_egress=""
+    group_lists_defined=" "
+    groups_applied=0
+    while IFS= read -r line || [ -n "$line" ]; do
+        [ -z "$line" ] && continue
+        if ! printf '%s\n' "$line" | grep -Eq "$GROUP_LINE_RE"; then
+            echo "CRITICAL: $GROUPS_INDEX has a line that is not a client group; refusing to generate a config without its rules" >&2
+            return 1 2>/dev/null || exit 1
+        fi
+        # shellcheck disable=SC2086 # the line matched the pattern: no glob, no quotes
+        set -- $line
+        gid="$2"; days="${3#days=}"; tstart="${4#start=}"; tend="${5#end=}"
+        allowlist_only="${6#allowlist_only=}"; domain_lists="${7#domain=}"; ip_lists="${8#ip=}"
+        members="$GROUPS_DIR/g${gid}_src.txt"
+        if [ ! -s "$members" ]; then
+            echo "Client group $gid has no members: no rules"
+            continue
+        fi
+        group_acls+="acl spm_g${gid} src \"$members\""$'\n'
+        if [ "$days" != "-" ]; then
+            if [ "$tstart" = "-" ] || [ "$tend" = "-" ] || [[ ! "$tend" > "$tstart" ]]; then
+                echo "CRITICAL: client group $gid has days but no valid window; refusing to generate" >&2
+                return 1 2>/dev/null || exit 1
+            fi
+            group_acls+="acl spm_g${gid}_hours time ${days} ${tstart}-${tend}"$'\n'
+            group_rules+="http_access deny spm_g${gid} !spm_g${gid}_hours spm_r_group_time"$'\n'
+        fi
+        for kind in domain ip; do
+            if [ "$kind" = domain ]; then ids="$domain_lists"; acltype=dstdomain; else ids="$ip_lists"; acltype=dst; fi
+            [ "$ids" = "-" ] && continue
+            for sid in ${ids//,/ }; do
+                list="$GROUPS_DIR/s${sid}_${kind}.txt"
+                if [ ! -f "$list" ]; then
+                    echo "WARNING: client group $gid uses list $sid, which has no verified copy: the group is denied everything until it has one" >&2
+                    group_rules+="http_access deny spm_g${gid} spm_r_lists_unverified"$'\n'
+                    continue
+                fi
+                if [[ "$group_lists_defined" != *" s${sid}_${kind} "* ]]; then
+                    group_acls+="acl spm_s${sid}_${kind} ${acltype} \"$list\""$'\n'
+                    group_lists_defined+="s${sid}_${kind} "
+                fi
+                group_rules+="http_access deny spm_g${gid} spm_s${sid}_${kind} spm_r_group_list"$'\n'
+            done
+        done
+        if [ "$allowlist_only" = 1 ]; then
+            group_egress+="http_access deny spm_g${gid} !egress_dst_allow_ip !egress_dst_allow_dom spm_r_group_egress"$'\n'
+        fi
+        groups_applied=$((groups_applied + 1))
+    done < "$GROUPS_INDEX"
+    if [ -n "$group_acls" ]; then
+        insert_policy "# ── Client groups ──
+${group_acls}${group_rules}" || { return 1 2>/dev/null || exit 1; }
+    fi
+    if [ -n "$group_egress" ]; then
+        grep -qF 'acl egress_dst_allow_ip dst' "$SQUID_CONF" || \
+            insert_policy 'acl egress_dst_allow_ip dst "/etc/squid/allowlists/dst_ip/local.txt"
+acl egress_dst_allow_dom dstdomain "/etc/squid/allowlists/dst_domain/local.txt"' || { return 1 2>/dev/null || exit 1; }
+        tmp="$(mktemp)"
+        SPM_BLOCK="${group_egress%$'\n'}" awk 'done == 0 && $0 == "http_access allow localnet spm_r_none" { print ENVIRON["SPM_BLOCK"]; done = 1 } { print }' "$SQUID_CONF" > "$tmp" \
+            && cat "$tmp" > "$SQUID_CONF"
+        rm -f "$tmp"
+        # Fail closed: without the allow localnet anchor the rules are not in;
+        # a config that lets the group out is not written.
+        if ! grep -qF "${group_egress%%$'\n'*}" "$SQUID_CONF"; then
+            echo "CRITICAL: could not place the client groups' allowlist-only rules; refusing to generate" >&2
+            return 1 2>/dev/null || exit 1
+        fi
+    fi
+    echo "Client groups: $groups_applied with rules"
+fi
 
 # Exit status must reflect whether the CONFIG was generated, not whether the
 # last optional file happened to exist. Without this the script exited 1
