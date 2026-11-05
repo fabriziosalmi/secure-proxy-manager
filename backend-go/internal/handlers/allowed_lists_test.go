@@ -29,7 +29,8 @@ func TestAPasteOnAnAllowedListIsOnePastedListSource(t *testing.T) {
 		if a.kind != "paste" || a.id != b.id {
 			t.Errorf("%s: sources %+v and %+v, want one pasted-list source", c.path, a, b)
 		}
-		// A second paste is a source of its own; a known entry stays with the first.
+		// A second paste is a source of its own; a known entry stays with the
+		// first, and the second paste is recorded as another of its sources.
 		if code, _ := call(t, h, "POST", c.path, `{"content":"`+c.first+`"}`); code != http.StatusOK {
 			t.Fatal(code)
 		}
@@ -38,8 +39,10 @@ func TestAPasteOnAnAllowedListIsOnePastedListSource(t *testing.T) {
 		}
 		var sources int
 		_ = db.QueryRow("SELECT COUNT(*) FROM list_sources WHERE list = ?", c.table).Scan(&sources)
-		if sources != 1 {
-			t.Errorf("%s: %d sources after a paste that added nothing, want 1", c.path, sources)
+		var links int
+		_ = db.QueryRow("SELECT COUNT(*) FROM " + c.table + "_sources").Scan(&links) // #nosec G202 -- table is a constant of the cases
+		if sources != 2 || links != 1 {
+			t.Errorf("%s: %d sources and %d records of another source after a paste of a known entry, want 2 and 1", c.path, sources, links)
 		}
 	}
 }
@@ -78,28 +81,38 @@ func TestAPasteOnAllowedDomainsSaysWhyEachLineIsRefused(t *testing.T) {
 // The single add says what is wrong in the words the page uses: the list by
 // its name on screen, a wildcard or a leading dot with the name to write. The
 // wildcard refusal used to claim "a parent domain covers its subdomains",
-// which the export does not do.
+// which the export does not do. A value already added by hand is not an
+// error (ok): 200, saying so.
 func TestTheListRefusalsNameTheListAndTheReason(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
 	h := listRouter(t, db, cfg)
-	for _, c := range []struct{ path, body, want string }{
-		{"/api/domain-whitelist", `{"domain":"github.com"}`, ""},
-		{"/api/domain-whitelist", `{"domain":"GitHub.com"}`, `"github.com" is already on Domain exceptions`},
-		{"/api/domain-whitelist", `{"domain":".github.com"}`, `".github.com" is not an exact name: write github.com. A domain exception takes that same name off Blocked domains, however it is written there, and covers no name under it`},
-		{"/api/domain-whitelist", `{"domain":"*.github.com"}`, `"*.github.com" is not an exact name: write github.com. A domain exception takes that same name off Blocked domains, however it is written there, and covers no name under it`},
-		{"/api/domain-whitelist", `{"domain":"git?hub.com"}`, `"git?hub.com" is not an exact name: wildcards and regular expressions are not supported on Domain exceptions`},
-		{"/api/domain-whitelist", `{"domain":"not valid"}`, `"not valid" is not a domain name: labels of letters, digits and hyphens separated by dots`},
-		{"/api/domain-blacklist", `{"domain":"ads.example"}`, ""},
-		{"/api/domain-blacklist", `{"domain":"ads.example"}`, `"ads.example" is already on Blocked domains`},
-		{"/api/domain-blacklist", `{"domain":"not valid"}`, `"not valid" is not a domain name: labels of letters, digits and hyphens separated by dots`},
-		{"/api/ip-whitelist", `{"ip":"203.0.113.9"}`, ""},
-		{"/api/ip-whitelist", `{"ip":"203.0.113.9"}`, `"203.0.113.9" is already on IP exceptions`},
-		{"/api/ip-whitelist", `{"ip":"300.1.1.1"}`, `"300.1.1.1" is not an IP address or network`},
-		{"/api/ip-blacklist", `{"ip":"203.0.113.9"}`, ""},
-		{"/api/ip-blacklist", `{"ip":"203.0.113.9"}`, `"203.0.113.9" is already on Blocked IPs`},
+	for _, c := range []struct {
+		path, body, want string
+		ok               bool
+	}{
+		{"/api/domain-whitelist", `{"domain":"github.com"}`, "", false},
+		{"/api/domain-whitelist", `{"domain":"GitHub.com"}`, `"github.com" is already on Domain exceptions, added by hand`, true},
+		{"/api/domain-whitelist", `{"domain":".github.com"}`, `".github.com" is not an exact name: write github.com. A domain exception takes that same name off Blocked domains, however it is written there, and covers no name under it`, false},
+		{"/api/domain-whitelist", `{"domain":"*.github.com"}`, `"*.github.com" is not an exact name: write github.com. A domain exception takes that same name off Blocked domains, however it is written there, and covers no name under it`, false},
+		{"/api/domain-whitelist", `{"domain":"git?hub.com"}`, `"git?hub.com" is not an exact name: wildcards and regular expressions are not supported on Domain exceptions`, false},
+		{"/api/domain-whitelist", `{"domain":"not valid"}`, `"not valid" is not a domain name: labels of letters, digits and hyphens separated by dots`, false},
+		{"/api/domain-blacklist", `{"domain":"ads.example"}`, "", false},
+		{"/api/domain-blacklist", `{"domain":"ads.example"}`, `"ads.example" is already on Blocked domains, added by hand`, true},
+		{"/api/domain-blacklist", `{"domain":"not valid"}`, `"not valid" is not a domain name: labels of letters, digits and hyphens separated by dots`, false},
+		{"/api/ip-whitelist", `{"ip":"203.0.113.9"}`, "", false},
+		{"/api/ip-whitelist", `{"ip":"203.0.113.9"}`, `"203.0.113.9" is already on IP exceptions, added by hand`, true},
+		{"/api/ip-whitelist", `{"ip":"300.1.1.1"}`, `"300.1.1.1" is not an IP address or network`, false},
+		{"/api/ip-blacklist", `{"ip":"203.0.113.9"}`, "", false},
+		{"/api/ip-blacklist", `{"ip":"203.0.113.9"}`, `"203.0.113.9" is already on Blocked IPs, added by hand`, true},
 	} {
 		code, body := call(t, h, "POST", c.path, c.body)
+		if c.ok {
+			if code != http.StatusOK || body["message"] != c.want {
+				t.Errorf("%s %s = %d %q, want 200 %q", c.path, c.body, code, body["message"], c.want)
+			}
+			continue
+		}
 		if c.want == "" {
 			if code != http.StatusOK {
 				t.Errorf("%s %s = %d %v, want 200", c.path, c.body, code, body)

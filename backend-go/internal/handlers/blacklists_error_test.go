@@ -44,8 +44,9 @@ func TestBlacklistHandlers_ErrorCases(t *testing.T) {
 	w = httptest.NewRecorder()
 	r = httptest.NewRequest("POST", "/api/blacklists/ip", bytes.NewReader(body))
 	h.AddIP(w, r)
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("Expected 400 for duplicate add, got %d", w.Code)
+	// Already listed, by hand: not an error (it used to be 400).
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected 200 for a duplicate added by hand, got %d", w.Code)
 	}
 	// Give time for propagate goroutine to finish (affects cleanup)
 	time.Sleep(100 * time.Millisecond)

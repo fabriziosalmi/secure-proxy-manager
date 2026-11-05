@@ -31,10 +31,6 @@ func notAnIPMessage(v string) string {
 	return fmt.Sprintf("%q is not an IP address or network", v)
 }
 
-func alreadyListedMessage(v, table string) string {
-	return fmt.Sprintf("%q is already on %s", v, listLabels[table])
-}
-
 // notExactMessage refuses a wildcard or a leading dot on Allowed domains. The
 // allowed list takes the same name off Blocked domains and covers no name
 // under it (database.EnforcedDomain), so ".example.com" would read as "and
@@ -161,9 +157,10 @@ func (h *BlacklistHandlers) ImportAllowed(table, col string, check func(string) 
 }
 
 // insertAllowed writes values under one new paste source in one transaction
-// and returns how many were new; an entry already on the list is left as it
-// is, with the source that added it first. A paste that adds nothing leaves
-// no source behind.
+// and returns how many were new; an entry already on the list keeps the
+// source that added it first, and this paste is recorded as another of its
+// sources (database.LinkStatement), so it stays if that source is removed. A
+// paste that neither adds nor records anything leaves no source behind.
 func (h *BlacklistHandlers) insertAllowed(table, col string, values []string) (int, error) {
 	if len(values) == 0 {
 		return 0, nil
@@ -183,17 +180,34 @@ func (h *BlacklistHandlers) insertAllowed(table, col string, values []string) (i
 		return 0, err
 	}
 	defer stmt.Close()
-	added := 0
+	linkText, err := database.LinkStatement(table)
+	if err != nil {
+		return 0, err
+	}
+	link, err := tx.Prepare(linkText)
+	if err != nil {
+		return 0, err
+	}
+	defer link.Close()
+	added, linked := 0, 0
 	for _, v := range values {
 		res, err := stmt.Exec(v, sourceID)
 		if err != nil {
 			return 0, err
 		}
-		if n, err := res.RowsAffected(); err == nil {
+		if n, err := res.RowsAffected(); err == nil && n > 0 {
 			added += int(n)
+			continue
+		}
+		res, err = link.Exec(sourceID, v, sourceID)
+		if err != nil {
+			return 0, err
+		}
+		if n, err := res.RowsAffected(); err == nil {
+			linked += int(n)
 		}
 	}
-	if added == 0 {
+	if added == 0 && linked == 0 {
 		// Nothing references the source: it goes with the rollback.
 		return 0, nil
 	}

@@ -142,9 +142,12 @@ export function AddEntries({ list, method, onMethodChange, onChanged, onClose }:
       return;
     }
     void run('single', async () => {
-      await api.post(list.path, { [list.field]: v, description: desc.trim() });
+      const r = await api.post(list.path, { [list.field]: v, description: desc.trim() });
       setValue('');
       setDesc('');
+      // Already on the list: not added, the server says what it recorded
+      // (it now counts as added by hand too, so it stays if its list goes).
+      if (r?.data?.data?.already_listed) return String(r.data.message);
       return `Added ${v} to ${list.label}`;
     });
   };

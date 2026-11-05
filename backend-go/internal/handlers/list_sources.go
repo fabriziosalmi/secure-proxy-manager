@@ -83,7 +83,7 @@ func (h *BlacklistHandlers) removeSource(l listRoute) http.HandlerFunc {
 			}
 			id = n
 		}
-		removed, err := database.RemoveSource(h.db, l.table, id)
+		removed, kept, err := database.RemoveSource(h.db, l.table, id)
 		if err != nil {
 			writeInternalError(w, "remove_source", err)
 			return
@@ -91,7 +91,7 @@ func (h *BlacklistHandlers) removeSource(l listRoute) http.HandlerFunc {
 		if removed > 0 {
 			requestExport()
 		}
-		details := map[string]any{"removed": removed, "kind": kind}
+		details := map[string]any{"removed": removed, "kept": kept, "kind": kind}
 		if label != "" {
 			details["name"] = label
 		}
@@ -99,10 +99,16 @@ func (h *BlacklistHandlers) removeSource(l listRoute) http.HandlerFunc {
 			source = redactURL(source)
 		}
 		auditChange(h.db, r, "remove_source_"+l.table, source, details)
+		// kept: entries this source listed that another source also lists;
+		// they stay, under one of those.
+		message := fmt.Sprintf("Removed %d entries", removed)
+		if kept > 0 {
+			message += fmt.Sprintf("; %d stay because another source lists them", kept)
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"status":  "success",
-			"message": fmt.Sprintf("Removed %d entries", removed),
-			"data":    map[string]any{"removed": removed},
+			"message": message,
+			"data":    map[string]any{"removed": removed, "kept": kept},
 		})
 	}
 }

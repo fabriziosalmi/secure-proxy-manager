@@ -121,15 +121,19 @@ func TestImportsRecordWhereTheirEntriesCameFrom(t *testing.T) {
 	if s := sourceOf(t, db, "domain_blacklist", "domain", "ads.example"); s.id != first.id {
 		t.Errorf("ads.example moved to source %d, want it to stay with %d", s.id.Int64, first.id.Int64)
 	}
-	// A paste that adds nothing leaves no empty source behind.
+	// A paste of only known entries adds no entry: it is recorded as another
+	// source of each, and ads.example stays with the source that added it.
 	var before, after int
 	_ = db.QueryRow("SELECT COUNT(*) FROM list_sources").Scan(&before)
 	if code, _ := call(t, h, "POST", "/api/blacklists/import", `{"type":"domain","content":"ads.example"}`); code != http.StatusOK {
 		t.Fatal("duplicate paste failed")
 	}
 	_ = db.QueryRow("SELECT COUNT(*) FROM list_sources").Scan(&after)
-	if after != before {
-		t.Errorf("a paste of only known entries left %d new source rows", after-before)
+	if after != before+1 {
+		t.Errorf("a paste of only known entries left %d new source rows, want 1", after-before)
+	}
+	if s := sourceOf(t, db, "domain_blacklist", "domain", "ads.example"); s.id != first.id {
+		t.Errorf("ads.example moved to source %d, want it to stay with %d", s.id.Int64, first.id.Int64)
 	}
 
 	// The list carries the source next to each entry.
@@ -177,6 +181,33 @@ func TestHandAddedEntriesShareTheManualSourceOfTheirList(t *testing.T) {
 	_ = db.QueryRow("SELECT description FROM ip_blacklist WHERE ip='203.0.113.6'").Scan(&desc)
 	if desc != "scanner" {
 		t.Errorf("the typed description = %q, want it kept", desc)
+	}
+}
+
+// A range a country lists that was already blocked is recorded under the
+// country too: removing the list that added it first leaves it, under the
+// country.
+func TestGeoKeepsARangeItListsWhenTheFirstSourceGoes(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("2.32.0.0/16\n2.33.0.0/16\n"))
+	}))
+	defer ts.Close()
+	cfg.GeoIPURL = ts.URL
+	h := listRouter(t, db, cfg)
+	if code, body := call(t, h, "POST", "/api/blacklists/import", `{"type":"ip","content":"2.32.0.0/16"}`); code != http.StatusOK {
+		t.Fatalf("paste = %d %v", code, body)
+	}
+	paste := sourceOf(t, db, "ip_blacklist", "ip", "2.32.0.0/16")
+	if code, body := call(t, h, "POST", "/api/blacklists/import-geo", `{"countries":["it"]}`); code != http.StatusOK {
+		t.Fatalf("geo import = %d %v", code, body)
+	}
+	if code, body := call(t, h, "DELETE", "/api/ip-blacklist/sources/"+itoa(int(paste.id.Int64)), ""); code != http.StatusOK {
+		t.Fatalf("remove the paste = %d %v", code, body)
+	}
+	if s := sourceOf(t, db, "ip_blacklist", "ip", "2.32.0.0/16"); s.kind != "geo" || s.source != "IT" {
+		t.Errorf("2.32.0.0/16 after the paste went: %+v, want kept under geo IT", s)
 	}
 }
 

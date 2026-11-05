@@ -29,10 +29,10 @@ import (
 //     to the same source; label is its name ("Common services: Docker").
 //     Schema version 9 added it.
 //
-// An entry keeps the source that added it first: every write path inserts with
-// INSERT OR IGNORE (or refuses a duplicate), so a second source that lists the
-// same entry does not take it over. Removing a source therefore removes exactly
-// the entries counted against it.
+// An entry keeps the source that added it first (source_id); every other
+// source that lists it is a row of <list>_sources (entry_sources.go). Removing
+// a source removes only the entries no other source lists: the others are
+// given one of their other sources.
 const (
 	SourceURL     = "url"
 	SourceManual  = "manual"
@@ -46,40 +46,54 @@ const (
 )
 
 // sourceListQueries holds every statement that names a list table, one set
-// per table, so no table name is ever built from input.
+// per table, built from the constant names in entrySourceTables, so no table
+// name is ever built from input.
 type sourceListQueries struct {
 	summary          string
-	anyBySource      string
+	anyBySource      string // args: source, source
 	deleteBySource   string
 	deleteUnrecorded string
+	// promote gives the entries whose source_id is the source being removed
+	// (promoteUnrecorded: NULL) one of their other sources instead, and
+	// dropPromoted then deletes the row of the source each one was given.
+	promote           string
+	promoteUnrecorded string
+	dropPromoted      string
+	unlinkSource      string
+	link              string // args: source, value, source (LinkStatement)
 }
 
-var sourceLists = map[string]sourceListQueries{
-	"ip_blacklist": {
-		summary:          "SELECT source_id, COUNT(*), COALESCE(MIN(added_date),''), COALESCE(MAX(added_date),'') FROM ip_blacklist GROUP BY source_id",
-		anyBySource:      "SELECT COUNT(*) FROM (SELECT 1 FROM ip_blacklist WHERE source_id = ? LIMIT 1)",
-		deleteBySource:   "DELETE FROM ip_blacklist WHERE source_id = ?",
-		deleteUnrecorded: "DELETE FROM ip_blacklist WHERE source_id IS NULL",
-	},
-	"domain_blacklist": {
-		summary:          "SELECT source_id, COUNT(*), COALESCE(MIN(added_date),''), COALESCE(MAX(added_date),'') FROM domain_blacklist GROUP BY source_id",
-		anyBySource:      "SELECT COUNT(*) FROM (SELECT 1 FROM domain_blacklist WHERE source_id = ? LIMIT 1)",
-		deleteBySource:   "DELETE FROM domain_blacklist WHERE source_id = ?",
-		deleteUnrecorded: "DELETE FROM domain_blacklist WHERE source_id IS NULL",
-	},
-	"ip_whitelist": {
-		summary:          "SELECT source_id, COUNT(*), COALESCE(MIN(added_date),''), COALESCE(MAX(added_date),'') FROM ip_whitelist GROUP BY source_id",
-		anyBySource:      "SELECT COUNT(*) FROM (SELECT 1 FROM ip_whitelist WHERE source_id = ? LIMIT 1)",
-		deleteBySource:   "DELETE FROM ip_whitelist WHERE source_id = ?",
-		deleteUnrecorded: "DELETE FROM ip_whitelist WHERE source_id IS NULL",
-	},
-	"domain_whitelist": {
-		summary:          "SELECT source_id, COUNT(*), COALESCE(MIN(added_date),''), COALESCE(MAX(added_date),'') FROM domain_whitelist GROUP BY source_id",
-		anyBySource:      "SELECT COUNT(*) FROM (SELECT 1 FROM domain_whitelist WHERE source_id = ? LIMIT 1)",
-		deleteBySource:   "DELETE FROM domain_whitelist WHERE source_id = ?",
-		deleteUnrecorded: "DELETE FROM domain_whitelist WHERE source_id IS NULL",
-	},
+func listQueries(list, col, sources SQLText) sourceListQueries {
+	// #nosec G202 -- every name is a constant of entrySourceTables
+	return sourceListQueries{
+		summary: string(`SELECT source_id, COUNT(*), COALESCE(MIN(d),''), COALESCE(MAX(d),'') FROM (
+			SELECT source_id, added_date AS d FROM ` + list + `
+			UNION ALL SELECT source_id, added_date FROM ` + sources + `) GROUP BY source_id`),
+		anyBySource: string(`SELECT COUNT(*) FROM (SELECT 1 FROM ` + list + ` WHERE source_id = ?
+			UNION ALL SELECT 1 FROM ` + sources + ` WHERE source_id = ? LIMIT 1)`),
+		deleteBySource:   string("DELETE FROM " + list + " WHERE source_id = ?"),
+		deleteUnrecorded: string("DELETE FROM " + list + " WHERE source_id IS NULL"),
+		promote: string(`UPDATE ` + list + ` SET source_id = (SELECT MIN(x.source_id) FROM ` + sources + ` x
+				WHERE x.entry_id = ` + list + `.id AND x.source_id <> ` + list + `.source_id)
+			WHERE source_id = ? AND EXISTS (SELECT 1 FROM ` + sources + ` x
+				WHERE x.entry_id = ` + list + `.id AND x.source_id <> ` + list + `.source_id)`),
+		promoteUnrecorded: string(`UPDATE ` + list + ` SET source_id = (SELECT MIN(x.source_id) FROM ` + sources + ` x WHERE x.entry_id = ` + list + `.id)
+			WHERE source_id IS NULL AND EXISTS (SELECT 1 FROM ` + sources + ` x WHERE x.entry_id = ` + list + `.id)`),
+		dropPromoted: string(`DELETE FROM ` + sources + ` WHERE EXISTS (SELECT 1 FROM ` + list + ` t
+			WHERE t.id = ` + sources + `.entry_id AND t.source_id = ` + sources + `.source_id)`),
+		unlinkSource: string("DELETE FROM " + sources + " WHERE source_id = ?"),
+		link: string(`INSERT OR IGNORE INTO ` + sources + `(entry_id, source_id)
+			SELECT id, ? FROM ` + list + ` WHERE ` + col + ` = ? AND (source_id IS NULL OR source_id <> ?)`),
+	}
 }
+
+var sourceLists = func() map[string]sourceListQueries {
+	m := map[string]sourceListQueries{}
+	for _, t := range entrySourceTables {
+		m[string(t.list)] = listQueries(t.list, t.col, t.sources)
+	}
+	return m
+}()
 
 // ErrUnknownList is returned for a list that has no provenance.
 var ErrUnknownList = errors.New("unknown list")
@@ -153,7 +167,7 @@ func DropSourceIfEmpty(db *sql.DB, list string, id int64) {
 		return
 	}
 	var n int
-	if err := db.QueryRow(q.anyBySource, id).Scan(&n); err != nil || n > 0 {
+	if err := db.QueryRow(q.anyBySource, id, id).Scan(&n); err != nil || n > 0 {
 		return
 	}
 	_, _ = db.Exec("DELETE FROM list_sources WHERE id = ? AND list = ?", id, list)
@@ -250,38 +264,54 @@ func ListSources(db *sql.DB, list string) ([]SourceSummary, error) {
 	return out, nil
 }
 
-// RemoveSource deletes the entries a source added and the source itself, in
-// one transaction, and returns how many entries went. sourceID 0 means the
+// RemoveSource removes a source from list, in one transaction: the entries no
+// other source lists go, the others are given one of their other sources and
+// stay. It returns how many went and how many stayed. sourceID 0 means the
 // entries whose source was not recorded. The caller exports the lists
-// afterwards, so the proxy and the DNS sinkhole stop enforcing them.
-func RemoveSource(db *sql.DB, list string, sourceID int64) (int64, error) {
+// afterwards, so the proxy and the DNS sinkhole stop enforcing what went.
+func RemoveSource(db *sql.DB, list string, sourceID int64) (removed, kept int64, err error) {
 	q, ok := sourceLists[list]
 	if !ok {
-		return 0, ErrUnknownList
+		return 0, 0, ErrUnknownList
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	defer tx.Rollback() //nolint:errcheck // no-op once committed
 
 	var res sql.Result
+	if sourceID == 0 {
+		res, err = tx.Exec(q.promoteUnrecorded)
+	} else {
+		res, err = tx.Exec(q.promote, sourceID)
+	}
+	if err != nil {
+		return 0, 0, err
+	}
+	kept, _ = res.RowsAffected()
+	if _, err := tx.Exec(q.dropPromoted); err != nil {
+		return 0, 0, err
+	}
 	if sourceID == 0 {
 		res, err = tx.Exec(q.deleteUnrecorded)
 	} else {
 		res, err = tx.Exec(q.deleteBySource, sourceID)
 	}
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	n, _ := res.RowsAffected()
+	removed, _ = res.RowsAffected()
 	if sourceID != 0 {
+		if _, err := tx.Exec(q.unlinkSource, sourceID); err != nil {
+			return 0, 0, err
+		}
 		if _, err := tx.Exec("DELETE FROM list_sources WHERE id = ? AND list = ?", sourceID, list); err != nil {
-			return 0, err
+			return 0, 0, err
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	return n, nil
+	return removed, kept, nil
 }

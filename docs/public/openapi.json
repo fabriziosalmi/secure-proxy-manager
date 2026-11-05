@@ -2200,7 +2200,7 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "Remove the domain blacklist entries one source added ({id} or 'unrecorded'), then re-export the lists",
+        "summary": "Remove a source of the domain blacklist ({id} or 'unrecorded'): the entries no other source lists go, the others stay under one of theirs; then re-export the lists",
         "tags": [
           "domain-blacklist"
         ],
@@ -2574,7 +2574,7 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "Remove the domain whitelist entries one source added ({id} or 'unrecorded'), then re-export the lists",
+        "summary": "Remove a source of the domain whitelist ({id} or 'unrecorded'): the entries no other source lists go, the others stay under one of theirs; then re-export the lists",
         "tags": [
           "domain-whitelist"
         ],
@@ -3515,7 +3515,7 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "Remove the IP blacklist entries one source added ({id} or 'unrecorded'), then re-export the lists",
+        "summary": "Remove a source of the IP blacklist ({id} or 'unrecorded'): the entries no other source lists go, the others stay under one of theirs; then re-export the lists",
         "tags": [
           "ip-blacklist"
         ],
@@ -3809,7 +3809,7 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "Remove the IP whitelist entries one source added ({id} or 'unrecorded'), then re-export the lists",
+        "summary": "Remove a source of the IP whitelist ({id} or 'unrecorded'): the entries no other source lists go, the others stay under one of theirs; then re-export the lists",
         "tags": [
           "ip-whitelist"
         ],

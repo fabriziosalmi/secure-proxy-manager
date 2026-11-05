@@ -250,7 +250,7 @@ func (h *BlacklistHandlers) AddIP(w http.ResponseWriter, r *http.Request) {
 	_, err = h.db.Exec("INSERT INTO ip_blacklist(ip, description, source_id) VALUES(?,?,?)", ip, item.Description, sourceID)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
-			writeError(w, http.StatusBadRequest, alreadyListedMessage(ip, "ip_blacklist"))
+			h.addListedByHand(w, r, "ip_blacklist", ip, sourceID)
 			return
 		}
 		writeInternalError(w, "add_ip_blacklist", err)
@@ -284,7 +284,7 @@ func (h *BlacklistHandlers) AddIPWhitelist(w http.ResponseWriter, r *http.Reques
 	_, err = h.db.Exec("INSERT INTO ip_whitelist(ip, description, source_id) VALUES(?,?,?)", ip, item.Description, sourceID)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
-			writeError(w, http.StatusBadRequest, alreadyListedMessage(ip, "ip_whitelist"))
+			h.addListedByHand(w, r, "ip_whitelist", ip, sourceID)
 			return
 		}
 		writeInternalError(w, "add_ip_whitelist", err)
@@ -337,7 +337,7 @@ func (h *BlacklistHandlers) AddDomain(w http.ResponseWriter, r *http.Request) {
 	_, err = h.db.Exec("INSERT INTO domain_blacklist(domain, description, source_id) VALUES(?,?,?)", domain, item.Description, sourceID)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
-			writeError(w, http.StatusBadRequest, alreadyListedMessage(domain, "domain_blacklist"))
+			h.addListedByHand(w, r, "domain_blacklist", domain, sourceID)
 			return
 		}
 		writeInternalError(w, "add_domain_blacklist", err)
@@ -443,7 +443,7 @@ func (h *BlacklistHandlers) AddDomainWhitelist(w http.ResponseWriter, r *http.Re
 	_, err = h.db.Exec("INSERT INTO domain_whitelist(domain, type, description, source_id) VALUES(?,?,?,?)", domain, entryType, item.Description, sourceID)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
-			writeError(w, http.StatusBadRequest, alreadyListedMessage(domain, "domain_whitelist"))
+			h.addListedByHand(w, r, "domain_whitelist", domain, sourceID)
 			return
 		}
 		writeInternalError(w, "add_domain_whitelist", err)
@@ -500,7 +500,7 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 	}
 
 	stored := len(existing) // parseImport adds what it accepts to existing (dedup)
-	toInsert, stats := parseImport(content, blType, existing)
+	toInsert, listed, stats := parseImport(content, blType, existing)
 	// All or nothing: a partial import would leave an arbitrary slice of the
 	// list, and the limit is what keeps dnsmasq inside its memory.
 	if limit := database.DomainBlacklistLimit(); table == "domain_blacklist" && stored+len(toInsert) > limit {
@@ -509,7 +509,7 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var sourceID int64
-	if len(toInsert) > 0 {
+	if len(toInsert) > 0 || len(listed) > 0 {
 		sourceID, err = importSource(h.db, table, &req)
 		if err != nil {
 			writeInternalError(w, "import_source", err)
@@ -519,10 +519,15 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 	insertFailed := h.insertImported(table, col, sourceID, toInsert)
 	stats.added -= insertFailed
 	stats.skipped += insertFailed
+	// Lines already on the list stay there, and this source lists them too: if
+	// the source that added them first is removed, they are not lost.
+	if stats.alsoListed, err = database.LinkAllListed(h.db, table, sourceID, listed); err != nil {
+		log.Error().Err(err).Str("table", table).Msg("import: the entries already listed were not recorded under this source")
+	}
 
 	if stats.added > 0 {
 		requestExport()
-	} else if sourceID != 0 {
+	} else if sourceID != 0 && stats.alsoListed == 0 {
 		database.DropSourceIfEmpty(h.db, table, sourceID)
 	}
 	auditImport(h.db, r, table, &req, stats)
@@ -533,7 +538,7 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":  "success",
 		"message": msg,
-		"data":    map[string]any{"added": stats.added, "skipped": stats.skipped, "bogon_skipped": stats.bogonSkipped},
+		"data":    map[string]any{"added": stats.added, "skipped": stats.skipped, "bogon_skipped": stats.bogonSkipped, "also_listed": stats.alsoListed},
 	})
 }
 
@@ -567,6 +572,29 @@ func importSource(db *sql.DB, table string, req *models.ImportBlacklistRequest) 
 		return database.KeyedSource(db, table, database.SourceURL, req.URL, strings.TrimSpace(req.Name))
 	}
 	return database.NewSource(db, table, database.SourcePaste, "")
+}
+
+// addListedByHand answers a value added by hand that is already on table: it
+// stays as it is, and the list's manual source is recorded as another of its
+// sources, so removing the list that added it first no longer takes it off.
+// It used to answer 400 "already on", record nothing, and the value went with
+// that list.
+func (h *BlacklistHandlers) addListedByHand(w http.ResponseWriter, r *http.Request, table, value string, sourceID int64) {
+	linked, err := database.LinkListed(h.db, table, value, sourceID)
+	if err != nil {
+		writeInternalError(w, "add_"+table, err)
+		return
+	}
+	msg := fmt.Sprintf("%q is already on %s, added by hand", value, listLabels[table])
+	if linked {
+		msg = fmt.Sprintf("%q is already on %s; it is now also recorded as added by hand, so it stays if the list it came from is removed", value, listLabels[table])
+		database.Audit(h.db, requestUser(r), "add_"+table, value, "already listed; recorded as added by hand")
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":  "success",
+		"message": msg,
+		"data":    map[string]any{"already_listed": true, "recorded_by_hand": linked},
+	})
 }
 
 // manualSource is the one source a list's hand-added entries share.
@@ -674,18 +702,22 @@ type importStats struct {
 	added        int
 	skipped      int
 	bogonSkipped int
+	// alsoListed: lines already on the list, now recorded under this import's
+	// source too (database.LinkAllListed). Counted in skipped as well.
+	alsoListed int
 }
 
-// parseImport classifies every line of the feed and returns the rows to write.
-// It de-duplicates against existing, and against itself: existing is updated as
-// it goes, so a feed that repeats an entry contributes it once.
+// parseImport classifies every line of the feed and returns the rows to write,
+// and the entries that were already stored (listed), which the import records
+// under its source too. It de-duplicates against existing, and against itself:
+// existing is updated as it goes, so a feed that repeats an entry contributes
+// it once.
 //
 // An imported entry gets no description: where it came from is its source,
 // and the description used to say only "Imported on <date>", the date column
 // again.
-func parseImport(content, blType string, existing map[string]struct{}) ([]string, importStats) {
-	var toInsert []string
-	var stats importStats
+func parseImport(content, blType string, existing map[string]struct{}) (toInsert, listed []string, stats importStats) {
+	fromFeed := map[string]struct{}{}
 	for _, line := range strings.Split(content, "\n") {
 		entry, verdict := classifyImportEntry(line, blType)
 		switch verdict {
@@ -702,13 +734,18 @@ func parseImport(content, blType string, existing map[string]struct{}) ([]string
 		}
 		if _, exists := existing[entry]; exists {
 			stats.skipped++
+			if _, seen := fromFeed[entry]; !seen {
+				fromFeed[entry] = struct{}{}
+				listed = append(listed, entry)
+			}
 			continue
 		}
 		existing[entry] = struct{}{}
+		fromFeed[entry] = struct{}{}
 		toInsert = append(toInsert, entry)
 		stats.added++
 	}
-	return toInsert, stats
+	return toInsert, listed, stats
 }
 
 // classifyImportEntry extracts the entry from one feed line and judges it
@@ -965,9 +1002,10 @@ func (h *BlacklistHandlers) fetchGeoFeeds(countries []string) []geoFetched {
 // parseGeoZone is the rows a country's zone file adds: valid CIDR/IP lines that
 // are not a private/bogon range (the ip_blacklist is a dst ACL denied before
 // local_dst is allowed; the same guards as the regular import) and not already present. It records what it
-// returns in existing.
-func parseGeoZone(content string, existing map[string]struct{}) []string {
-	var toInsert []string
+// returns in existing. listed is the valid rows that were already present,
+// which the country's source records too (database.LinkAllListed).
+func parseGeoZone(content string, existing map[string]struct{}) (toInsert, listed []string) {
+	fromZone := map[string]struct{}{}
 	for _, line := range strings.Split(content, "\n") {
 		ip := strings.TrimSpace(line)
 		if ip == "" || strings.HasPrefix(ip, "#") {
@@ -976,12 +1014,18 @@ func parseGeoZone(content string, existing map[string]struct{}) []string {
 		if !isValidCIDR(ip) || isLANBogonCIDR(ip) {
 			continue
 		}
-		if _, ex := existing[ip]; !ex {
-			toInsert = append(toInsert, ip)
-			existing[ip] = struct{}{}
+		if _, seen := fromZone[ip]; seen {
+			continue
 		}
+		fromZone[ip] = struct{}{}
+		if _, ex := existing[ip]; ex {
+			listed = append(listed, ip)
+			continue
+		}
+		toInsert = append(toInsert, ip)
+		existing[ip] = struct{}{}
 	}
-	return toInsert
+	return toInsert, listed
 }
 
 // importGeoCountry inserts one country's feed. It returns the rows that
@@ -1001,14 +1045,18 @@ func (h *BlacklistHandlers) importGeoCountry(res geoFetched, existing map[string
 	if res.content == "" {
 		return 0, false, strings.ToUpper(res.cc) + ": no data"
 	}
-	toInsert := parseGeoZone(res.content, existing)
-	if len(toInsert) == 0 {
+	toInsert, listed := parseGeoZone(res.content, existing)
+	if len(toInsert) == 0 && len(listed) == 0 {
 		return 0, false, ""
 	}
 	// One source per country: a second import of the same country adds to it.
 	sourceID, err := database.KeyedSource(h.db, "ip_blacklist", database.SourceGeo, strings.ToUpper(res.cc), "")
 	if err == nil {
 		committed, err = insertGeoBatch(h.db, sourceID, toInsert)
+	}
+	if err == nil {
+		// Ranges already blocked stay, and the country lists them too.
+		_, err = database.LinkAllListed(h.db, "ip_blacklist", sourceID, listed)
 	}
 	if err != nil {
 		// Roll the in-memory dedupe set back so a retry can re-attempt these.

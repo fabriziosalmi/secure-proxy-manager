@@ -1003,8 +1003,8 @@ test.describe('UI — Blacklists (Blocked IPs)', () => {
     const remove = sources.getByRole('button', { name: /^Remove batch: Pasted list, 3 entries, pasted \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/ }).first();
     await expect(remove).toBeVisible({ timeout: 10_000 });
     await remove.click();
-    await expect(page.getByRole('alertdialog').getByText('Remove 3 entries from Pasted list?')).toBeVisible();
-    expect(await confirmDelete(page, 'Remove 3 entries', '/api/ip-blacklist/sources/')).toBe(200);
+    await expect(page.getByRole('alertdialog').getByText('Remove Pasted list, 3 entries?')).toBeVisible();
+    expect(await confirmDelete(page, 'Remove source', '/api/ip-blacklist/sources/')).toBe(200);
     for (const ip of ips) {
       await page.getByRole('searchbox', { name: /^Search / }).fill(ip);
       await expect(page.getByText(`No entry matches "${ip}"`)).toBeVisible({ timeout: 10_000 });
