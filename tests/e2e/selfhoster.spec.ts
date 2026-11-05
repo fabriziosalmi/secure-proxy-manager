@@ -616,11 +616,38 @@ test.describe('UI: Clients', () => {
     await expect(page.getByRole('tablist', { name: 'Operating system' })).toBeVisible();
   });
 
+  test('a client group is created, shown with its restrictions and deleted from the page', async ({ page, request }) => {
+    const name = `pw-${Date.now() % 100000}`;
+    await page.goto('/clients');
+    await page.getByRole('button', { name: 'New group' }).click();
+    const form = page.getByRole('form', { name: 'New client group' });
+    await form.getByLabel('Name').fill(name);
+    await form.getByLabel('Members').fill('192.0.2.50\n192.0.2.64/28');
+    await form.getByRole('switch', { name: 'Only during set hours' }).click();
+    await form.getByRole('button', { name: 'Create group' }).click();
+    const row = page.getByRole('table', { name: 'Client groups' }).getByRole('row').filter({ hasText: name });
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    await expect(row.getByText('192.0.2.50/32, 192.0.2.64/28')).toBeVisible();
+    await expect(row.getByText('Mon to Fri, 07:00 to 21:00')).toBeVisible();
+
+    const token = await apiToken(request);
+    const list = await request.get(`${API_URL}/api/client-groups`, { headers: { Authorization: `Bearer ${token}` } });
+    const groups = (await list.json()) as { data: { name: string; members: string[] }[] };
+    expect(groups.data.find((g) => g.name === name)?.members).toEqual(['192.0.2.50/32', '192.0.2.64/28']);
+
+    await row.getByRole('button', { name: `Delete ${name}` }).click();
+    expect(await confirmDelete(page, 'Delete group', '/api/client-groups/')).toBe(200);
+    await expect(row).toHaveCount(0);
+  });
+
   test('fits a 390 px wide screen without horizontal scrolling', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/clients');
     await expect(page.getByRole('heading', { level: 1, name: 'Clients' })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('table', { name: 'Clients in the last 7 days' })).toBeAttached();
+    // With the group editor open too.
+    await page.getByRole('button', { name: 'New group' }).click();
+    await page.getByRole('switch', { name: 'Only during set hours' }).click();
     const overflow = await page.evaluate(() => {
       const main = document.querySelector('main')!;
       return { doc: document.documentElement.scrollWidth - window.innerWidth, main: main.scrollWidth - main.clientWidth };

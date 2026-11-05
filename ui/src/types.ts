@@ -97,10 +97,30 @@ export interface ListSource {
   entries: number;
   first_added: string;
   last_added: string;
+  /**
+   * Blocked IPs and domains only: "global" applies the source to every client,
+   * "groups" only to the client groups that use it (database/client_groups.go).
+   * Absent for the entries whose source was not recorded.
+   */
+  scope?: 'global' | 'groups';
   /** The last refresh of a url source (workers/list_sync.go), UTC; absent until one ran. */
   refreshed_at?: string;
   refresh_status?: 'ok' | 'held' | 'failed';
   refresh_detail?: string;
+}
+
+/** A client group (GET /api/client-groups): restrictions on top of the global policy for the devices it holds. */
+export interface ClientGroup {
+  id: number;
+  name: string;
+  description: string;
+  /** Addresses and networks, as masked prefixes ("10.1.0.5/32"). */
+  members: string[];
+  /** Ids of Blocked IPs and Blocked domains sources whose scope is "groups". */
+  lists: number[];
+  /** Squid's day letters (S M T W H F A, Sunday to Saturday) and a window within one day. */
+  schedule: { days: string; start: string; end: string } | null;
+  allowlist_only: boolean;
 }
 
 /** What the proxy recorded after merging an IP list for Squid. */

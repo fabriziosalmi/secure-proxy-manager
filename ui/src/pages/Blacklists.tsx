@@ -317,6 +317,30 @@ function ListBody({ list, initialSearch = '', total, enforcement, confirm, onCha
     }
   };
 
+  // Blocked IPs and Blocked domains only (database.SetSourceScope).
+  const setScope = async (s: ListSource, scope: 'global' | 'groups') => {
+    const name = sourceTitle(s);
+    const ok = await confirm(scope === 'groups' ? {
+      title: `Apply ${name} only to client groups?`,
+      body: `Its entries stop applying to every client${list.path === 'domain-blacklist' ? ' and leave the DNS sinkhole' : ''}: only the client groups that use it (Clients page) block them. An entry another list also holds stays blocked for everyone.`,
+      confirmLabel: 'Groups only',
+      destructive: true,
+    } : {
+      title: `Apply ${name} to every client?`,
+      body: 'Its entries are blocked for every client again.',
+      confirmLabel: 'Every client',
+    });
+    if (!ok) return;
+    try {
+      const r = await api.put(`${list.path}/sources/${s.id}/scope`, { scope });
+      toast.success(String(r.data?.message ?? 'Saved'));
+    } catch (err) {
+      toast.error(getErrorMessage(err, `Could not change ${name}`));
+    } finally {
+      onChanged();
+    }
+  };
+
   const removeAll = async () => {
     if (typeof total !== 'number') return;
     const ok = await confirm({
@@ -408,6 +432,7 @@ function ListBody({ list, initialSearch = '', total, enforcement, confirm, onCha
           error={sources.isError}
           onRetry={() => { void sources.refetch(); }}
           onRemove={(s) => { void removeSource(s); }}
+          onScope={list.path === 'ip-blacklist' || list.path === 'domain-blacklist' ? (s, scope) => { void setScope(s, scope); } : undefined}
           className="flex-[2_1_520px]"
         />
       </div>

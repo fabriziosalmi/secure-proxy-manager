@@ -124,7 +124,12 @@ sources, and the lists are then exported again, so Squid and dnsmasq stop
 enforcing what went. A restore does not count as another source of an entry
 that was already there. Before this, an entry belonged only to its first
 source, and removing that source removed it even while another list still
-held it. Entries added before sources were recorded
+held it.
+
+On Blocked IPs and Blocked domains, **Groups only** makes a source apply only
+to the [client groups](./client-groups.md) that use it: its entries leave the
+global list and the DNS sinkhole, and the proxy blocks them for those groups'
+members. Entries added before sources were recorded
 show "Source not recorded" and can be removed together the same way.
 
 **Export** downloads the whole list, one entry per line.

@@ -1,14 +1,17 @@
 /**
  * SourcesSection: where the entries of a list came from (GET
- * /api/{list}/sources), one row per source with the entries it added and
+ * /api/{list}/sources), one row per source with the entries it lists and
  * when, what its last refresh came to (a url source), and the removal of a
- * whole source. Each entry belongs to the source that added it first, so the
- * count next to a source is exactly what its removal takes away.
+ * whole source. An entry two sources list counts for both, and stays while
+ * one of them is left (database.RemoveSource). On Blocked IPs and Blocked
+ * domains a source applies to every client or only to client groups
+ * (onScope).
  */
 import type { ReactNode } from 'react';
 import { formatCount } from '../../lib/format';
 import type { ListSource } from '../../types';
 import { Button } from '../ui/Button';
+import { Switch } from '../ui/Switch';
 import { DataTable, type Column } from '../ui/DataTable';
 import { Section } from '../ui/Section';
 import { addedRange, refreshLine, sourceDetail, sourceTitle, type ListDef } from './lists';
@@ -20,6 +23,8 @@ export interface SourcesSectionProps {
   error: boolean;
   onRetry: () => void;
   onRemove: (s: ListSource) => void;
+  /** Blocked IPs and Blocked domains: set a source to apply to every client or only to client groups. */
+  onScope?: (s: ListSource, scope: 'global' | 'groups') => void;
   className?: string;
 }
 
@@ -62,7 +67,7 @@ function RefreshNote({ s }: { s: ListSource }) {
   return <span data-refresh={s.refresh_status} className={`text-xs [overflow-wrap:anywhere] ${tone}`}>{r.text}</span>;
 }
 
-export function SourcesSection({ list, sources, loading, error, onRetry, onRemove, className }: SourcesSectionProps) {
+export function SourcesSection({ list, sources, loading, error, onRetry, onRemove, onScope, className }: SourcesSectionProps) {
   // The source column takes the width the others leave (w-full) and no more
   // (max-w-0), so a long URL or list name is cut with an ellipsis, its whole
   // text in the title, instead of pushing Remove batch out of the card. The
@@ -109,11 +114,25 @@ export function SourcesSection({ list, sources, loading, error, onRetry, onRemov
       align: 'right',
       className: ACTION_CELL,
       cell: (s) => (
-        <Button size="sm" aria-label={batchLabel(s)} onClick={() => onRemove(s)}>
-          {/* "Remove" on a phone leaves the source name room; the name of the button is the same.
-              One element: two would be two flex items of the button, 6 px apart, which read as a double space. */}
-          <span>Remove<span className="hidden sm:inline"> batch</span></span>
-        </Button>
+        <div className="flex flex-col items-end gap-2">
+          {/* Blocked IPs and domains: the scope sits above Remove batch, in the
+              width that button already takes, so the source keeps its room. */}
+          {onScope && s.id !== null && (
+            <span className="flex items-center gap-2 text-xs text-ink-secondary">
+              <span aria-hidden="true">Groups only</span>
+              <Switch
+                label={`Groups only: ${sourceTitle(s)}`}
+                checked={s.scope === 'groups'}
+                onChange={(on) => onScope(s, on ? 'groups' : 'global')}
+              />
+            </span>
+          )}
+          <Button size="sm" aria-label={batchLabel(s)} onClick={() => onRemove(s)}>
+            {/* "Remove" on a phone leaves the source name room; the name of the button is the same.
+                One element: two would be two flex items of the button, 6 px apart, which read as a double space. */}
+            <span>Remove<span className="hidden sm:inline"> batch</span></span>
+          </Button>
+        </div>
       ),
     },
   ];
@@ -124,7 +143,9 @@ export function SourcesSection({ list, sources, loading, error, onRetry, onRemov
   return (
     <Section
       title="Where the entries came from"
-      description="Each entry keeps the source that added it first, so a list can be removed as a whole: the count is what its removal takes away."
+      description={onScope
+        ? 'An entry two sources list counts for both, and stays while one of them is left. A list set to Groups only blocks nothing for other clients: only the client groups that use it (Clients page).'
+        : 'An entry two sources list counts for both, and stays while one of them is left.'}
       flush
       className={className}
     >
