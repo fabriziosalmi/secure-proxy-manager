@@ -325,6 +325,37 @@ describe('Blacklists', () => {
       } finally { restoreTz() }
     })
 
+    // A source of Blocked IPs or Blocked domains applies to every client or
+    // only to client groups; the allowed lists and unrecorded entries have no
+    // such choice.
+    it('sets a source to groups only after a confirmation that says what changes', async () => {
+      const put = vi.spyOn(api, 'put').mockResolvedValue({ data: { status: 'success', message: 'The source applies only to the groups that use it' } } as never)
+      renderWithProviders(<Blacklists />)
+      const sw = await screen.findByRole('switch', { name: 'Groups only: Firehol Level 1' })
+      expect(sw).toHaveAttribute('aria-checked', 'false')
+      expect(screen.queryByRole('switch', { name: 'Groups only: Source not recorded' })).toBeNull()
+      expect(screen.getByText(/A list set to Groups only blocks nothing for other clients/)).toBeInTheDocument()
+      // Cancel changes nothing.
+      fireEvent.click(sw)
+      fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Cancel' }))
+      await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+      expect(put).not.toHaveBeenCalled()
+      fireEvent.click(sw)
+      const dialog = await screen.findByRole('alertdialog')
+      expect(within(dialog).getByText('Apply Firehol Level 1 only to client groups?')).toBeInTheDocument()
+      expect(within(dialog).getByText(/stop applying to every client: only the client groups that use it/)).toBeInTheDocument()
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Groups only' }))
+      await waitFor(() => expect(put).toHaveBeenCalledWith('ip-blacklist/sources/7/scope', { scope: 'groups' }))
+    })
+
+    it('offers no groups-only choice on an allowed list', async () => {
+      go('?tab=allowed-ips')
+      sources['ip-whitelist'] = ipSources
+      renderWithProviders(<Blacklists />)
+      await screen.findByRole('table', { name: 'Sources of IP exceptions' })
+      expect(screen.queryByRole('switch', { name: /^Groups only:/ })).toBeNull()
+    })
+
     it('removes a whole source after a confirmation that names it and says shared entries stay', async () => {
       renderWithProviders(<Blacklists />)
       const btn = await screen.findByRole('button', { name: 'Remove batch: Firehol Level 1, 4,521 entries' })

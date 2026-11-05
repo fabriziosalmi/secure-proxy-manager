@@ -188,10 +188,19 @@ const listSources: Record<string, Json[]> = {
     { id: 1, kind: 'url', source: 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts', label: 'StevenBlack Unified', entries: 62841, first_added: '2026-10-28 13:25:00', last_added: '2026-10-28 13:25:40', refreshed_at: '2026-11-03 06:00:00', refresh_status: 'ok', refresh_detail: 'listed 62,903 entries' },
     { id: 2, kind: 'url', source: 'https://someonewhocares.org/hosts/zero/hosts', label: 'DanPollock Hosts', entries: 12902, first_added: '2026-10-28 13:26:00', last_added: '2026-10-28 13:26:10', refreshed_at: '2026-11-03 06:00:05', refresh_status: 'held', refresh_detail: 'listed 1,204 entries, fewer than half of the 12,902 it added: they are kept' },
     { id: 3, kind: 'url', source: 'https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-hosts.txt', label: 'URLhaus Malware', entries: 1826, first_added: '2026-10-28 13:26:20', last_added: '2026-10-28 13:26:21', refreshed_at: '2026-11-03 06:00:09', refresh_status: 'failed', refresh_detail: 'not downloaded: the server answered HTTP 410' },
+    // A list for client groups only, used by the group below.
+    { id: 4, kind: 'url', source: 'https://blocklistproject.github.io/Lists/alt-version/gambling-nl.txt', label: 'Gambling and betting sites', entries: 2410, first_added: '2026-10-28 13:27:00', last_added: '2026-10-28 13:27:02', scope: 'groups' },
   ],
   'ip-whitelist': [],
   'domain-whitelist': [{ id: 9, kind: 'manual', source: '', label: '', entries: 22, first_added: '2026-10-28 13:26:00', last_added: '2026-10-28 13:26:30' }],
 };
+
+// A client group with the longest member list and every restriction.
+const clientGroups: Json[] = [{
+  id: 1, name: 'Kids tablets and the shared family laptop', description: 'weekday hours, no gambling, only the school sites',
+  members: ['192.168.1.20/32', '192.168.1.21/32', '2001:db8:85a3:1234::/64', '192.168.50.0/24'],
+  lists: [4], schedule: { days: 'MTWHF', start: '07:00', end: '21:00' }, allowlist_only: true,
+}];
 
 const settings = [
   ['wizard_completed', 'true'], ['default_password_changed', 'false'], ['ssl_bump_enabled', 'false'],
@@ -251,6 +260,7 @@ export function answer(url: URL): Json | undefined {
       hosts: ['paypa1.com'], signals: 3,
     }] : []);
     case 'clients/statistics': return { status: 'success', ...clients };
+    case 'client-groups': return ok(clientGroups);
     case 'logs/stats': return ok({ total_count: 6539, blocked_count: 145, blocked_by_reason: [r('domain_blacklist', 'Domain blacklist (proxy)', 100)] });
     case 'logs': return list(logRows, { total: 6539, limit: 100, offset: 0, internal: 120 });
     case 'blacklists/enforcement': return ok(enforcement);

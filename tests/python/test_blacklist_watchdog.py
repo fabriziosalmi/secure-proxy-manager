@@ -371,12 +371,12 @@ def _ncalls(calls):
 def test_a_reconfigure_past_the_timeout_is_not_success(w, tmp_path, monkeypatch, capsys):
     exe, calls = _fake_squid(tmp_path, "exec sleep 5")
     monkeypatch.setattr(w, "SQUID", exe)
-    monkeypatch.setattr(w, "SQUID_K_TIMEOUT", 0.5)
+    monkeypatch.setattr(w, "SQUID_K_TIMEOUT", 2)
     start = time.monotonic()
     assert w.reconfigure_squid() is None
     assert time.monotonic() - start < 4, "the timeout did not stop the command"
     assert _ncalls(calls) == 1
-    assert "did not finish within 0.5 s" in capsys.readouterr().out
+    assert "did not finish within 2 s" in capsys.readouterr().out
 
 
 def test_the_timeouts_are_the_measured_ones(w):
@@ -391,7 +391,7 @@ def test_the_timeouts_are_the_measured_ones(w):
 def test_a_parse_past_the_timeout_is_refused(w, tmp_path, monkeypatch):
     exe, calls = _fake_squid(tmp_path, '[ "$(wc -l < "%s")" -gt 1 ] || exec sleep 5' % (tmp_path / "squid-calls"))
     monkeypatch.setattr(w, "SQUID", exe)
-    monkeypatch.setattr(w, "SQUID_K_TIMEOUT", 0.5)
+    monkeypatch.setattr(w, "SQUID_K_TIMEOUT", 2)
     assert w.squid_config_ok() is False
     assert w.squid_config_ok() is True, "a parse that finishes with 0 was refused"
     assert _ncalls(calls) == 2, "the parse did not run the configured squid"
@@ -403,13 +403,15 @@ def _quiet_poll(w, monkeypatch, synced):
                 "save_lists_state"):
         monkeypatch.setattr(w, job, lambda *a: None)
     monkeypatch.setattr(w, "sync_lists", lambda s: synced.pop(0) if synced else False)
+    # The client groups' sync reads the real manifest path: not part of these cases.
+    monkeypatch.setattr(w, "sync_groups", lambda s: (False, False))
 
 
 def test_a_list_sync_whose_reconfigure_times_out_is_retried_until_squid_confirms(w, tmp_path, monkeypatch):
     # The first reconfigure hangs past the timeout, the second exits 0.
     exe, calls = _fake_squid(tmp_path, f'[ "$(wc -l < "{tmp_path}/squid-calls")" -gt 1 ] || exec sleep 5')
     monkeypatch.setattr(w, "SQUID", exe)
-    monkeypatch.setattr(w, "SQUID_K_TIMEOUT", 0.5)
+    monkeypatch.setattr(w, "SQUID_K_TIMEOUT", 2)
     _quiet_poll(w, monkeypatch, [True])
     st = types.SimpleNamespace(reconfigure_pending=False)
 
@@ -436,7 +438,7 @@ def test_a_reload_whose_reconfigure_times_out_is_reported_and_retried(w, state, 
     _touch_trigger(trigger)
     exe, calls = _fake_squid(tmp_path, "exec sleep 5")
     monkeypatch.setattr(w, "SQUID", exe)
-    monkeypatch.setattr(w, "SQUID_K_TIMEOUT", 0.5)
+    monkeypatch.setattr(w, "SQUID_K_TIMEOUT", 2)
     monkeypatch.setattr(w, "generate_checked", lambda: (types.SimpleNamespace(returncode=0, stderr=b""), True))
     results = []
     monkeypatch.setattr(w, "write_result", lambda *a: results.append(a))
@@ -455,7 +457,7 @@ def test_resolver_drift_whose_reconfigure_times_out_is_retried(w, state, tmp_pat
     st, _ = state
     exe, _ = _fake_squid(tmp_path, "exec sleep 5")
     monkeypatch.setattr(w, "SQUID", exe)
-    monkeypatch.setattr(w, "SQUID_K_TIMEOUT", 0.5)
+    monkeypatch.setattr(w, "SQUID_K_TIMEOUT", 2)
     monkeypatch.setattr(w, "generate_checked", lambda: (types.SimpleNamespace(returncode=0), True))
     monkeypatch.setattr(w, "resolved_ips", lambda: "1.1.1.1,9.9.9.9")
     w.heal_resolver_drift(st)

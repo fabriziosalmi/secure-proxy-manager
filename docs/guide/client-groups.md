@@ -15,8 +15,16 @@ restrictions on top of the policy every client gets. A group only tightens:
 The global lists, the DNS sinkhole and every other rule still apply to a
 group's members. A device in two groups gets the restrictions of both.
 
-The dashboard pages for groups come in a later release; until then groups are
-managed through the [API](/api/blacklists#client-groups).
+## Setting one up
+
+1. On **Blacklists**, in **Where the entries came from**, turn on **Groups
+   only** for each list that should apply to some devices only (Blocked IPs
+   and Blocked domains). Its entries stop applying to every client.
+2. On **Clients**, under **Client groups**, choose **New group**: a name, the
+   members, the lists for the group only, and if you want set hours or only
+   the allowlist.
+
+The [API](/api/blacklists#client-groups) does the same.
 
 ## Members
 

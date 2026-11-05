@@ -16,6 +16,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import { X } from 'lucide-react';
 import { ClientSetup } from '../components/ClientSetup';
+import { ClientGroups } from '../components/clients/ClientGroups';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Section } from '../components/ui/Section';
 import { Unavailable } from '../components/ui/Unavailable';
@@ -245,6 +246,8 @@ export function Clients() {
           </Section>
         )}
       </div>
+
+      <ClientGroups />
 
       {!isDesktop && selectedIp && (
         <ClientDrawer ip={selectedIp} row={activeRow} onClose={() => setSelectedIp(null)} />
