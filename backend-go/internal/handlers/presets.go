@@ -176,7 +176,10 @@ func (h *BlacklistHandlers) addPreset(table string) http.HandlerFunc {
 		}
 
 		added := []string{}
-		if len(missing) > 0 {
+		// The domains already listed stay as they are, and the preset is
+		// recorded as another of their sources: removing the list that added
+		// them first does not take them off while the preset is in place.
+		if len(p.Domains) > 0 {
 			tx, err := h.db.Begin()
 			if err != nil {
 				writeInternalError(w, "add_preset", err)
@@ -200,11 +203,24 @@ func (h *BlacklistHandlers) addPreset(table string) http.HandlerFunc {
 					added = append(added, d)
 				}
 			}
+			for _, d := range p.Domains {
+				if already[d] {
+					if _, err := database.LinkListed(tx, table, d, sourceID); err != nil {
+						writeInternalError(w, "add_preset", err)
+						return
+					}
+				}
+			}
 			if err := tx.Commit(); err != nil {
 				writeInternalError(w, "add_preset", err)
 				return
 			}
-			requestExport()
+			if len(added) > 0 {
+				requestExport()
+			} else {
+				// Nothing added and nothing new recorded: no empty source left.
+				database.DropSourceIfEmpty(h.db, table, sourceID)
+			}
 		}
 		alreadyListed := len(p.Domains) - len(added)
 		auditChange(h.db, r, "add_preset_"+table, p.Name, map[string]any{

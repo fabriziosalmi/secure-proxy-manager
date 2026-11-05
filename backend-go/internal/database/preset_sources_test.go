@@ -116,8 +116,8 @@ func TestVersion9AcceptsPresetSourcesAndKeepsEverySource(t *testing.T) {
 
 	var v int
 	_ = db.QueryRow("PRAGMA user_version").Scan(&v)
-	if v != 9 {
-		t.Errorf("user_version = %d, want 9", v)
+	if v != schemaVersion {
+		t.Errorf("user_version = %d, want %d", v, schemaVersion)
 	}
 	after := sourceRows(t, db)
 	if len(after) != len(before) {

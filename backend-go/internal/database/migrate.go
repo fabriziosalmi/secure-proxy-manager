@@ -20,8 +20,9 @@ import (
 // egress_provider_entries. Version 8 archives and deletes allowed_networks,
 // waf_custom_rules, and waf_block_threshold (retired.go). Version 9 rebuilds
 // list_sources so a source can be a preset (a named group of common
-// services, added in one request).
-const schemaVersion = 9
+// services, added in one request). Version 10 records every other source of
+// a list entry (entry_sources.go).
+const schemaVersion = 10
 
 // applyVersionedMigrations runs the steps a database has not seen yet.
 //
@@ -76,6 +77,11 @@ func applyVersionedMigrations(db *sql.DB) error {
 	if v < 9 {
 		if err := migratePresetSources(db); err != nil {
 			return fmt.Errorf("schema version 9: %w", err)
+		}
+	}
+	if v < 10 {
+		if err := migrateEntrySources(db); err != nil {
+			return fmt.Errorf("schema version 10: %w", err)
 		}
 	}
 	return nil

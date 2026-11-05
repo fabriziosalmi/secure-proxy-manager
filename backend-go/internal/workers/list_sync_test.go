@@ -256,9 +256,10 @@ func TestAClearedListIsNotRefilledByAHiddenSource(t *testing.T) {
 	}
 }
 
-// A source whose every entry moved to another feed is removed with them, so
-// no source without entries stays to be refreshed.
-func TestASourceLeftEmptyIsRemoved(t *testing.T) {
+// A feed that still lists an entry another feed added is one of its sources:
+// it stays, and the entry survives the other feed's removal. It used to be
+// dropped as a source with no entry, and the entry went with the other feed.
+func TestAFeedThatListsAnEntryAnotherAddedIsOneOfItsSources(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 	serveFeeds(t, map[string]string{feedA: hosts("x.test"), feedB: hosts("y.test")})
@@ -267,18 +268,67 @@ func TestASourceLeftEmptyIsRemoved(t *testing.T) {
 	serveFeeds(t, map[string]string{feedA: hosts("z.test"), feedB: hosts("x.test", "y.test")})
 	syncDomains(db, feedA, feedB)
 	expectListed(t, db, "x.test<-url:"+feedB, "y.test<-url:"+feedB, "z.test<-url:"+feedA)
-	// z.test removed by hand; A lists only x.test, which B holds: A has no
-	// entry left after the run, and its source goes.
+	// z.test removed by hand; A lists only x.test, which B holds.
 	if _, err := db.Exec("DELETE FROM domain_blacklist WHERE domain = 'z.test'"); err != nil {
 		t.Fatal(err)
 	}
 	serveFeeds(t, map[string]string{feedA: hosts("x.test"), feedB: hosts("x.test", "y.test")})
 	syncDomains(db, feedA, feedB)
-	var n int
-	_ = db.QueryRow("SELECT COUNT(*) FROM list_sources WHERE source = ?", feedA).Scan(&n)
-	if n != 0 {
-		t.Errorf("A's source with no entry left is still there")
+	expectListed(t, db, "x.test<-url:"+feedB, "y.test<-url:"+feedB)
+	var aID int64
+	if err := db.QueryRow("SELECT id FROM list_sources WHERE source = ?", feedA).Scan(&aID); err != nil {
+		t.Fatalf("A's source, which still lists x.test, is gone: %v", err)
 	}
+	var bID int64
+	_ = db.QueryRow("SELECT id FROM list_sources WHERE source = ?", feedB).Scan(&bID)
+	if _, _, err := database.RemoveSource(db, "domain_blacklist", bID); err != nil {
+		t.Fatal(err)
+	}
+	expectListed(t, db, "x.test<-url:"+feedA)
+}
+
+// A feed that no longer lists an entry it shared stops being one of its
+// sources, and the entry goes when no source is left.
+func TestASharedEntryGoesWhenNoFeedListsIt(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	serveFeeds(t, map[string]string{feedA: hosts("x.test", "a.test"), feedB: hosts("x.test", "b.test")})
+	syncDomains(db, feedA, feedB)
+	expectListed(t, db, "a.test<-url:"+feedA, "b.test<-url:"+feedB, "x.test<-url:"+feedA)
+	// Both drop x.test in the same run: it must go, whichever feed comes first,
+	// and only A's handing it to B counts as a move.
+	serveFeeds(t, map[string]string{feedA: hosts("a.test"), feedB: hosts("b.test")})
+	if c := syncDomains(db, feedA, feedB); c.Moved != 1 || c.Removed != 1 {
+		t.Errorf("run = %+v; want 1 moved (x.test from A to B), 1 removed (x.test)", c)
+	}
+	expectListed(t, db, "a.test<-url:"+feedA, "b.test<-url:"+feedB)
+	var links int
+	_ = db.QueryRow("SELECT COUNT(*) FROM domain_blacklist_sources").Scan(&links)
+	if links != 0 {
+		t.Errorf("%d rows of other sources left for entries no feed lists", links)
+	}
+}
+
+// A feed that stops listing an entry another feed still holds is no longer
+// one of its sources: when the other feed drops it later, it goes, instead of
+// staying under a feed that dropped it first.
+func TestAFeedThatDroppedASharedEntryIsNoLongerItsSource(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	serveFeeds(t, map[string]string{feedA: hosts("x.test", "a.test"), feedB: hosts("x.test", "b.test")})
+	syncDomains(db, feedA, feedB)
+	serveFeeds(t, map[string]string{feedA: hosts("x.test", "a.test"), feedB: hosts("b.test")})
+	syncDomains(db, feedA, feedB)
+	expectListed(t, db, "a.test<-url:"+feedA, "b.test<-url:"+feedB, "x.test<-url:"+feedA)
+	var links int
+	_ = db.QueryRow("SELECT COUNT(*) FROM domain_blacklist_sources").Scan(&links)
+	if links != 0 {
+		t.Errorf("B no longer lists x.test, and is still recorded as one of its sources (%d rows)", links)
+	}
+	// B read first: a stale record of B would take x.test over when A drops it.
+	serveFeeds(t, map[string]string{feedA: hosts("a.test"), feedB: hosts("b.test")})
+	syncDomains(db, feedB, feedA)
+	expectListed(t, db, "a.test<-url:"+feedA, "b.test<-url:"+feedB)
 }
 
 // A feed line is read as the import reads it (listentry): a URL names its

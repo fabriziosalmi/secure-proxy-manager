@@ -113,12 +113,18 @@ Every entry of the four lists records the source that added it:
 | GeoIP: CC | a country's address blocks |
 | Restore | each configuration restore, one source per list |
 
-An entry belongs to the source that added it first: importing a list that
-repeats an entry already present does not move it. The **Where the entries
-came from** section of each tab lists the sources with the number of entries
-each added and when, and **Remove batch** removes exactly those entries after a
-confirmation that says how many go; the lists are then exported again, so Squid
-and dnsmasq stop enforcing them. Entries added before sources were recorded
+An entry is shown under the source that added it first, and every other
+source that lists it is recorded too: a second list, a paste, a Popular list,
+a country or a preset that holds the same entry, or the same entry added on its
+own. The **Where the entries came from** section of each tab lists the sources
+with the number of entries each lists (an entry two sources list counts for
+both) and when. **Remove batch** removes a source after a confirmation: the
+entries no other source lists go, the others stay under one of their other
+sources, and the lists are then exported again, so Squid and dnsmasq stop
+enforcing what went. A restore does not count as another source of an entry
+that was already there. Before this, an entry belonged only to its first
+source, and removing that source removed it even while another list still
+held it. Entries added before sources were recorded
 show "Source not recorded" and can be removed together the same way.
 
 **Export** downloads the whole list, one entry per line.

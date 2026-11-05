@@ -296,16 +296,20 @@ function ListBody({ list, initialSearch = '', total, enforcement, confirm, onCha
 
   const removeSource = async (s: ListSource) => {
     const name = sourceTitle(s);
+    // s.entries counts every entry this source lists, also those another
+    // source lists too: those stay, under that source (database.RemoveSource).
     const ok = await confirm({
-      title: `Remove ${entriesWord(s.entries)} from ${name}?`,
-      body: `Every entry this source added leaves ${list.label}. ${list.consequence('them')} Entries another source added stay.`,
-      confirmLabel: `Remove ${entriesWord(s.entries)}`,
+      title: `Remove ${name}, ${entriesWord(s.entries)}?`,
+      body: `Its entries leave ${list.label}. ${list.consequence('them')} Those another source also lists stay, under that source.`,
+      confirmLabel: 'Remove source',
       destructive: true,
     });
     if (!ok) return;
     try {
       const r = await api.delete(`${list.path}/sources/${s.id ?? 'unrecorded'}`);
-      toast.success(`Removed ${entriesWord(r.data?.data?.removed ?? 0)} from ${list.label}`);
+      const kept: number = r.data?.data?.kept ?? 0;
+      toast.success(`Removed ${entriesWord(r.data?.data?.removed ?? 0)} from ${list.label}` +
+        (kept > 0 ? `; ${entriesWord(kept)} ${kept === 1 ? 'stays' : 'stay'} because another source lists ${kept === 1 ? 'it' : 'them'}` : ''));
     } catch (err) {
       toast.error(getErrorMessage(err, `Could not remove ${name}`));
     } finally {

@@ -61,6 +61,16 @@ type syncList struct {
 	idLast      string // the last id of a source after a given id
 	moveStale   string
 	deleteStale string
+	// The other sources of an entry (database/entry_sources.go): linkNew
+	// records the feed's source on the entries it lists that another source
+	// added; promoteStale gives an entry the feed no longer lists one of its
+	// other sources, instead of removing it; unlinkStale drops the feed's
+	// source from the entries it no longer lists; dropPromoted deletes the
+	// row of the source an entry was given.
+	linkNew      string
+	promoteStale string
+	unlinkStale  string
+	dropPromoted string
 }
 
 var syncLists = map[string]syncList{
@@ -68,9 +78,10 @@ var syncLists = map[string]syncList{
 		kind: listentry.IP,
 		feedSources: `SELECT s.source FROM list_sources s
 			WHERE s.list = 'ip_blacklist' AND s.kind = 'url'
-			AND EXISTS (SELECT 1 FROM ip_blacklist e WHERE e.source_id = s.id) ORDER BY s.id`,
+			AND (EXISTS (SELECT 1 FROM ip_blacklist e WHERE e.source_id = s.id)
+				OR EXISTS (SELECT 1 FROM ip_blacklist_sources x WHERE x.source_id = s.id)) ORDER BY s.id`,
 		count:    `SELECT COUNT(*) FROM ip_blacklist`,
-		bySource: `SELECT COUNT(*) FROM ip_blacklist WHERE source_id = ?`,
+		bySource: `SELECT (SELECT COUNT(*) FROM ip_blacklist WHERE source_id = ?) + (SELECT COUNT(*) FROM ip_blacklist_sources WHERE source_id = ?)`,
 		candidates: `SELECT COUNT(*) FROM temp.refresh_feed f WHERE f.source_id = ?
 			AND NOT EXISTS (SELECT 1 FROM ip_blacklist t WHERE t.ip = f.entry)`,
 		insertNew: `INSERT OR IGNORE INTO ip_blacklist (ip, description, source_id)
@@ -90,14 +101,30 @@ var syncLists = map[string]syncList{
 		deleteStale: `DELETE FROM ip_blacklist WHERE id IN (SELECT d.id FROM ip_blacklist d INDEXED BY idx_ip_blacklist_source_id
 			WHERE d.source_id = ? AND d.id > ? AND d.id <= ?
 			AND NOT EXISTS (SELECT 1 FROM temp.refresh_feed f WHERE f.source_id = ? AND f.entry = d.ip))`,
+		linkNew: `INSERT OR IGNORE INTO ip_blacklist_sources (entry_id, source_id)
+			SELECT t.id, ? FROM temp.refresh_feed f JOIN ip_blacklist t ON t.ip = f.entry
+			WHERE f.source_id = ? AND f.entry > ? AND f.entry <= ?
+			AND (t.source_id IS NULL OR t.source_id <> ?)`,
+		promoteStale: `UPDATE ip_blacklist
+			SET source_id = (SELECT MIN(x.source_id) FROM ip_blacklist_sources x WHERE x.entry_id = ip_blacklist.id AND x.source_id <> ip_blacklist.source_id)
+			WHERE id IN (SELECT d.id FROM ip_blacklist d INDEXED BY idx_ip_blacklist_source_id
+				WHERE d.source_id = ? AND d.id > ? AND d.id <= ?
+				AND NOT EXISTS (SELECT 1 FROM temp.refresh_feed f WHERE f.source_id = ? AND f.entry = d.ip)
+				AND EXISTS (SELECT 1 FROM ip_blacklist_sources x WHERE x.entry_id = d.id AND x.source_id <> d.source_id))`,
+		unlinkStale: `DELETE FROM ip_blacklist_sources WHERE source_id = ? AND entry_id IN (
+			SELECT x.entry_id FROM ip_blacklist_sources x JOIN ip_blacklist t ON t.id = x.entry_id
+			WHERE x.source_id = ? AND NOT EXISTS (SELECT 1 FROM temp.refresh_feed f WHERE f.source_id = ? AND f.entry = t.ip))`,
+		dropPromoted: `DELETE FROM ip_blacklist_sources WHERE EXISTS (SELECT 1 FROM ip_blacklist t
+			WHERE t.id = ip_blacklist_sources.entry_id AND t.source_id = ip_blacklist_sources.source_id)`,
 	},
 	"domain_blacklist": {
 		kind: listentry.Domain,
 		feedSources: `SELECT s.source FROM list_sources s
 			WHERE s.list = 'domain_blacklist' AND s.kind = 'url'
-			AND EXISTS (SELECT 1 FROM domain_blacklist e WHERE e.source_id = s.id) ORDER BY s.id`,
+			AND (EXISTS (SELECT 1 FROM domain_blacklist e WHERE e.source_id = s.id)
+				OR EXISTS (SELECT 1 FROM domain_blacklist_sources x WHERE x.source_id = s.id)) ORDER BY s.id`,
 		count:    `SELECT COUNT(*) FROM domain_blacklist`,
-		bySource: `SELECT COUNT(*) FROM domain_blacklist WHERE source_id = ?`,
+		bySource: `SELECT (SELECT COUNT(*) FROM domain_blacklist WHERE source_id = ?) + (SELECT COUNT(*) FROM domain_blacklist_sources WHERE source_id = ?)`,
 		candidates: `SELECT COUNT(*) FROM temp.refresh_feed f WHERE f.source_id = ?
 			AND NOT EXISTS (SELECT 1 FROM domain_blacklist t WHERE t.domain = f.entry)`,
 		insertNew: `INSERT OR IGNORE INTO domain_blacklist (domain, description, source_id)
@@ -117,6 +144,21 @@ var syncLists = map[string]syncList{
 		deleteStale: `DELETE FROM domain_blacklist WHERE id IN (SELECT d.id FROM domain_blacklist d INDEXED BY idx_domain_blacklist_source_id
 			WHERE d.source_id = ? AND d.id > ? AND d.id <= ?
 			AND NOT EXISTS (SELECT 1 FROM temp.refresh_feed f WHERE f.source_id = ? AND f.entry = d.domain))`,
+		linkNew: `INSERT OR IGNORE INTO domain_blacklist_sources (entry_id, source_id)
+			SELECT t.id, ? FROM temp.refresh_feed f JOIN domain_blacklist t ON t.domain = f.entry
+			WHERE f.source_id = ? AND f.entry > ? AND f.entry <= ?
+			AND (t.source_id IS NULL OR t.source_id <> ?)`,
+		promoteStale: `UPDATE domain_blacklist
+			SET source_id = (SELECT MIN(x.source_id) FROM domain_blacklist_sources x WHERE x.entry_id = domain_blacklist.id AND x.source_id <> domain_blacklist.source_id)
+			WHERE id IN (SELECT d.id FROM domain_blacklist d INDEXED BY idx_domain_blacklist_source_id
+				WHERE d.source_id = ? AND d.id > ? AND d.id <= ?
+				AND NOT EXISTS (SELECT 1 FROM temp.refresh_feed f WHERE f.source_id = ? AND f.entry = d.domain)
+				AND EXISTS (SELECT 1 FROM domain_blacklist_sources x WHERE x.entry_id = d.id AND x.source_id <> d.source_id))`,
+		unlinkStale: `DELETE FROM domain_blacklist_sources WHERE source_id = ? AND entry_id IN (
+			SELECT x.entry_id FROM domain_blacklist_sources x JOIN domain_blacklist t ON t.id = x.entry_id
+			WHERE x.source_id = ? AND NOT EXISTS (SELECT 1 FROM temp.refresh_feed f WHERE f.source_id = ? AND f.entry = t.domain))`,
+		dropPromoted: `DELETE FROM domain_blacklist_sources WHERE EXISTS (SELECT 1 FROM domain_blacklist t
+			WHERE t.id = domain_blacklist_sources.entry_id AND t.source_id = domain_blacklist_sources.source_id)`,
 	},
 }
 
@@ -235,6 +277,9 @@ func refreshList(db *sql.DB, table string, urls []string) refreshCount {
 		if err != nil {
 			log.Error().Err(err).Str("url", fr.url).Msg("blacklist refresh: the new entries were not all added")
 		}
+		if err := linkListed(ctx, conn, q, fr.sourceID); err != nil {
+			log.Error().Err(err).Str("url", fr.url).Msg("blacklist refresh: the entries it lists that another source added were not all recorded under it")
+		}
 		if fr.held {
 			c.Held++
 		}
@@ -274,7 +319,7 @@ func storeFeed(ctx context.Context, conn *sql.Conn, q syncList, table, url, data
 			return err
 		}
 		fr.sourceID = id
-		return c.QueryRow(q.bySource, fr.sourceID).Scan(&fr.owned)
+		return c.QueryRow(q.bySource, fr.sourceID, fr.sourceID).Scan(&fr.owned)
 	}); err != nil {
 		return fr, err
 	}
@@ -374,6 +419,23 @@ func syncStale(ctx context.Context, conn *sql.Conn, q syncList, reads []feedRead
 			if err != nil {
 				return moved, removed, err
 			}
+			// Then an entry another source lists (an import, a hand-added
+			// value, a feed not read in this run) is given that source.
+			n, err = idWindows(ctx, conn, q, fr.sourceID, q.promoteStale, func(lo, hi int64) []any {
+				return []any{fr.sourceID, lo, hi, fr.sourceID}
+			})
+			moved += n
+			if err != nil {
+				return moved, removed, err
+			}
+			// The feed's source is no longer among the other sources of an
+			// entry it stopped listing.
+			if err := writeTx(ctx, conn, func(c connQuerier) error {
+				_, err := c.Exec(q.unlinkStale, fr.sourceID, fr.sourceID, fr.sourceID)
+				return err
+			}); err != nil {
+				return moved, removed, err
+			}
 			if remove {
 				n, err := idWindows(ctx, conn, q, fr.sourceID, q.deleteStale, func(lo, hi int64) []any {
 					return []any{fr.sourceID, lo, hi, fr.sourceID}
@@ -391,7 +453,26 @@ func syncStale(ctx context.Context, conn *sql.Conn, q syncList, reads []feedRead
 			return moved, removed, err
 		}
 	}
+	// A moved or promoted entry may list its new source among its others.
+	if err := writeTx(ctx, conn, func(c connQuerier) error {
+		_, err := c.Exec(q.dropPromoted)
+		return err
+	}); err != nil {
+		return moved, removed, err
+	}
 	return moved, removed, nil
+}
+
+// linkListed records the feed's source on the entries it lists that another
+// source added, a window of the feed per transaction. Not bounded by the
+// domain limit: it adds no entry.
+func linkListed(ctx context.Context, conn *sql.Conn, q syncList, sourceID int64) error {
+	return feedWindows(ctx, conn, sourceID, func(lo, hi string) (bool, error) {
+		return true, writeTx(ctx, conn, func(c connQuerier) error {
+			_, err := c.Exec(q.linkNew, sourceID, sourceID, lo, hi, sourceID)
+			return err
+		})
+	})
 }
 
 // feedWindows calls fn on each range (lo, hi] of a feed's entries, of at

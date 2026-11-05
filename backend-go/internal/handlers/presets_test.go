@@ -67,6 +67,30 @@ func TestPresetAddsItsDomainsUnderItsOwnSourceWithOneAuditEvent(t *testing.T) {
 	}
 }
 
+// A preset domain already typed by hand is recorded under the preset too:
+// removing the hand-added source leaves it, under the preset.
+func TestPresetKeepsADomainItListsWhenTheHandAddedSourceGoes(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	h := listRouter(t, db, cfg)
+	if code, out := call(t, h, "POST", "/api/domain-whitelist", `{"domain":"hub.docker.com"}`); code != 200 {
+		t.Fatalf("manual add: %d %v", code, out)
+	}
+	if code, out := call(t, h, "POST", "/api/domain-whitelist/presets/docker", ""); code != 200 {
+		t.Fatalf("preset add: %d %v", code, out)
+	}
+	var manual, preset int
+	_ = db.QueryRow("SELECT id FROM list_sources WHERE list='domain_whitelist' AND kind='manual'").Scan(&manual)
+	_ = db.QueryRow("SELECT id FROM list_sources WHERE list='domain_whitelist' AND kind='preset'").Scan(&preset)
+	if code, out := call(t, h, "DELETE", "/api/domain-whitelist/sources/"+itoa(manual), ""); code != 200 {
+		t.Fatalf("remove the hand-added source: %d %v", code, out)
+	}
+	var src int
+	if err := db.QueryRow("SELECT source_id FROM domain_whitelist WHERE domain = 'hub.docker.com'").Scan(&src); err != nil || src != preset {
+		t.Errorf("hub.docker.com: source %d, %v; want it kept under the preset (%d)", src, err, preset)
+	}
+}
+
 // The list of presets says which domains each already has on the list,
 // whatever source added them, so the page can show the state before a click.
 func TestPresetListSaysWhatIsAlreadyListed(t *testing.T) {

@@ -205,7 +205,7 @@ func TestListSourcesCountsTheEntriesOfEachSource(t *testing.T) {
 func TestRemoveSourceRemovesExactlyItsEntries(t *testing.T) {
 	db := openInit(t)
 	url, manual := seedSources(t, db)
-	n, err := RemoveSource(db, "ip_blacklist", url)
+	n, _, err := RemoveSource(db, "ip_blacklist", url)
 	if err != nil || n != 2 {
 		t.Fatalf("RemoveSource = %d, %v; want 2 entries", n, err)
 	}
@@ -216,7 +216,7 @@ func TestRemoveSourceRemovesExactlyItsEntries(t *testing.T) {
 		t.Errorf("after removal: %d entries (want 3), source row present %d", left, sources)
 	}
 
-	n, err = RemoveSource(db, "ip_blacklist", 0)
+	n, _, err = RemoveSource(db, "ip_blacklist", 0)
 	if err != nil || n != 2 {
 		t.Fatalf("removing the unrecorded entries = %d, %v; want 2", n, err)
 	}
@@ -226,7 +226,7 @@ func TestRemoveSourceRemovesExactlyItsEntries(t *testing.T) {
 	if left != 1 || onlyManual != 1 {
 		t.Errorf("after removing the unrecorded entries: %d left, %d manual; want only the manual one", left, onlyManual)
 	}
-	if _, err := RemoveSource(db, "users", 1); err != ErrUnknownList {
+	if _, _, err := RemoveSource(db, "users", 1); err != ErrUnknownList {
 		t.Errorf("RemoveSource on users = %v, want ErrUnknownList", err)
 	}
 }

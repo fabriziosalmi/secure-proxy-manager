@@ -100,14 +100,30 @@ POST /api/ip-blacklist
 
 `ip` is a single address or a CIDR range (at most 50 characters); wildcards are
 not supported. Private, loopback, link-local, CGNAT, multicast and unspecified
-ranges are refused with `400`, and so is an entry already on the list.
-`description` is at most 500 characters on every list.
+ranges are refused with `400`. `description` is at most 500 characters on
+every list.
 
 A refusal's `detail` names the value and the list in the page's words:
-`"300.1.1.1" is not an IP address or network`, `"203.0.113.9" is already on
-Blocked IPs`. The domain lists answer the same way (`"..." is not a domain
-name: labels of letters, digits and hyphens separated by dots`,
-`"..." is already on Blocked domains`).
+`"300.1.1.1" is not an IP address or network`. The domain lists answer the
+same way (`"..." is not a domain name: labels of letters, digits and hyphens
+separated by dots`).
+
+An entry already on the list is not an error: the answer is `200` and the
+entry keeps its source, with the list's manual source recorded as another of
+its sources, so removing the source that added it first leaves it (see
+[Sources](#sources)). It used to be refused with `400` and nothing was
+recorded.
+
+```json
+{
+  "status": "success",
+  "message": "\"203.0.113.9\" is already on Blocked IPs; it is now also recorded as added by hand, so it stays if the list it came from is removed",
+  "data": { "already_listed": true, "recorded_by_hand": true }
+}
+```
+
+`recorded_by_hand` is `false` when it already was (`"..." is already on
+Blocked IPs, added by hand`).
 
 ### Import (per-type, retired)
 
@@ -197,14 +213,17 @@ import that would take the domain blacklist past
   "data": {
     "added": 150,
     "skipped": 3,
-    "bogon_skipped": 0
+    "bogon_skipped": 0,
+    "also_listed": 1
   }
 }
 ```
 
 `skipped` counts entries already listed or not valid; `bogon_skipped` counts
 the private and other non-routable ranges among them, which the IP blacklist
-refuses.
+refuses. `also_listed` counts the entries already listed that this import's
+source now lists too: they keep the source that added them first, and stay if
+that source is removed.
 
 **Formats:**
 
@@ -328,13 +347,15 @@ DELETE /api/ip-blacklist/sources/{id}
 DELETE /api/ip-blacklist/sources/unrecorded
 ```
 
-Removes, in one transaction, the entries the source added (or every entry
-whose source was not recorded), then requests an export so Squid and dnsmasq
-stop enforcing them. The same route exists under each of the four lists; an
-ID that belongs to another list answers `404`.
+Removes the source in one transaction: the entries no other source lists go
+(or, for `unrecorded`, the entries whose source was not recorded), and the
+entries another source also lists stay, under that source; then it requests an
+export so Squid and dnsmasq stop enforcing what went. The same route exists
+under each of the four lists; an ID that belongs to another list answers
+`404`.
 
 ```json
-{ "status": "success", "message": "Removed 4521 entries", "data": { "removed": 4521 } }
+{ "status": "success", "message": "Removed 4520 entries; 1 stay because another source lists them", "data": { "removed": 4520, "kept": 1 } }
 ```
 
 ### Export a list
@@ -419,7 +440,8 @@ POST /api/domain-whitelist/import
 lines starting with `#` are ignored. Each line is checked as the single add
 checks it, and the new entries are recorded under one source of kind `paste`,
 so the paste can be removed as a whole ([Remove a source](#sources)). An entry
-already on the list keeps the source that added it first.
+already on the list keeps the source that added it first, and the paste is
+recorded as another of its sources.
 
 ```json
 {

@@ -325,14 +325,14 @@ describe('Blacklists', () => {
       } finally { restoreTz() }
     })
 
-    it('removes a whole source after a confirmation that names how many entries go', async () => {
+    it('removes a whole source after a confirmation that names it and says shared entries stay', async () => {
       renderWithProviders(<Blacklists />)
       const btn = await screen.findByRole('button', { name: 'Remove batch: Firehol Level 1, 4,521 entries' })
       fireEvent.click(btn)
       const dialog = await screen.findByRole('alertdialog')
-      expect(within(dialog).getByText('Remove 4,521 entries from Firehol Level 1?')).toBeInTheDocument()
-      expect(within(dialog).getByText(/Clients can reach them again once the proxy reloads the list/)).toBeInTheDocument()
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Remove 4,521 entries' }))
+      expect(within(dialog).getByText('Remove Firehol Level 1, 4,521 entries?')).toBeInTheDocument()
+      expect(within(dialog).getByText(/Clients can reach them again once the proxy reloads the list\. Those another source also lists stay, under that source\./)).toBeInTheDocument()
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Remove source' }))
       await waitFor(() => expect(api.delete).toHaveBeenCalledWith('ip-blacklist/sources/7'))
     })
 
@@ -344,7 +344,7 @@ describe('Blacklists', () => {
       expect(api.delete).not.toHaveBeenCalled()
 
       fireEvent.click(screen.getByRole('button', { name: 'Remove batch: Source not recorded, 50,772 entries' }))
-      fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Remove 50,772 entries' }))
+      fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Remove source' }))
       await waitFor(() => expect(api.delete).toHaveBeenCalledWith('ip-blacklist/sources/unrecorded'))
     })
   })
@@ -428,6 +428,29 @@ describe('Blacklists', () => {
       fireEvent.change(screen.getByLabelText('Description (optional)'), { target: { value: 'port scanner' } })
       fireEvent.click(screen.getByRole('button', { name: 'Add entry' }))
       await waitFor(() => expect(api.post).toHaveBeenCalledWith('ip-blacklist', { ip: '203.0.113.77', description: 'port scanner' }))
+    })
+
+    // Already listed is not an error: the server records it as added by hand
+    // too and says so; the page shows that, not "Added".
+    it('shows what the server recorded when the entry is already listed', async () => {
+      const said = '"203.0.113.77" is already on Blocked IPs; it is now also recorded as added by hand, so it stays if the list it came from is removed'
+      vi.spyOn(toast, 'success')
+      vi.mocked(api.post).mockResolvedValueOnce({ data: { status: 'success', message: said, data: { already_listed: true, recorded_by_hand: true } } } as never)
+      renderWithProviders(<Blacklists />)
+      open()
+      fireEvent.change(screen.getByLabelText('IP address or network'), { target: { value: '203.0.113.77' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Add entry' }))
+      await waitFor(() => expect(toast.success).toHaveBeenCalledWith(said, expect.anything()))
+      expect(toast.success).not.toHaveBeenCalledWith(expect.stringMatching(/^Added /), expect.anything())
+    })
+
+    it('says how many entries stay when a removed source shared them', async () => {
+      vi.spyOn(toast, 'success')
+      vi.mocked(api.delete).mockResolvedValueOnce({ data: { status: 'success', data: { removed: 4520, kept: 1 } } } as never)
+      renderWithProviders(<Blacklists />)
+      fireEvent.click(await screen.findByRole('button', { name: 'Remove batch: Firehol Level 1, 4,521 entries' }))
+      fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Remove source' }))
+      await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Removed 4,520 entries from Blocked IPs; 1 entry stays because another source lists it'))
     })
 
     it('refuses an address the shared validator rejects, and says why', async () => {

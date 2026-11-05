@@ -352,12 +352,13 @@ docker compose up -d --build
 
 **Restore the pre-upgrade data when you roll back.** Besides columns added on
 every start, the schema has one-way steps recorded in `PRAGMA user_version`
-(at version 9 in this release): table rebuilds, the `list_sources` table and
+(at version 10 in this release): table rebuilds, the `list_sources` table and
 its rebuild for preset sources, the rewrite of `*.name` egress entries to
-`.name`, the egress provider tables, and the deletion of retired settings
-(their values are kept in the audit log). An older backend does not undo them;
-it runs on the rebuilt `list_sources`, but names a preset source "Source not
-recorded".
+`.name`, the egress provider tables, the deletion of retired settings (their
+values are kept in the audit log), and the tables that record every other
+source of a list entry. An older backend does not undo them; it runs on the
+rebuilt `list_sources`, but names a preset source "Source not recorded", and
+its **Remove batch** fails on a source that other entries also list.
 
 ## Troubleshooting
 
