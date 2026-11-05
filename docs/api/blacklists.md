@@ -792,3 +792,60 @@ provider name as `target` and JSON `details`:
 | `egress_provider_refresh_failed` | `kind`, `reason` |
 | `egress_provider_held` | `commit`, `growth_pct`, `reason`, `v4_before`, `v4_after`, `v6_before`, `v6_after`, `ipv4_covered_before`, `ipv4_covered_after`, `ipv6_64_covered_before`, `ipv6_64_covered_after` |
 | `egress_provider_held_applied` | `commit`, `growth_pct`, `v4_before`, `v4_after`, `v6_before`, `v6_after`, `ipv4_covered_before`, `ipv4_covered_after` |
+
+## Client groups
+
+Sets of clients with extra restrictions on top of the global policy: lists
+that apply to the group only, a time window and allowlist-only egress. See
+[Client groups](/guide/client-groups).
+
+```
+GET    /api/client-groups
+POST   /api/client-groups
+GET    /api/client-groups/{id}
+PUT    /api/client-groups/{id}
+DELETE /api/client-groups/{id}
+```
+
+```json
+{
+  "name": "kids",
+  "description": "the children's tablets",
+  "members": ["10.1.0.5", "10.2.0.0/16"],
+  "lists": [12],
+  "schedule": { "days": "MTWHF", "start": "07:00", "end": "21:00" },
+  "allowlist_only": false
+}
+```
+
+- `name`: 1 to 40 letters, digits, spaces, dots, hyphens or underscores,
+  unique (`409` otherwise).
+- `members`: up to 1000 addresses or networks, IPv4 or IPv6, stored as masked
+  prefixes (`10.1.0.5` becomes `10.1.0.5/32`).
+- `lists`: up to 50 ids of Blocked IPs or Blocked domains sources whose scope
+  is `groups`.
+- `schedule`: `null`, or days in Squid's letters (`S` Sunday, `M`, `T`, `W`,
+  `H` Thursday, `F`, `A` Saturday) and a window that ends after it starts.
+- An unknown field, or a value out of these bounds, answers `400` with the
+  reason in `detail`.
+
+The answer of a create or an update is the group as stored. A change is
+exported with the lists, and the proxy's watchdog, which checks every 2
+seconds, copies the files and regenerates Squid's configuration.
+
+### Scope of a source
+
+```
+PUT /api/ip-blacklist/sources/{id}/scope
+PUT /api/domain-blacklist/sources/{id}/scope
+```
+
+```json
+{ "scope": "groups" }
+```
+
+`global` (the default) applies the source to every client, through the DNS
+sinkhole and the proxy; `groups` applies it only to the client groups that use
+it, through the proxy. Setting a source a group uses back to `global` answers
+`409`. `GET .../sources` carries each source's `scope`.
+

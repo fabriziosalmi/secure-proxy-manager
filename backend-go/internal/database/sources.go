@@ -218,11 +218,14 @@ func DropSourceIfEmpty(db *sql.DB, list string, id int64) {
 // SourceSummary is one row of the "where the entries came from" table.
 type SourceSummary struct {
 	// ID is null for the entries whose source was not recorded.
-	ID         *int64 `json:"id"`
-	Kind       string `json:"kind"`
-	Source     string `json:"source"`
-	Label      string `json:"label"`
-	Entries    int    `json:"entries"`
+	ID      *int64 `json:"id"`
+	Kind    string `json:"kind"`
+	Source  string `json:"source"`
+	Label   string `json:"label"`
+	Entries int    `json:"entries"`
+	// Scope is "global" (every client) or "groups" (only the client groups
+	// that use the source, client_groups.go); empty for unrecorded entries.
+	Scope      string `json:"scope,omitempty"`
 	FirstAdded string `json:"first_added"`
 	LastAdded  string `json:"last_added"`
 	// The last refresh of a url source (workers/list_sync.go): when (UTC),
@@ -242,14 +245,14 @@ func ListSources(db *sql.DB, list string) ([]SourceSummary, error) {
 		return nil, ErrUnknownList
 	}
 	meta := map[int64]SourceSummary{}
-	srows, err := db.Query("SELECT id, kind, source, label, COALESCE(refreshed_at,''), COALESCE(refresh_status,''), COALESCE(refresh_detail,'') FROM list_sources WHERE list = ?", list)
+	srows, err := db.Query("SELECT id, kind, source, label, scope, COALESCE(refreshed_at,''), COALESCE(refresh_status,''), COALESCE(refresh_detail,'') FROM list_sources WHERE list = ?", list)
 	if err != nil {
 		return nil, err
 	}
 	for srows.Next() {
 		var s SourceSummary
 		var id int64
-		if err := srows.Scan(&id, &s.Kind, &s.Source, &s.Label, &s.RefreshedAt, &s.RefreshStatus, &s.RefreshDetail); err != nil {
+		if err := srows.Scan(&id, &s.Kind, &s.Source, &s.Label, &s.Scope, &s.RefreshedAt, &s.RefreshStatus, &s.RefreshDetail); err != nil {
 			srows.Close()
 			return nil, err
 		}

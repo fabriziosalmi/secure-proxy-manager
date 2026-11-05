@@ -47,7 +47,12 @@ const (
 	// backend's manifest did not vouch for at boot has no copy in Squid, so
 	// every client request is denied until the watchdog copies a verified one.
 	ReasonListsUnverified = "lists_unverified"
-	ReasonOther           = "other"
+	// The client groups' rules (database/client_groups.go): a list that
+	// applies to the group only, its time window, its allowlist-only egress.
+	ReasonGroupList   = "group_list"
+	ReasonGroupTime   = "group_time"
+	ReasonGroupEgress = "group_egress"
+	ReasonOther       = "other"
 )
 
 // reasonLabels are the display names, in the order the vocabulary is listed.
@@ -68,6 +73,9 @@ var reasonLabels = map[string]string{
 	ReasonPortPolicy:                      "Port policy",
 	ReasonProtocolPolicy:                  "Method or protocol policy",
 	ReasonListsUnverified:                 "Lists not verified",
+	ReasonGroupList:                       "Client group list",
+	ReasonGroupTime:                       "Client group hours",
+	ReasonGroupEgress:                     "Client group allowlist",
 	ReasonOther:                           "Other",
 	ReasonUnclassified:                    "Unclassified (no reason recorded)",
 	ReasonNone:                            "Allowed",
@@ -88,6 +96,7 @@ var squidDenyReasons = map[string]bool{
 	ReasonDirectIP: true, ReasonEgressPolicy: true, ReasonProxyAuth: true, ReasonProxyAuthUnset: true,
 	ReasonTimeRestriction: true, ReasonContentFilter: true, ReasonSourceGate: true,
 	ReasonPortPolicy: true, ReasonProtocolPolicy: true, ReasonListsUnverified: true,
+	ReasonGroupList: true, ReasonGroupTime: true, ReasonGroupEgress: true,
 	ReasonOther: true,
 }
 

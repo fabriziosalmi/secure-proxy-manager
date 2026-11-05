@@ -21,8 +21,9 @@ import (
 // waf_custom_rules, and waf_block_threshold (retired.go). Version 9 rebuilds
 // list_sources so a source can be a preset (a named group of common
 // services, added in one request). Version 10 records every other source of
-// a list entry (entry_sources.go).
-const schemaVersion = 10
+// a list entry (entry_sources.go). Version 11 adds client groups and the
+// scope of a list source (client_groups.go).
+const schemaVersion = 11
 
 // applyVersionedMigrations runs the steps a database has not seen yet.
 //
@@ -82,6 +83,11 @@ func applyVersionedMigrations(db *sql.DB) error {
 	if v < 10 {
 		if err := migrateEntrySources(db); err != nil {
 			return fmt.Errorf("schema version 10: %w", err)
+		}
+	}
+	if v < 11 {
+		if err := migrateClientGroups(db); err != nil {
+			return fmt.Errorf("schema version 11: %w", err)
 		}
 	}
 	return nil

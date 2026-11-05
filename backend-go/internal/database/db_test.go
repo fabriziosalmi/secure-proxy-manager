@@ -529,8 +529,13 @@ func TestExportWritesAManifestMatchingTheLists(t *testing.T) {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		t.Fatalf("manifest is not JSON: %v", err)
 	}
-	if m.Version != ListsManifestVersion || len(m.Files) != len(manifestLists) {
+	// The five lists, and the client groups' index, written even with no
+	// group (client_groups.go).
+	if m.Version != ListsManifestVersion || len(m.Files) != len(manifestLists)+1 {
 		t.Fatalf("manifest = %+v", m)
+	}
+	if _, ok := m.Files["groups/"+GroupsIndexName]; !ok {
+		t.Errorf("the groups' index is not in the manifest: %+v", m.Files)
 	}
 	for _, name := range manifestLists {
 		sum, n, err := hashListFile(filepath.Join(dir, name))

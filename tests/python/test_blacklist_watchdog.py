@@ -1103,3 +1103,95 @@ def test_a_list_sync_refreshes_the_domain_acl_before_reconfiguring(w, state, mon
         monkeypatch.setattr(w, job, lambda *a: None)
     w.poll_once(st)
     assert calls == ["acl", "reconfigure"]
+
+
+# ── Client groups: sync_groups ───────────────────────────────────────────────
+
+@pytest.fixture
+def groups_env(w, tmp_path, monkeypatch):
+    """/config/groups and /etc/squid/groups in the test's directory."""
+    config, squid = tmp_path / "config", tmp_path / "squid_groups"
+    (config / "groups").mkdir(parents=True)
+    monkeypatch.setattr(w, "CONFIG_DIR", str(config))
+    monkeypatch.setattr(w, "GROUPS_DIR", str(squid))
+    monkeypatch.setattr(w, "GROUPS_SYNCED", str(squid / ".synced.json"))
+    monkeypatch.setattr(w, "MANIFEST", str(config / "lists.manifest.json"))
+
+    def publish(files, lie=None):
+        """Write files under config/groups and a manifest vouching for them;
+        lie names one whose manifest checksum is wrong."""
+        sums = {}
+        for name, body in files.items():
+            (config / "groups" / name).write_bytes(body)
+            sums["groups/" + name] = _sha(b"tampered" if name == lie else body)
+        (config / "lists.manifest.json").write_text(json.dumps({
+            "version": 1, "generated_at": 1,
+            "files": {n: {"sha256": h, "bytes": 0} for n, h in sums.items()}}))
+    return config, squid, publish
+
+
+def _state(w):
+    return types.SimpleNamespace(refused={}, mtimes={})
+
+
+def test_groups_are_copied_verified_and_normalized(w, groups_env):
+    _, squid, publish = groups_env
+    publish({
+        "groups.conf": b"group 1 days=- start=- end=- allowlist_only=0 domain=7 ip=-\n",
+        "g1_src.txt": b"10.1.0.5\n10.1.0.0/24\n",
+        "s7_domain.txt": b"*.Games.example\ngames.example\n",
+    })
+    st = _state(w)
+    assert w.sync_groups(st) == (True, True)
+    assert (squid / "g1_src.txt").read_text() == "10.1.0.0/24\n"
+    assert (squid / "s7_domain.txt").read_text() == "games.example\n"
+    # Nothing changed: nothing copied, no regeneration.
+    assert w.sync_groups(st) == (False, False)
+
+
+def test_a_members_change_needs_a_reconfigure_not_a_regeneration(w, groups_env):
+    _, squid, publish = groups_env
+    files = {"groups.conf": b"group 1 days=- start=- end=- allowlist_only=0 domain=- ip=-\n", "g1_src.txt": b"10.1.0.5\n"}
+    publish(files)
+    st = _state(w)
+    w.sync_groups(st)
+    files["g1_src.txt"] = b"10.1.0.6\n"
+    publish(files)
+    assert w.sync_groups(st) == (True, False)
+    assert (squid / "g1_src.txt").read_text() == "10.1.0.6\n"
+
+
+def test_a_group_file_the_manifest_does_not_vouch_for_is_not_copied(w, groups_env):
+    _, squid, publish = groups_env
+    publish({"groups.conf": b"", "s7_domain.txt": b"games.example\n"}, lie="s7_domain.txt")
+    w.sync_groups(_state(w))
+    assert not (squid / "s7_domain.txt").exists()
+
+
+def test_a_file_name_that_is_not_a_group_file_is_refused(w, groups_env):
+    config, squid, _ = groups_env
+    (config / "lists.manifest.json").write_text(json.dumps({"version": 1, "generated_at": 1, "files": {
+        "groups/../../etc/passwd": {"sha256": _sha(b""), "bytes": 0},
+        "groups/groups.conf": {"sha256": _sha(b""), "bytes": 0}}}))
+    (config / "groups" / "groups.conf").write_bytes(b"")
+    w.sync_groups(_state(w))
+    assert sorted(p.name for p in squid.iterdir() if not p.name.startswith(".")) == ["groups.conf"]
+
+
+def test_a_file_the_manifest_drops_is_removed_and_the_rules_regenerated(w, groups_env):
+    _, squid, publish = groups_env
+    publish({"groups.conf": b"x\n", "g1_src.txt": b"10.1.0.5\n", "s7_domain.txt": b"a.example\n"})
+    st = _state(w)
+    w.sync_groups(st)
+    for n in ("g1_src.txt", "s7_domain.txt"):
+        os.unlink(os.path.join(groups_env[0], "groups", n))
+    publish({"groups.conf": b""})
+    assert w.sync_groups(st) == (True, True)
+    assert sorted(p.name for p in squid.iterdir() if not p.name.startswith(".")) == ["groups.conf"]
+
+
+def test_no_groups_without_a_manifest(w, groups_env):
+    config, squid, _ = groups_env
+    (config / "groups" / "groups.conf").write_bytes(b"group 1 days=- start=- end=- allowlist_only=0 domain=- ip=-\n")
+    assert w.sync_groups(_state(w)) == (False, False)
+    assert not squid.exists()

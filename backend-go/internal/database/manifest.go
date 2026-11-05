@@ -52,13 +52,15 @@ type listsManifest struct {
 // Without it the seam between the backend and Squid was a set of bare files
 // copied verbatim: a truncated or malformed list became the live blocklist and
 // nothing on the receiving side could tell (SECURE-ARCH-01).
-func writeListsManifest(configDir string) error {
+func writeListsManifest(configDir string, groupFiles ...string) error {
 	m := listsManifest{
 		Version:     ListsManifestVersion,
 		GeneratedAt: time.Now().Unix(),
-		Files:       make(map[string]manifestEntry, len(manifestLists)),
+		Files:       make(map[string]manifestEntry, len(manifestLists)+len(groupFiles)),
 	}
-	for _, name := range manifestLists {
+	// groupFiles are the files of the client groups ("groups/..."), which
+	// the watchdog copies to Squid's groups directory (exportGroups).
+	for _, name := range append(append([]string{}, manifestLists...), groupFiles...) {
 		sum, n, err := hashListFile(filepath.Join(configDir, name))
 		if err != nil {
 			return fmt.Errorf("manifest: hash %s: %w", name, err)

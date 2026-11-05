@@ -51,6 +51,10 @@ const (
 	// watchdog copies a verified list.
 	lineListsGateGET     = "1792964659.844      0 192.168.79.50 TCP_DENIED/403 4858 GET http://pub.test/ - HIER_NONE/- text/html - lists_unverified -"
 	lineListsGateCONNECT = "1792964660.137      0 192.168.79.50 TCP_DENIED/403 4860 CONNECT pub.test:443 - HIER_NONE/- text/html - lists_unverified -"
+	// The client groups' rules, as the matrix test logs them.
+	lineGroupList   = "1792964661.002      0 192.168.77.51 TCP_DENIED/403 4858 GET http://pub.test/ - HIER_NONE/- text/html - group_list -"
+	lineGroupTime   = "1792964661.120      0 192.168.77.51 TCP_DENIED/403 4860 CONNECT pub.test:443 - HIER_NONE/- text/html - group_time -"
+	lineGroupEgress = "1792964661.233      0 192.168.77.51 TCP_DENIED/403 4858 GET http://pub.test/ - HIER_NONE/- text/html - group_egress -"
 )
 
 // Lines the origin/main config wrote for the same requests (11 fields, no
@@ -93,6 +97,9 @@ func TestParseSquidLineRecordsTheRuleThatMatched(t *testing.T) {
 		{"time restriction", lineTime, ReasonTimeRestriction, 1},
 		{"lists gate, GET", lineListsGateGET, ReasonListsUnverified, 1},
 		{"lists gate, CONNECT", lineListsGateCONNECT, ReasonListsUnverified, 1},
+		{"client group list", lineGroupList, ReasonGroupList, 1},
+		{"client group hours, CONNECT", lineGroupTime, ReasonGroupTime, 1},
+		{"client group allowlist", lineGroupEgress, ReasonGroupEgress, 1},
 		{"WAF unreachable (fail closed) is an error, not a block", lineICAPDown, ReasonNone, 0},
 		{"SSL-bump: the denied CONNECT carries the reason", lineBumpDeniedConnect, ReasonDomainBlacklist, 1},
 		{"SSL-bump: the error page inside the tunnel is not a second block", lineBumpErrorPage, ReasonNone, 0},

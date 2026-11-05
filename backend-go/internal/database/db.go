@@ -566,9 +566,14 @@ func ExportBlacklistsCounted(db *sql.DB, configDir string) (ExportCounts, error)
 	exportMu.Lock()
 	defer exportMu.Unlock()
 	var counts ExportCounts
+	// The global lists leave out the entries only group sources list
+	// (client_groups.go); with no such source the queries are the plain ones.
+	ipQuery, domainQuery, err := globalBlacklistQueries(db)
+	if err != nil {
+		return ExportCounts{}, err
+	}
 	// 1. ip_blacklist.txt
-	if err := exportLines(db, configDir+"/ip_blacklist.txt",
-		"SELECT ip FROM ip_blacklist ORDER BY ip"); err != nil {
+	if err := exportLines(db, configDir+"/ip_blacklist.txt", ipQuery); err != nil {
 		return ExportCounts{}, err
 	}
 	// 2. ip_whitelist.txt
@@ -590,7 +595,7 @@ func ExportBlacklistsCounted(db *sql.DB, configDir string) (ExportCounts, error)
 	}
 	// 3. domain_blacklist.txt (with whitelist exclusions)
 	exclusions := loadWhitelistSet(db)
-	if err := exportDomainBlacklist(db, configDir+"/domain_blacklist.txt", exclusions); err != nil {
+	if err := exportDomainBlacklist(db, configDir+"/domain_blacklist.txt", domainQuery, exclusions); err != nil {
 		return ExportCounts{}, err
 	}
 	// 3b. Egress destination allowlist (default-deny mode): split by type into a
@@ -627,13 +632,18 @@ func ExportBlacklistsCounted(db *sql.DB, configDir string) (ExportCounts, error)
 	// so the proxy can verify what it is about to load (SECURE-ARCH-01). A
 	// failure here fails the export: the lists are on disk but not vouched for,
 	// and the proxy will keep its previous copies until the next export.
-	if err := writeListsManifest(configDir); err != nil {
+	// 3d. The client groups' files, vouched for by the same manifest.
+	groupFiles, err := exportGroups(db, configDir, exclusions)
+	if err != nil {
+		return ExportCounts{}, fmt.Errorf("client groups: %w", err)
+	}
+	if err := writeListsManifest(configDir, groupFiles...); err != nil {
 		return ExportCounts{}, err
 	}
 	// 4. dnsmasq blocklist (hosts format, re-read on SIGHUP). Remove the legacy
 	// conf-dir address= file so it doesn't double-load with stale, restart-only data.
 	_ = os.Remove(configDir + "/dnsmasq.d/blocklist.conf")
-	if err := writeDnsmasqBlocklist(db, configDir+"/dnsmasq.d/blocklist.hosts", exclusions, &counts); err != nil {
+	if err := writeDnsmasqBlocklist(db, configDir+"/dnsmasq.d/blocklist.hosts", domainQuery, exclusions, &counts); err != nil {
 		// Not swallowed: the Squid lists above were written, so a domain added
 		// now would be enforced by Squid and not by dnsmasq, and the caller
 		// would be told the export succeeded. Returning the error makes a
@@ -709,8 +719,8 @@ func exportLines(db *sql.DB, path, query string) error {
 // Values that are empty, NULL or not lineSafe are skipped, as before. A row
 // that cannot be read fails the write, so the previous file stays in place:
 // collecting the rows ignored that error and published a short list.
-func streamList(db *sql.DB, path, query string, emit func(w *bufio.Writer, v string) error) error {
-	rows, err := db.Query(query)
+func streamList(db *sql.DB, path, query string, emit func(w *bufio.Writer, v string) error, args ...any) error {
+	rows, err := db.Query(query, args...)
 	if err != nil {
 		return err
 	}
@@ -827,8 +837,8 @@ func loadWhitelistSet(db *sql.DB) map[string]struct{} {
 	return set
 }
 
-func exportDomainBlacklist(db *sql.DB, path string, exclusions map[string]struct{}) error {
-	return streamList(db, path, "SELECT domain FROM domain_blacklist ORDER BY domain", func(w *bufio.Writer, domain string) error {
+func exportDomainBlacklist(db *sql.DB, path, query string, exclusions map[string]struct{}) error {
+	return streamList(db, path, query, func(w *bufio.Writer, domain string) error {
 		if _, excluded := exclusions[EnforcedDomain(domain)]; excluded {
 			return nil
 		}
@@ -853,9 +863,9 @@ func exportDomainBlacklist(db *sql.DB, path string, exclusions map[string]struct
 //
 // counts receives the entries written and those the allowed list left out. A
 // failed write leaves them partial; the caller reports the error, not them.
-func writeDnsmasqBlocklist(db *sql.DB, path string, exclusions map[string]struct{}, counts *ExportCounts) error {
+func writeDnsmasqBlocklist(db *sql.DB, path, query string, exclusions map[string]struct{}, counts *ExportCounts) error {
 	*counts = ExportCounts{}
-	return streamList(db, path, "SELECT domain FROM domain_blacklist ORDER BY domain", func(w *bufio.Writer, domain string) error {
+	return streamList(db, path, query, func(w *bufio.Writer, domain string) error {
 		// The hosts file gets the name dnsmasq is to answer, the same one
 		// Squid enforces (EnforcedDomain).
 		d := EnforcedDomain(domain)

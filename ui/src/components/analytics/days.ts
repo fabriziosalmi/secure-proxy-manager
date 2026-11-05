@@ -66,7 +66,8 @@ const COLORS: readonly RuleColor[] = ['series-1', 'series-2', 'series-3', 'serie
 // the UI does not know comes after, by name.
 const ORDER = [
   'domain_blacklist_dns', 'domain_blacklist_dns_reconstructed', 'domain_blacklist', 'ip_blacklist', 'waf', 'direct_ip', 'egress_policy', 'proxy_auth',
-  'proxy_auth_unset', 'time_restriction', 'content_filter', 'source_gate', 'port_policy', 'protocol_policy', 'lists_unverified', 'other',
+  'proxy_auth_unset', 'time_restriction', 'group_list', 'group_time', 'group_egress', 'content_filter', 'source_gate', 'port_policy',
+  'protocol_policy', 'lists_unverified', 'other',
 ];
 
 function rank(reason: string): number {

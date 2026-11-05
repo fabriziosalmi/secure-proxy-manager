@@ -190,7 +190,25 @@ else
     done
 fi
 
+# The client groups' files: the backend names them (client_groups.go), the
+# watchdog copies only names its GROUP_FILE_RE accepts (blacklist_watchdog.py),
+# and the generator reads them by name (generate_squid_conf.sh). A rename on
+# one side copies nothing or reads nothing, and the group loses its rules.
+for want in \
+    'backend-go/internal/database/client_groups.go:"g%d_src.txt"' \
+    'backend-go/internal/database/client_groups.go:"s%d_%s.txt"' \
+    'backend-go/internal/database/client_groups.go:GroupsIndexName = "groups.conf"' \
+    'proxy/blacklist_watchdog.py:g[0-9]{1,9}_src\.txt' \
+    'proxy/blacklist_watchdog.py:s[0-9]{1,9}_(ip|domain)\.txt' \
+    'proxy/blacklist_watchdog.py:groups\.conf' \
+    'proxy/generate_squid_conf.sh:$GROUPS_DIR/g${gid}_src.txt' \
+    'proxy/generate_squid_conf.sh:$GROUPS_DIR/s${sid}_${kind}.txt' \
+    'proxy/generate_squid_conf.sh:GROUPS_INDEX="$GROUPS_DIR/groups.conf"'; do
+    file="${want%%:*}"; text="${want#*:}"
+    grep -qF -- "$text" "$file" || { printf "${R}MISSING${N}: %s no longer has %s (client group file names)\n" "$file" "$text"; fail=1; }
+done
+
 if [ "$fail" -eq "$list_fail" ]; then
-    printf "${G}OK${N}: the proxy login files agree, BASIC_AUTH_* reaches only the backend, the backend is in the proxy group, every toggle marker has a reader, shared WAF variables reach both waf and proxy, and the service token volume is mounted only in backend and waf\n"
+    printf "${G}OK${N}: the proxy login files agree, BASIC_AUTH_* reaches only the backend, the backend is in the proxy group, every toggle marker has a reader, shared WAF variables reach both waf and proxy, and the service token volume is mounted only in backend and waf, and the client group file names agree\n"
 fi
 exit "$fail"
