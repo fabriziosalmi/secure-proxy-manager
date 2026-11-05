@@ -672,5 +672,35 @@ print("count=%d uncovered=%s" % (len(squid_files), ",".join(uncovered) if uncove
   && ok "every template in /usr/share/squid/errors/en has an SPM page or is listed as stock" \
   || bad "every template in /usr/share/squid/errors/en has an SPM page or is listed as stock" "$cov_out"
 
+echo "── entrypoint: an empty cache_dir with the CA in use ──"
+# startup.sh creates the cache_dir with squid -z. Run as proxy, squid -z could
+# not read the CA key (root 400) when SSL bump or TLS peek was on and stopped
+# before creating anything; on an empty cache volume Squid then never started.
+boot_empty_cache() { # flag file that turns the CA on
+  local name="spm-gen-boot-$$"
+  docker rm -f "$name" >/dev/null 2>&1
+  docker run -d --name "$name" --memory 256m --tmpfs /ssl --entrypoint /bin/bash "$IMAGE" \
+    -c "mkdir -p /config && touch /config/$1 && exec /startup.sh" >/dev/null || { echo "run failed"; return; }
+  for _ in $(seq 1 60); do
+    docker exec "$name" supervisorctl status squid 2>/dev/null | grep -q RUNNING && break
+    sleep 1
+  done
+  sleep 5 # long enough for a Squid that fails its swap check to exit
+  docker exec "$name" sh -c '
+    echo "state=$(supervisorctl status squid | awk "{print \$2}")"
+    echo "l1=$(ls -d /var/spool/squid/0? 2>/dev/null | wc -l) owner=$(stat -c %U /var/spool/squid/00 2>/dev/null)"
+    echo "swapfail=$(grep -c "Failed to verify one of the swap" /var/log/supervisor/squid.log)"
+    echo "user=$(ps -o user= -C squid | sort -u | tr "\n" ,)"
+  ' 2>&1
+  docker rm -f "$name" >/dev/null 2>&1
+}
+for flag in tls_peek_enabled ssl_bump_enabled; do
+  got="$(boot_empty_cache "$flag")"
+  grep -q 'state=RUNNING' <<<"$got" && grep -q 'l1=[1-9]' <<<"$got" && grep -q 'owner=proxy' <<<"$got" \
+    && grep -q 'swapfail=0' <<<"$got" && grep -q 'user=proxy,$' <<<"$got" \
+    && ok "$flag on, empty cache: the entrypoint creates the cache_dir (proxy-owned) and Squid runs as proxy" \
+    || bad "$flag on, empty cache: Squid starts" "$(tr '\n' ' ' <<<"$got")"
+done
+
 printf "\n  %d passed, %d failed\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

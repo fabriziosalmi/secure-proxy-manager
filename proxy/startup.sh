@@ -75,7 +75,13 @@ chown proxy:proxy /run/squid/squid.pid /run/squid.pid
 
 # ── Initialize swap directories ─────────────────────────────────────────────
 
-su - proxy -s /bin/bash -c "/usr/sbin/squid -z"
+# As root, like the Squid that supervisord starts: Squid reads the SSL-bump CA
+# key (root 400) while it parses the configuration, then runs as proxy. Run as
+# proxy, squid -z could not read the key whenever SSL bump or TLS peek was on,
+# stopped with "No valid signing certificate", and an empty cache_dir stayed
+# empty: Squid then refused to start ("Failed to verify one of the swap
+# directories") and supervisord restarted it forever.
+/usr/sbin/squid -z -N
 sleep 2
 
 # ── Validate configuration ──────────────────────────────────────────────────
