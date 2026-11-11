@@ -140,20 +140,28 @@ EOF
     echo "Blocklist: ${BLOCK_COUNT:-0} entries"
 }
 
+# What the watchdog compares to see that a file changed: its inode, size and
+# mtime, and for the reload trigger its content too. A whole-second mtime alone
+# missed a second write in the same second: the backend replaces the sinkhole
+# file (a new inode each time) and rewrites the trigger in place, so a domain
+# taken out of the sinkhole right after another change stayed at 0.0.0.0.
+file_sig() {
+    stat -c '%i %s %Y' "$1" 2>/dev/null || stat -f '%i %z %m' "$1" 2>/dev/null || echo absent
+}
+trigger_sig() {
+    printf '%s %s' "$(file_sig "$1")" "$(head -c 64 "$1" 2>/dev/null)"
+}
+
 # Background watchdog to watch configuration and blocklist changes
 watch_dnsmasq() {
     # Wait for dnsmasq to start initially
     sleep 3
-    local last_hosts_mtime=0
-    local last_reload_mtime=0
-    local last_safesearch_mtime=0
-    local last_youtube_mtime=0
-
-    # Get initial mtimes
-    [ -f "/config/dnsmasq.d/blocklist.hosts" ] && last_hosts_mtime=$(stat -c %Y "/config/dnsmasq.d/blocklist.hosts" 2>/dev/null || stat -f %m "/config/dnsmasq.d/blocklist.hosts" 2>/dev/null || echo 0)
-    [ -f "/config/.reload-dns" ] && last_reload_mtime=$(stat -c %Y "/config/.reload-dns" 2>/dev/null || stat -f %m "/config/.reload-dns" 2>/dev/null || echo 0)
-    [ -f "/config/safesearch_enabled" ] && last_safesearch_mtime=$(stat -c %Y "/config/safesearch_enabled" 2>/dev/null || stat -f %m "/config/safesearch_enabled" 2>/dev/null || echo 0)
-    [ -f "/config/youtube_restricted_enabled" ] && last_youtube_mtime=$(stat -c %Y "/config/youtube_restricted_enabled" 2>/dev/null || stat -f %m "/config/youtube_restricted_enabled" 2>/dev/null || echo 0)
+    local hosts=/config/dnsmasq.d/blocklist.hosts
+    local last_hosts last_reload last_safesearch last_youtube
+    last_hosts=$(file_sig "$hosts")
+    last_reload=$(trigger_sig /config/.reload-dns)
+    last_safesearch=$(file_sig /config/safesearch_enabled)
+    last_youtube=$(file_sig /config/youtube_restricted_enabled)
 
     local since_refresh=0
 
@@ -173,32 +181,30 @@ watch_dnsmasq() {
         fi
 
         # 1. Check blocklist.hosts
-        local cur_hosts_mtime=0
-        [ -f "/config/dnsmasq.d/blocklist.hosts" ] && cur_hosts_mtime=$(stat -c %Y "/config/dnsmasq.d/blocklist.hosts" 2>/dev/null || stat -f %m "/config/dnsmasq.d/blocklist.hosts" 2>/dev/null || echo 0)
-        if [ "$cur_hosts_mtime" -ne "$last_hosts_mtime" ]; then
-            last_hosts_mtime=$cur_hosts_mtime
+        local cur_hosts
+        cur_hosts=$(file_sig "$hosts")
+        if [ "$cur_hosts" != "$last_hosts" ]; then
+            last_hosts=$cur_hosts
             echo "[watchdog] blocklist.hosts changed, sending SIGHUP to dnsmasq..."
             killall -HUP dnsmasq 2>/dev/null || true
         fi
 
         # 2. Check .reload-dns trigger
-        local cur_reload_mtime=0
-        [ -f "/config/.reload-dns" ] && cur_reload_mtime=$(stat -c %Y "/config/.reload-dns" 2>/dev/null || stat -f %m "/config/.reload-dns" 2>/dev/null || echo 0)
-        if [ "$cur_reload_mtime" -ne "$last_reload_mtime" ]; then
-            last_reload_mtime=$cur_reload_mtime
+        local cur_reload
+        cur_reload=$(trigger_sig /config/.reload-dns)
+        if [ "$cur_reload" != "$last_reload" ]; then
+            last_reload=$cur_reload
             echo "[watchdog] .reload-dns triggered, sending SIGHUP to dnsmasq..."
             killall -HUP dnsmasq 2>/dev/null || true
         fi
 
         # 3. Check SafeSearch/YouTube toggles
-        local cur_safesearch_mtime=0
-        [ -f "/config/safesearch_enabled" ] && cur_safesearch_mtime=$(stat -c %Y "/config/safesearch_enabled" 2>/dev/null || stat -f %m "/config/safesearch_enabled" 2>/dev/null || echo 0)
-        local cur_youtube_mtime=0
-        [ -f "/config/youtube_restricted_enabled" ] && cur_youtube_mtime=$(stat -c %Y "/config/youtube_restricted_enabled" 2>/dev/null || stat -f %m "/config/youtube_restricted_enabled" 2>/dev/null || echo 0)
-
-        if [ "$cur_safesearch_mtime" -ne "$last_safesearch_mtime" ] || [ "$cur_youtube_mtime" -ne "$last_youtube_mtime" ]; then
-            last_safesearch_mtime=$cur_safesearch_mtime
-            last_youtube_mtime=$cur_youtube_mtime
+        local cur_safesearch cur_youtube
+        cur_safesearch=$(file_sig /config/safesearch_enabled)
+        cur_youtube=$(file_sig /config/youtube_restricted_enabled)
+        if [ "$cur_safesearch" != "$last_safesearch" ] || [ "$cur_youtube" != "$last_youtube" ]; then
+            last_safesearch=$cur_safesearch
+            last_youtube=$cur_youtube
             echo "[watchdog] SafeSearch/YouTube toggle changed, restarting dnsmasq process..."
             killall dnsmasq 2>/dev/null || true
         fi

@@ -595,6 +595,10 @@ jobs:
       # answered with no address, so the forced names could not be reached.
       - name: DNS overrides resolve to an address with SafeSearch on
         run: bash tests/shell/dns_safesearch_test.sh
+      # The dns watchdog compared whole-second mtimes, so a second write in
+      # the same second never reloaded dnsmasq.
+      - name: DNS reloads on every write, also two in the same second
+        run: bash tests/shell/dns_reload_test.sh
 
   # ── 8. Popular list URL health check ──────────────────────────────────
   check-urls:
