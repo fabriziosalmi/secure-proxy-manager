@@ -52,6 +52,9 @@ vulnerabilities:
   - id: CVE-2026-97031
     statement: "Go stdlib < 1.26.9 / 1.27.2 in the grafana 13.3.0 plugins and k6 2.3.0; same, upstream rebuild required."
     expired_at: 2026-11-30
+  - id: CVE-2026-78661
+    statement: "golang.org/x/net/html < 0.62.0 (x/net 0.58.0 to 0.61.0) in the datasource plugins bundled with grafana/grafana:13.3.0 and in grafana/k6:2.3.0, the newest tags of both, checked on Docker Hub 2026-11-11. Recorded 2026-11-11. Our own modules are on 0.62.0 (waf-go, wafeval), and tailscale moved to v1.104.4."
+    expired_at: 2026-11-30
   - id: CVE-2026-56857
     statement: "Go stdlib os.Root Mkdir/MkdirAll following junctions (fixed in 1.26.9 / 1.27.2) in the grafana 13.3.0 plugins (Go 1.26.7) and k6 2.3.0 (Go 1.27.1); both are the newest tags, checked 2026-10-28. Junctions are a Windows feature and both images are Linux. Our own images are built with 1.27.3."
     expired_at: 2026-11-30
