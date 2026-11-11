@@ -83,6 +83,10 @@ still lists it.
   and Squid restarted forever. It runs as root now, like Squid itself.
 - The proxy image installs `apt` and `libapt-pkg7.0` 3.2.1ubuntu0.1
   (CVE-2026-109518, HIGH); the newest Ubuntu 26.04 base still ships 3.2.0.
+- The backend and WAF images build with Go 1.27.4 (GO-2026-6859 in
+  `net/http`, reached from the backend's handlers). The web image installs
+  `libxslt` 1.1.43-r4 (CVE-2026-87636, CVE-2026-9947, HIGH), which the nginx
+  base lags on. The Tailscale overlay moves to v1.104.4.
 
 ### Upgrade notes
 
