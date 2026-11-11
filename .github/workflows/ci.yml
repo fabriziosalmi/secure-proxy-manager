@@ -272,6 +272,8 @@ jobs:
         run: bash tests/shell/cosign_sign_test.sh
       - name: The canary waits out a proxy that is reconfiguring and never retries a verdict
         run: bash tests/shell/canary_probe_test.sh
+      - name: The canary aligns to main, or to the newest release and never to a candidate
+        run: bash tests/shell/canary_track_test.sh
       - name: The installer installs the newest release, not main
         run: bash tests/shell/install_release_test.sh
       # The /config filenames are a contract across three languages and nothing

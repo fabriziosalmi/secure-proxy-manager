@@ -21,6 +21,11 @@
 # Run it from the deployment directory inside the container:
 #   bash scripts/canary.sh
 #
+# CANARY_TRACK picks what it aligns to: main (the default), for the canary that
+# tries main before a release; release, the newest vX.Y.Z tag in numeric
+# order (no release candidate, no mcp-v*), for an environment other machines
+# depend on, which should move only when a release does.
+#
 # Exit status is 0 when every check passed. The verdict is also written to
 # CANARY_STATE (default /var/lib/spm-canary.json) so a reader that is not
 # watching the output can still see the last result and its age — a log nobody
@@ -28,6 +33,7 @@
 set -uo pipefail
 
 CANARY_STATE="${CANARY_STATE:-/var/lib/spm-canary.json}"
+CANARY_TRACK="${CANARY_TRACK:-main}"
 HEALTH_URL="${HEALTH_URL:-https://localhost:8443/api/health}"
 PROXY="${PROXY:-http://localhost:3128}"
 PROBE_HOST="${PROBE_HOST:-http://example.com}"
@@ -42,18 +48,34 @@ bad() { FAIL=$((FAIL+1)); printf '  FAIL %s\n' "$1"; NOTES="${NOTES}${NOTES:+; }
 finish() {
   local verdict="pass"
   [ "$FAIL" -eq 0 ] || verdict="fail"
-  printf '{"verdict":"%s","passed":%d,"failed":%d,"commit":"%s","version":"%s","at":"%s","notes":"%s"}\n' \
-    "$verdict" "$PASS" "$FAIL" "${HEAD_SHA:-unknown}" "${VERSION:-unknown}" \
+  printf '{"verdict":"%s","passed":%d,"failed":%d,"commit":"%s","version":"%s","track":"%s","at":"%s","notes":"%s"}\n' \
+    "$verdict" "$PASS" "$FAIL" "${HEAD_SHA:-unknown}" "${VERSION:-unknown}" "$CANARY_TRACK" \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$NOTES" > "$CANARY_STATE" 2>/dev/null ||
     printf 'canary: cannot write %s\n' "$CANARY_STATE" >&2
   printf '── canary %s: %d passed, %d failed\n' "$verdict" "$PASS" "$FAIL"
   [ "$FAIL" -eq 0 ]
 }
 
-echo "── aligning to origin/main ──"
-git fetch -q origin main || { bad "git fetch failed"; finish; exit 1; }
+case "$CANARY_TRACK" in
+  main)
+    echo "── aligning to origin/main ──"
+    git fetch -q origin main || { bad "git fetch failed"; finish; exit 1; }
+    TARGET_REF=origin/main
+    ;;
+  release)
+    echo "── aligning to the newest release ──"
+    git fetch -q --force origin 'refs/tags/v*:refs/tags/v*' || { bad "git fetch of the release tags failed"; finish; exit 1; }
+    TAG=$(git tag -l 'v*' | grep -Ex 'v[0-9]+\.[0-9]+\.[0-9]+' | sort -t. -k1.2,1n -k2,2n -k3,3n | tail -n 1)
+    [ -n "$TAG" ] || { bad "no release tag (vX.Y.Z) to align to"; finish; exit 1; }
+    echo "  newest release: $TAG"
+    TARGET_REF="$TAG^{commit}"
+    ;;
+  *)
+    bad "CANARY_TRACK must be main or release, not '$CANARY_TRACK'"; finish; exit 1
+    ;;
+esac
 BEFORE=$(git rev-parse --short HEAD)
-TARGET=$(git rev-parse --short origin/main)
+TARGET=$(git rev-parse --short "$TARGET_REF")
 if [ "$BEFORE" != "$TARGET" ]; then
   echo "  $BEFORE -> $TARGET"
   # reset --hard leaves untracked files alone, but three of the lists the
@@ -65,7 +87,7 @@ if [ "$BEFORE" != "$TARGET" ]; then
   for f in config/domain_blacklist.txt config/ip_blacklist.txt config/ip_whitelist.txt; do
     [ -f "$f" ] && cp -p "$f" "$keep/${f##*/}"
   done
-  git reset --hard -q origin/main || { rm -rf "$keep"; bad "git reset failed"; finish; exit 1; }
+  git reset --hard -q "$TARGET_REF" || { rm -rf "$keep"; bad "git reset failed"; finish; exit 1; }
   for f in config/domain_blacklist.txt config/ip_blacklist.txt config/ip_whitelist.txt; do
     [ -f "$keep/${f##*/}" ] && cp -p "$keep/${f##*/}" "$f"
   done
