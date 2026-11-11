@@ -15,6 +15,39 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.30.1] - 2026-11-11
+
+A domain taken out of the DNS sinkhole right after another change could stay
+blocked for every client until some later change.
+
+### Fixed
+
+- **The DNS sinkhole follows every change, also two in the same second.**
+  The dns container decided whether the sinkhole file or the reload signal had
+  changed by comparing whole-second modification times, so a second write in
+  the same second was never seen and dnsmasq kept the previous list. A domain
+  pasted and then set to **Groups only**, removed, or allowed within the same
+  second stayed at 0.0.0.0 for every client, blocked with the reason
+  `domain_blacklist_dns` instead of the rule that should apply. The watchdog
+  now compares the file itself (inode, size and time) and the content of the
+  reload signal, which the backend writes in nanoseconds.
+
+### Changed
+
+- `scripts/canary.sh` takes `CANARY_TRACK`: `main` (the default, as before)
+  aligns the deployment to `origin/main`; `release` aligns it to the newest
+  `vX.Y.Z` tag in numeric order, never a release candidate, and refuses to run
+  rather than fall back to main when there is no release tag. Use `release` for
+  a standing deployment other machines depend on. The verdict file records the
+  track.
+- UI dependencies updated (axios 1.21.0, react-router 8.5.1, vitest 5.1.0 and
+  nine more patch and minor updates).
+
+### Upgrade notes
+
+- No schema change and no configuration change. Pull the new images and
+  restart, or rebuild from source.
+
 ## [3.30.0] - 2026-11-11
 
 Client groups: some devices get their own lists, set hours or only the
