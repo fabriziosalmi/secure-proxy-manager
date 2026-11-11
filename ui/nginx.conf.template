@@ -195,14 +195,23 @@ server {
         return 200 '{"status":"healthy","service":"secure-proxy-ui","tls":true}';
     }
 
-    # React SPA — all unmatched paths fall back to index.html
+    # React SPA — all unmatched paths fall back to index.html. no-cache: the
+    # browser asks again every time (a 304 when nothing changed). index.html
+    # had no Cache-Control, so after an upgrade a browser could keep it by
+    # heuristic and load scripts that no longer exist. The files of ui/public
+    # (icons.svg, logo.svg, favicon.svg) keep their names across releases, so
+    # they are revalidated too.
     location / {
         root      /usr/share/nginx/html;
         try_files $uri $uri/ /index.html;
+        add_header_inherit merge;
+        add_header Cache-Control "no-cache";
     }
 
-    # Cache hashed static assets aggressively (Vite outputs foo.abc123.js)
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+    # Only Vite's output is hashed (assets/name-<hash>.js), so only it may be
+    # kept for a year without asking. This used to match every .js, .css and
+    # .svg, the unhashed files of ui/public included.
+    location ^~ /assets/ {
         root      /usr/share/nginx/html;
         expires   1y;
         # An add_header here used to replace the server-level ones, so every

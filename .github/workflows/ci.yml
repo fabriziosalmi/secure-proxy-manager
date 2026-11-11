@@ -587,6 +587,10 @@ jobs:
       # ran. This starts it under the compose runtime flags in each TLS mode.
       - name: Web container starts with a certificate in every TLS mode
         run: bash tests/shell/ui_tls_entrypoint_test.sh
+      # index.html had no Cache-Control and the one-year immutable rule matched
+      # the unhashed files of ui/public too.
+      - name: Web caches only hashed assets, and revalidates index.html
+        run: bash tests/shell/ui_cache_headers_test.sh
       # nginx resolved the backend name once at start, so a backend recreated
       # on a new address answered 502 until web was restarted.
       - name: Web follows a recreated backend to its new address
