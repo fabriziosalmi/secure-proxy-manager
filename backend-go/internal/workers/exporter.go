@@ -84,7 +84,7 @@ func (e *Exporter) signalDNSReload() error {
 	// #nosec G306 — reload trigger, must be readable by the dns container
 	return os.WriteFile(
 		filepath.Join(e.configDir, ".reload-dns"),
-		[]byte(strconv.FormatInt(time.Now().Unix(), 10)),
+		[]byte(strconv.FormatInt(time.Now().UnixNano(), 10)),
 		0644,
 	)
 }

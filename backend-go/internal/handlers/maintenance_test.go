@@ -129,7 +129,8 @@ func TestMaintenanceHandlers_CheckCertSecurity(t *testing.T) {
 // the proxy watchdog polls its mtime — so asserting only on the 200 would let
 // the write be deleted outright without a test noticing, since every one of
 // these handlers reports success whether or not the write succeeded.
-func assertTrigger(t *testing.T, dir, name string) {
+// assertTrigger: the trigger holds the time it was written, in unit.
+func assertTrigger(t *testing.T, dir, name string, unit time.Duration) {
 	t.Helper()
 	path := filepath.Join(dir, name)
 	body, err := os.ReadFile(path) // #nosec G304 — test-controlled temp dir
@@ -140,7 +141,7 @@ func assertTrigger(t *testing.T, dir, name string) {
 	if err != nil {
 		t.Fatalf("trigger %s: want a unix timestamp, got %q", name, body)
 	}
-	if delta := time.Since(time.Unix(ts, 0)); delta < 0 || delta > time.Minute {
+	if delta := time.Since(time.Unix(0, ts*int64(unit))); delta < 0 || delta > time.Minute {
 		t.Errorf("trigger %s: timestamp %d is %v away from now", name, ts, delta)
 	}
 }
@@ -158,7 +159,7 @@ func TestMaintenanceHandlers_ReloadConfig(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected 200, got %d", w.Code)
 	}
-	assertTrigger(t, cfg.ConfigDir, ".reload-squid")
+	assertTrigger(t, cfg.ConfigDir, ".reload-squid", time.Second)
 
 	// A second call must re-trigger: the watchdog compares mtime, so an
 	// unchanged file would be a silently ignored reload.
@@ -205,7 +206,9 @@ func TestMaintenanceHandlers_ReloadDNS(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected 200, got %d", w.Code)
 	}
-	assertTrigger(t, cfg.ConfigDir, ".reload-dns")
+	// In nanoseconds: two reloads in the same second must differ, or the dns
+	// watchdog sees one of them only.
+	assertTrigger(t, cfg.ConfigDir, ".reload-dns", time.Nanosecond)
 
 	// The seeded domain must reach the exported file the DNS sinkhole reads,
 	// and the reported count must match what was exported.
@@ -256,7 +259,7 @@ func TestMaintenanceHandlers_ClearCache(t *testing.T) {
 	}
 
 	code, body := post()
-	assertTrigger(t, cfg.ConfigDir, ".clear-cache")
+	assertTrigger(t, cfg.ConfigDir, ".clear-cache", time.Second)
 	if code != http.StatusOK || body["status"] != "pending" {
 		t.Errorf("no acknowledgement: want 200 pending, got %d %v", code, body)
 	}
