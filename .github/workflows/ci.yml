@@ -108,6 +108,9 @@ jobs:
       # used a bare em dash as the placeholder for a missing value, which reads
       # like a value and does not say what is missing.
       - run: bash scripts/check-no-dashes.sh
+      # The nightly report jobs must depend on every other job, or a failure
+      # of the one left out opens no issue.
+      - run: bash scripts/check-nightly-needs.sh
 
   # ── 2. Go backend build ────────────────────────────────────────────────
   build-backend:
@@ -745,9 +748,13 @@ jobs:
   nightly-alert:
     name: Report a failed nightly
     if: ${{ failure() && github.event_name == 'schedule' }}
-    needs: [build-ui, version-sync, build-backend, build-waf, test-backend, test-waf, lint-go, lint-shell,
-            lint-python, test-python, test-restore, test-squid-config, observability, security-scan, licences, trivy-scan,
-            docker-build, check-urls, validate-compose, e2e, e2e-ui, adversarial, govulncheck-image-toolchain]
+    # Every other job, checked by scripts/check-nightly-needs.sh: E2E
+    # (production compose), the layout tests and slopless were missing, so a
+    # red run of one of them alone opened no issue.
+    needs: [build-ui, layout-ui, version-sync, build-backend, build-waf, test-backend, test-waf, lint-go,
+            lint-slopless, lint-shell, lint-python, test-python, test-restore, test-squid-config, observability,
+            security-scan, licences, trivy-scan, docker-build, check-urls, validate-compose, e2e, e2e-prod, e2e-ui,
+            adversarial, govulncheck-image-toolchain]
     runs-on: ubuntu-latest
     permissions:
       actions: read # gh run view: which jobs failed
@@ -776,3 +783,31 @@ jobs:
           else
             gh issue create --title "Nightly CI on main is failing" --label nightly-failure --body "$body"
           fi
+
+  # An open nightly-failure issue has to mean main is red now. It stayed open
+  # through fixes, so a green night left a stale alarm that read like a current
+  # one. A green scheduled run closes it, with the commit that passed.
+  nightly-recovered:
+    name: Close the nightly-failure issue on a green nightly
+    if: ${{ success() && github.event_name == 'schedule' }}
+    needs: [build-ui, layout-ui, version-sync, build-backend, build-waf, test-backend, test-waf, lint-go,
+            lint-slopless, lint-shell, lint-python, test-python, test-restore, test-squid-config, observability,
+            security-scan, licences, trivy-scan, docker-build, check-urls, validate-compose, e2e, e2e-prod, e2e-ui,
+            adversarial, govulncheck-image-toolchain]
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Close the open nightly-failure issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          for n in $(gh issue list --label nightly-failure --state open --json number --jq '.[].number'); do
+            gh issue close "$n" --comment "Scheduled CI on main passed at ${SHA}.
+
+          Run: ${RUN_URL}"
+          done
