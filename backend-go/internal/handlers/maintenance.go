@@ -673,7 +673,7 @@ func (h *MaintenanceHandlers) ReloadDNS(w http.ResponseWriter, r *http.Request) 
 	}
 	reloadFile := filepath.Join(h.cfg.ConfigDir, ".reload-dns")
 	// #nosec G306 — reload trigger, must be readable by the proxy/dns container
-	if err := os.WriteFile(reloadFile, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644); err != nil {
+	if err := os.WriteFile(reloadFile, []byte(strconv.FormatInt(time.Now().UnixNano(), 10)), 0644); err != nil {
 		log.Warn().Err(err).Msg("dns reload file trigger failed")
 	}
 	writeJSON(w, http.StatusOK, map[string]any{

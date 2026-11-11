@@ -78,7 +78,7 @@ func StartBlacklistRefresh(ctx context.Context, db *sql.DB, configDir string) {
 			}
 			reloadFile := filepath.Join(configDir, ".reload-dns")
 			// #nosec G306 — reload trigger, must be readable by the proxy/dns container
-			if err := os.WriteFile(reloadFile, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644); err != nil {
+			if err := os.WriteFile(reloadFile, []byte(strconv.FormatInt(time.Now().UnixNano(), 10)), 0644); err != nil {
 				log.Warn().Err(err).Msg("dns reload file trigger after auto-refresh failed")
 			} else {
 				log.Info().Msg("signaled dnsmasq to reload blocklist after auto-refresh")
