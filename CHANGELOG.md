@@ -15,6 +15,89 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.30.0] - 2026-11-11
+
+Client groups: some devices get their own lists, set hours or only the
+allowlist, on top of the policy every client gets. Devices set themselves up
+at `/setup` without a login, and an entry stays on a list while any source
+still lists it.
+
+### Added
+
+- **Client groups.** A group is a set of devices by address or network
+  (IPv4 or IPv6) with restrictions on top of the global policy: lists that
+  apply to the group only, a time window (days and a window within one day),
+  and allowlist-only egress. A group only tightens: the global lists, the DNS
+  sinkhole and every other rule still apply to its members, and a device in
+  two groups gets both. Set them up on **Clients**, under **Client groups**,
+  or with `/api/client-groups`. Blocked requests are logged with the reasons
+  `group_list`, `group_time` and `group_egress`. See the client groups guide.
+- **Lists for groups only.** On Blocked IPs and Blocked domains, a source's
+  **Groups only** switch (or `PUT /api/{ip,domain}-blacklist/sources/{id}/scope`)
+  takes its entries off the global lists and the DNS sinkhole; the proxy
+  enforces them for the groups that use the source, one ACL per source
+  however many groups use it. An entry a global source also lists stays
+  blocked for everyone.
+- **`/setup`**, the page a device opens to configure itself, without signing
+  in: the proxy address, the PAC URL and the steps for Windows, macOS, iOS,
+  Android and Linux. With SSL inspection on it also offers the CA certificate,
+  its SHA-256 fingerprint and expiry, and the steps to trust it. Settings >
+  Overview > Connect a device shows the same.
+- `GET /api/client-setup` and `GET /api/client-setup/ca.crt`, answered without
+  a login; nginx serves the certificate at `/ca.crt` on ports 8011 and 8443.
+  They carry nothing a client of the proxy does not already see; the CA key
+  is never served.
+- `PAC_FALLBACK_DIRECT` on the web container (see Changed).
+
+### Changed
+
+- **The PAC file no longer ends with `; DIRECT`.** While the proxy is down, a
+  device using it stops instead of going out unfiltered.
+  `PAC_FALLBACK_DIRECT=true` puts the fallback back; any other value than
+  `true` or `false` stops the web container. A browser that cannot fetch the
+  PAC file at all still connects directly, so egress must also be enforced on
+  the network.
+- **An entry stays on a list while any source still lists it.** Every other
+  source of an entry is recorded (a second list, a paste, a Popular list, a
+  country, a preset, the same entry added on its own). Removing a source
+  removes only the entries no other source lists; the others stay under one
+  of theirs. Before, an entry belonged only to the source that added it
+  first, and removing that source removed it even while another list still
+  held it. A restore does not count as another source.
+- **BREAKING:** `POST /api/ip-blacklist`, `/api/domain-blacklist`,
+  `/api/ip-whitelist` and `/api/domain-whitelist` with a value already on the
+  list answer `200` (`data.already_listed: true`, `data.recorded_by_hand`)
+  instead of `400`, and record the list's manual source as another source of
+  the entry. `X-API-Version` stays 1: no route, field or other status code
+  changes, and a caller that treated the `400` as "already there" reads the
+  same fact from `already_listed`.
+- `DELETE /api/{list}/sources/{id}` answers `kept` next to `removed`, and the
+  import answers `also_listed`. `GET .../sources` counts an entry under every
+  source that lists it and carries each source's `scope`.
+
+### Fixed
+
+- With SSL inspection or TLS peek on, a proxy started on an empty cache
+  volume never served: the entrypoint ran `squid -z` as the `proxy` user,
+  which cannot read the CA key, so the cache directories were never created
+  and Squid restarted forever. It runs as root now, like Squid itself.
+- The proxy image installs `apt` and `libapt-pkg7.0` 3.2.1ubuntu0.1
+  (CVE-2026-109518, HIGH); the newest Ubuntu 26.04 base still ships 3.2.0.
+- The backend and WAF images build with Go 1.27.4 (GO-2026-6859 in
+  `net/http`, reached from the backend's handlers). The web image installs
+  `libxslt` 1.1.43-r4 (CVE-2026-87636, CVE-2026-9947, HIGH), which the nginx
+  base lags on. The Tailscale overlay moves to v1.104.4.
+
+### Upgrade notes
+
+- The schema moves to version 11 (10: the other sources of an entry; 11:
+  client groups and the scope of a source). Both are one-way: an older
+  backend runs on them, but its Remove batch fails on a source other entries
+  also list. Back up `data/` before upgrading; see Rolling back in
+  DEPLOYMENT.md.
+- Devices that relied on the PAC file's direct fallback now stop while the
+  proxy is down. Set `PAC_FALLBACK_DIRECT=true` to keep the old behaviour.
+
 ## [3.29.0] - 2026-11-04
 
 Single sign-on: admins sign in to the dashboard with an OpenID Connect
