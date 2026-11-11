@@ -448,6 +448,14 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 	in.cacheKey = req.Request.Method + "\x00" + in.RawURL
 	in.URLCached = in.cacheable && eng.SafeCache().IsSafe(in.cacheKey)
 
+	// The body is read only within the inspection budget (budget_gate.go).
+	release, ok := reserveWeight(bodyWeight(req.Header, req.Request.ContentLength, req.Request.Body))
+	if !ok {
+		refuseOverBudget(w, req, in.eventID)
+		return
+	}
+	defer release()
+
 	in.Scan(req.Request)
 	in.logScanFindings(in.reputationHost(req.Request.Host))
 	in.logHello(req.Request)
@@ -863,6 +871,12 @@ func handleRespmod(w icap.ResponseWriter, req *icap.Request) {
 		passThrough(w, req)
 		return
 	}
+	release, ok := reserveWeight(respmodWeight(req))
+	if !ok {
+		passOverBudget(w, req)
+		return
+	}
+	defer release()
 	v := inspect.EvaluateResponse(eng, req.Response)
 	switch {
 	case v.Uninspectable:
@@ -961,6 +975,8 @@ func truncate(s string, max int) string {
 // ── Main ────────────────────────────────────────────────────────────────────
 
 func main() {
+	configureInspectBudget()
+
 	icap.HandleFunc("/waf", func(w icap.ResponseWriter, req *icap.Request) {
 		switch req.Method {
 		case "OPTIONS":
@@ -1195,6 +1211,7 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "# HELP waf_build_info Source revision this WAF binary was built from.\n# TYPE waf_build_info gauge\nwaf_build_info{commit=%q} 1\n", GitCommit)
 	fmt.Fprintf(w, "# HELP waf_engine_info Request engine in force (WAF_ENGINE) and the regex engine its rules run on (WAF_REGEX_ENGINE).\n# TYPE waf_engine_info gauge\nwaf_engine_info{engine=%q,regex=%q} 1\n", wafEngine, engine.RegexEngine())
 	writeShadowMetrics(w)
+	writeBudgetMetrics(w)
 
 	totalRules := 0
 	for _, cr := range engine.BlockRules() {

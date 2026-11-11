@@ -140,6 +140,19 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
 - ICAP on port 1344. Built-in rules: 179 request rules in 22 categories and 5
   response rules in 2 (`waf-go/internal/engine/rules.go`), plus custom rules
   from `/config/waf_custom_rules.txt`.
+- Request and response bodies are inspected within a memory budget
+  (`waf-go/internal/budget`). A body reserves 64 KiB plus its size, up to
+  the 1 MiB inspected, before it is read; requests without a body, and
+  responses the rules do not read, reserve nothing. The budget is the
+  memory left under the container's limit at start divided by 20, about
+  10 MiB with the default regex engine and 7 MiB with re2 under the shipped
+  256 MiB, or 64 MiB without a limit. A body that does not fit waits; after
+  30 seconds a request is refused with a 503 (passed uninspected with
+  `WAF_FAIL_OPEN=1`) and a text response passes after the checks that need
+  no body. The Go runtime's soft memory limit is 90% of the container's
+  unless `GOMEMLIMIT` is set. `/metrics` reports `waf_inspect_budget_bytes`,
+  `waf_inspect_budget_used_bytes`, `waf_inspect_budget_waited_total` and
+  `waf_inspect_budget_over_total` by outcome.
 - Each built-in match adds its rule's severity to an anomaly score; a request
   is blocked when the score reaches `WAF_BLOCK_THRESHOLD` (default `10`).
   Categories in `WAF_OBSERVE_CATEGORIES` match and are logged with no score.

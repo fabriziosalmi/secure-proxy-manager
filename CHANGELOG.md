@@ -15,6 +15,44 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.30.2] - 2026-11-11
+
+A security fix release. Concurrent requests with large bodies can no longer
+exhaust the WAF's memory and stop the proxy for every client
+([GHSA-pm3j-qqmg-pf88](https://github.com/fabriziosalmi/secure-proxy-manager/security/advisories/GHSA-pm3j-qqmg-pf88)).
+Only the WAF changes behaviour; the other images change only their
+version. Nothing is **BREAKING** and `X-API-Version` stays 1.
+
+Until you can upgrade, `icap_service_failure_limit -1` in
+`config/custom_squid_extra.conf`, followed by a restart of the proxy
+container, shortens the outage from three minutes to seconds.
+
+### Security
+
+- **Concurrent large request bodies can no longer exhaust the WAF's memory
+  and stop the proxy for every client** (GHSA-pm3j-qqmg-pf88). Each
+  inspection holds the body, up to 1 MiB, and several working copies of it,
+  and nothing bounded how many ran at once: 64 concurrent 1 MiB uploads took
+  the WAF past its 256 MiB limit and the kernel killed it. With REQMOD
+  fail-closed (the default) Squid then suspended the ICAP service and every
+  request from every client got 500 for about three minutes, repeatable by
+  anyone who can use the proxy. The WAF now inspects bodies within a memory
+  budget sized from the container's limit (about 10 MiB of bodies with the
+  default regex engine, 7 MiB with re2); a body waits for room while holding
+  only Squid's preview, and after 30 seconds a request is refused with a 503
+  (passed uninspected with `WAF_FAIL_OPEN=1`) and a text response passes
+  after the checks that need no body. Requests without a body never wait.
+  The Go runtime's soft memory limit is 90% of the container's unless
+  `GOMEMLIMIT` is set. Measured with 128 concurrent 1 MiB uploads: before,
+  the WAF was killed; after, it peaked at 183 MiB on the default engine and
+  was never killed on either engine. `/metrics` adds
+  `waf_inspect_budget_bytes`, `waf_inspect_budget_used_bytes`,
+  `waf_inspect_budget_waited_total` and `waf_inspect_budget_over_total`.
+
+### Changed
+
+- `SECURITY.md` names 3.30.x as the supported line; it still said 3.18.x.
+
 ## [3.30.1] - 2026-11-11
 
 A domain taken out of the DNS sinkhole right after another change could stay
