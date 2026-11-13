@@ -200,14 +200,14 @@ jobs:
           COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | tr -d '%')
           echo "WAF coverage: ${COVERAGE}%"
           awk "BEGIN {exit ($COVERAGE < 70) ? 1 : 0}"
-      # WAF_REGEX_ENGINE=re2 is an option, not the default: the same suite
-      # runs on it so the option does not drift (its equivalence tests with
-      # Go's regexp run in both passes).
-      - name: WAF unit tests on RE2
+      # re2 is the default engine since v3.31.0 and go remains an option: the
+      # same suite runs on go so the option does not drift (its equivalence
+      # tests with RE2 run in both passes).
+      - name: WAF unit tests on Go regexp
         run: go test -race -count=1 ./...
         working-directory: waf-go
         env:
-          WAF_REGEX_ENGINE: re2
+          WAF_REGEX_ENGINE: go
 
   # ── 5b. Go lint (golangci-lint) ───────────────────────────────────────
   # SECURE-QUAL-01. Before this job the tree carried 86 //nolint:errcheck

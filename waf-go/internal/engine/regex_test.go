@@ -71,3 +71,15 @@ func TestMatcherUsesRE2(t *testing.T) {
 		t.Errorf("%d RE2 forms for %d rules", len(*m), n)
 	}
 }
+
+// re2 is the default engine: unset or blank picks it, and go stays a choice.
+func TestRegexEngineDefaultIsRE2(t *testing.T) {
+	for _, tc := range []struct{ env, want string }{
+		{"", "re2"}, {"  ", "re2"}, {"go", "go"}, {"GO", "go"}, {"re2", "re2"},
+	} {
+		t.Setenv("WAF_REGEX_ENGINE", tc.env)
+		if got := regexEngineFromEnv(); got != tc.want {
+			t.Errorf("WAF_REGEX_ENGINE=%q: engine %q, want %q", tc.env, got, tc.want)
+		}
+	}
+}
