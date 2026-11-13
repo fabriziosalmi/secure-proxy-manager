@@ -15,6 +15,34 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.30.3] - 2026-11-13
+
+A security fix release. A client that abandons responses can no longer turn
+off response inspection for every client
+([GHSA-5x8j-5w4m-cw59](https://github.com/fabriziosalmi/secure-proxy-manager/security/advisories/GHSA-5x8j-5w4m-cw59)).
+Only the proxy changes behaviour; the other images change only their
+version. Nothing is **BREAKING** and `X-API-Version` stays 1.
+
+Until you can upgrade, `icap_service_failure_limit -1` in
+`config/custom_squid_extra.conf`, followed by a restart of the proxy
+container, closes it.
+
+### Security
+
+- **A client that abandons responses can no longer turn off response
+  inspection for every client** (GHSA-5x8j-5w4m-cw59). Squid counts a
+  transaction the client abandons as a failure of the WAF's ICAP service
+  and, after more than ten, suspended the service for 180 seconds. Eleven
+  plain-HTTP downloads closed after their headers turned off RESPMOD, which
+  passes when suspended, so every response from every client went
+  uninspected for three minutes; `apt` resuming partial downloads did it in
+  normal use. Request inspection was not affected. The generated
+  configuration sets `icap_service_failure_limit -1`, so neither service is
+  ever suspended; with the WAF unreachable each request still fails closed.
+  `config/custom_squid_extra.conf` can set another value. Measured with
+  Squid 7.7: before, twelve abandoned downloads suspended RESPMOD; after,
+  none did.
+
 ## [3.30.2] - 2026-11-11
 
 A security fix release. Concurrent requests with large bodies can no longer

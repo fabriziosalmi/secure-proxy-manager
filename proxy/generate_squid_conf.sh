@@ -552,6 +552,15 @@ icap_client_username_encode off
 icap_client_username_header X-Client-Username
 icap_preview_enable on
 icap_preview_size 4096
+# Never suspend an ICAP service. Squid counts a transaction the client abandons
+# (a download closed after its headers, as apt does when it resumes a partial
+# file) as a failure of the service, and by default suspends it for 180 s after
+# more than 10, counted without a time window: eleven abandoned responses
+# turned off response inspection (RESPMOD, bypass=1) for every client. With -1
+# each transaction still fails on its own when the WAF is unreachable (REQMOD
+# closed, RESPMOD open). custom_squid_extra.conf, appended below, can set
+# another value.
+icap_service_failure_limit -1
 icap_service service_req reqmod_precache bypass=${ICAP_REQMOD_BYPASS} icap://waf:1344/waf
 adaptation_access service_req deny spm_self_mgr
 adaptation_access service_req allow all

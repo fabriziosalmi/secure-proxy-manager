@@ -66,6 +66,13 @@ grep -q 'acl localnet src 10.0.0.0/8' <<<"$conf" && ok "localnet ACL present" ||
 grep -q 'http_access deny all' <<<"$conf" && ok "terminating deny present"  || bad "terminating deny present"
 grep -q 'icap_service service_req' <<<"$conf" && ok "ICAP REQMOD wired"     || bad "ICAP REQMOD wired"
 grep -q 'bypass=0' <<<"$conf"         && ok "REQMOD fails closed (bypass=0)" || bad "REQMOD fails closed (bypass=0)"
+# Squid counts a transaction the client abandons as an ICAP service failure,
+# and with its default limit (10, no time window) suspends the service for
+# 180 s: eleven abandoned responses turned off RESPMOD (bypass=1) for every
+# client. The service must never be suspended.
+grep -qx 'icap_service_failure_limit -1' <<<"$conf" \
+  && ok "ICAP services are never suspended (icap_service_failure_limit -1)" \
+  || bad "ICAP services are never suspended (icap_service_failure_limit -1)" "$(grep -n icap_service_failure_limit <<<"$conf" || echo 'not set')"
 parses 'true' && ok "squid -k parse accepts it" || bad "squid -k parse accepts it"
 # Squid logs an obsolete directive as ERROR and a deprecated value as WARNING
 # on every start (dns_v4_first, pipeline_prefetch on): noise that hides a real

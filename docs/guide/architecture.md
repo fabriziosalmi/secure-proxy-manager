@@ -120,7 +120,9 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
   taken as applied: the watchdog retries it, and a reload acknowledges it with
   `reconfigure_rc` null.
 - ICAP: REQMOD with `bypass=0` (fail closed) unless `WAF_FAIL_OPEN=1`, and
-  RESPMOD with `bypass=1`.
+  RESPMOD with `bypass=1`. `icap_service_failure_limit -1`: Squid never
+  suspends either service, since it counts a transaction the client abandons
+  as a failure of the service.
 - The SSL-bump CA is `/config/ssl_cert.pem` and `/ssl/ssl_key.pem`, generated
   on first start when absent (RSA 2048, 825 days). The key and the
   certificate database (`/ssl/ssl_db`) are in `./ssl`, which only the proxy
