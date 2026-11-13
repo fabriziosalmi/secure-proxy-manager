@@ -147,8 +147,8 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
   the 1 MiB inspected, before it is read; requests without a body, and
   responses the rules do not read, reserve nothing. The budget is the
   memory left under the container's limit at start divided by 20, about
-  10 MiB with the default regex engine and 7 MiB with re2 under the shipped
-  256 MiB, or 64 MiB without a limit. A body that does not fit waits; after
+  7 MiB with re2 (the default) and 10 MiB with `WAF_REGEX_ENGINE=go` under
+  the shipped 256 MiB, or 64 MiB without a limit. A body that does not fit waits; after
   30 seconds a request is refused with a 503 (passed uninspected with
   `WAF_FAIL_OPEN=1`) and a text response passes after the checks that need
   no body. The Go runtime's soft memory limit is 90% of the container's
@@ -198,13 +198,13 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
   next. A body that does not parse, or has more than 100,000 arguments or
   JSON nested deeper than 64, is matched whole; a `text/plain` body always
   is.
-- The rules run on Go's `regexp` by default. A pre-filter skips the rules an
-  input cannot match: by a literal each pattern requires, and for the rules
-  with none by a gate (`waf-go/internal/engine/gates.go`). With
-  `WAF_REGEX_ENGINE=re2` they run on RE2 compiled to WebAssembly, in-process,
-  and so do the Core Rule Set's `rx`, `pm`, `detectSQLi` and `detectXSS`
+- The rules run on RE2 compiled to WebAssembly, in-process, by default, and
+  so do the Core Rule Set's `rx`, `pm`, `detectSQLi` and `detectXSS`
   operators; the input reaches RE2 as Go's `regexp` reads it, each byte that
-  is not valid UTF-8 as U+FFFD.
+  is not valid UTF-8 as U+FFFD. `WAF_REGEX_ENGINE=go` runs them on Go's
+  `regexp`. A pre-filter skips the rules an input cannot match: by a literal
+  each pattern requires, and for the rules with none by a gate
+  (`waf-go/internal/engine/gates.go`).
 - The WAF policy (`waf-go/internal/policy`, `/config/waf_policy.json`) takes
   single rules off a host, a path or, for a Core Rule Set rule, an argument,
   or leaves rules, categories or the whole WAF to log only. It is re-read

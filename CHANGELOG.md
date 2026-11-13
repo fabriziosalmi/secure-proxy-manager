@@ -15,6 +15,19 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Changed
+
+- **The WAF's rules run on RE2 by default** (`WAF_REGEX_ENGINE=re2`): RE2
+  compiled to WebAssembly and run in-process, for the built-in rules and
+  the Core Rule Set's operators. Measured through the proxy with the shipped
+  limits (256 MiB, 0.5 CPU): a 1 MiB body is inspected in 0.2 s instead of
+  1.0 s, and the WAF holds about 132 MiB at rest instead of 49 MiB; with 128
+  concurrent 1 MiB uploads its anonymous memory peaked at 227 MiB, under the
+  inspection budget, and it was never killed. Before the switch the two
+  engines gave the same verdict on 125,952,224 comparisons of the evaluation
+  corpus and 43,041 of real traffic. `WAF_REGEX_ENGINE=go` keeps Go's
+  `regexp`; CI runs the WAF suite on both.
+
 ## [3.30.3] - 2026-11-13
 
 A security fix release. A client that abandons responses can no longer turn

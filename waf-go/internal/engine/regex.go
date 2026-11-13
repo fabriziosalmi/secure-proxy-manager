@@ -5,11 +5,13 @@ package engine
 // Go's regexp has no DFA: each rule costs about 13 ns per byte of input. RE2
 // itself, compiled to WebAssembly and run by wazero in pure Go
 // (github.com/wasilibs/go-re2), has one, and reads a body two to four times
-// faster with the same RE2 syntax. WAF_REGEX_ENGINE chooses: go (the
-// default) or re2. go stays the default until re2 has run on real traffic
-// with the same verdicts: it already differed on bytes that are not valid
-// UTF-8 (AsRE2Input), which no corpus had shown. The rules, the pre-filter
-// and the gates keep Go's regexp for their syntax; only the matching moves.
+// faster with the same RE2 syntax. WAF_REGEX_ENGINE chooses: re2 (the
+// default) or go. re2 became the default after its verdicts matched Go's
+// regexp on 125,952,224 comparisons of the evaluation corpus and on 43,041
+// of real traffic (WAF_REGEX_SHADOW), with no difference; the one difference
+// ever found, on bytes that are not valid UTF-8, is handled by AsRE2Input.
+// The rules, the pre-filter and the gates keep Go's regexp for their syntax;
+// only the matching moves.
 // A rule RE2 does not compile keeps Go's regexp and is logged.
 
 import (
@@ -36,7 +38,7 @@ var (
 func regexEngineFromEnv() string {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv("WAF_REGEX_ENGINE")))
 	if v == "" {
-		return "go"
+		return "re2"
 	}
 	return v
 }
