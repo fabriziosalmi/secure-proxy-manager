@@ -15,6 +15,18 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.31.0] - 2026-11-13
+
+The WAF's rules run on RE2 by default: a 1 MiB body is inspected about five
+times faster, at the cost of about 83 MiB more memory at rest. Nothing is
+**BREAKING** and `X-API-Version` stays 1.
+
+**Upgrade notes.** No schema or configuration change is needed. An install
+that sets `WAF_REGEX_ENGINE` keeps its value; to keep Go's `regexp`, set
+`WAF_REGEX_ENGINE=go` in `.env`. A WAF container limited below the shipped
+256 MiB should be checked before upgrading: at rest it now holds about
+132 MiB.
+
 ### Changed
 
 - **The WAF's rules run on RE2 by default** (`WAF_REGEX_ENGINE=re2`): RE2

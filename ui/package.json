@@ -1,7 +1,7 @@
 {
   "name": "secure-proxy-manager-ui",
   "private": true,
-  "version": "3.30.3",
+  "version": "3.31.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
