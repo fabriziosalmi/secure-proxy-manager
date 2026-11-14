@@ -83,11 +83,18 @@ for _ in $(seq 1 120); do
   fi
   sleep 1
 done
+# How the Grafana container ended, when it did not come up: a container that
+# restarts with no error in its log was killed, and OOMKilled says whether by
+# the memory limit this test sets.
+grafana_state() {
+  docker inspect -f 'OOMKilled={{.State.OOMKilled}} ExitCode={{.State.ExitCode}} Restarts={{.RestartCount}} Status={{.State.Status}}' secure-proxy-manager-grafana 2>&1
+}
 if [ "$graf_ready" -eq 1 ]; then
   ok "grafana is healthy on :3000"
 else
-  bad "grafana is healthy on :3000" "$(docker logs secure-proxy-manager-grafana 2>&1 | tail -10)"
+  bad "grafana is healthy on :3000" "$(grafana_state) $(docker logs secure-proxy-manager-grafana 2>&1 | tail -10)"
 fi
+echo "  grafana: $(grafana_state)"
 
 TARGETS_JSON="$(docker exec secure-proxy-manager-prometheus wget -qO- http://127.0.0.1:9090/api/v1/targets 2>&1 || true)"
 if printf '%s' "$TARGETS_JSON" | grep -q 'http://backend:5000/metrics'; then
