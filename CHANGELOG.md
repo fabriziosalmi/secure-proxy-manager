@@ -15,6 +15,32 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.31.1] - 2026-11-14
+
+The proxy starts when the dns or waf container has more than one address,
+and the MCP image installs only hashed packages. Nothing is **BREAKING** and
+`X-API-Version` stays 1.
+
+**Upgrade notes.** No schema or configuration change is needed.
+
+### Fixed
+
+- **Squid starts when the dns or waf container is on more than one network
+  shared with the proxy** (#619, thanks to @wentura77). `getent hosts`
+  prints one line per address: the second dns address landed alone after
+  `dns_nameservers`, and a WAF address on two lines broke the ICAP URL, so
+  `squid -k parse` failed and the proxy kept restarting. The generator now
+  writes every dns address on the `dns_nameservers` line and the lowest WAF
+  address in the ICAP URL. The blacklist watchdog compares sorted address
+  lists, so a change in the order of the records no longer regenerates the
+  Squid configuration.
+- **The MCP image installs its Python packages from hashed locks**
+  (`mcp/requirements.txt`, `mcp/requirements-build.txt`, installed with
+  `--require-hashes`) instead of resolving them from PyPI at build time.
+  The wheel is built in a separate stage, so the build backend is not in
+  the final image.
+- `golang.org/x/crypto` v0.59.0 in the backend.
+
 ## [3.31.0] - 2026-11-13
 
 The WAF's rules run on RE2 by default: a 1 MiB body is inspected about five
