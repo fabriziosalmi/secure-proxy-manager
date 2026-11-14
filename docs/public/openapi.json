@@ -1734,6 +1734,164 @@
         "x-spm-token-scope": "read"
       }
     },
+    "/api/config/snapshots": {
+      "get": {
+        "operationId": "get_api_config_snapshots",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Configuration history, newest first: id, created_at, username, reason, sha256, and current for the snapshot that holds the configuration in force. A snapshot holds the settings, client groups, WAF policy and egress allowlist, taken before every change to them and on demand",
+        "tags": [
+          "config"
+        ],
+        "x-spm-token-scope": "read"
+      },
+      "post": {
+        "operationId": "post_api_config_snapshots",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Take a snapshot of the configuration now ({note} optional, one line): id, and created false when the newest snapshot already holds it",
+        "tags": [
+          "config"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/config/snapshots/{id}/diff": {
+      "get": {
+        "operationId": "get_api_config_snapshots_id_diff",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "What restoring the snapshot would change: settings (from, to; a secret is named, never shown), client groups added, removed and changed, the WAF policy's mode and counts, egress allowlist entries added and removed, and same when nothing would change",
+        "tags": [
+          "config"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
+    "/api/config/snapshots/{id}/restore": {
+      "post": {
+        "operationId": "post_api_config_snapshots_id_restore",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Make the configuration the snapshot's exactly, after taking a snapshot of the one in force (undo_snapshot); the proxy reloads and the WAF checks the policy before it is written",
+        "tags": [
+          "config"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
     "/api/counters/reset": {
       "post": {
         "operationId": "post_api_counters_reset",

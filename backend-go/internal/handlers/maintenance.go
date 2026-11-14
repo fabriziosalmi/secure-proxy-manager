@@ -42,7 +42,7 @@ func NewMaintenanceHandlers(db *sql.DB, cfg *config.Config) *MaintenanceHandlers
 
 func (h *MaintenanceHandlers) Register(r chi.Router, authMW func(http.Handler) http.Handler) {
 	r.With(authMW).Get("/api/maintenance/backup-config", h.BackupConfig)
-	r.With(authMW).Post("/api/maintenance/restore-config", h.RestoreConfig)
+	r.With(authMW, snapshotBefore("a restore from a file")).Post("/api/maintenance/restore-config", h.RestoreConfig)
 	r.With(authMW).Get("/api/security/download-ca", h.DownloadCA)
 	r.With(authMW).Get("/api/maintenance/check-cert-security", h.CheckCertSecurity)
 	r.With(authMW).Post("/api/maintenance/reload-config", h.ReloadConfig)

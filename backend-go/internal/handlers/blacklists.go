@@ -69,10 +69,10 @@ func (h *BlacklistHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 	// Egress destination allowlist (default-deny egress). Single table, entries
 	// classified as 'cidr' or 'domain'; pass h.cfg so deletes re-export.
 	r.With(authMW).Get("/api/egress-allowlist", listHandler(h.db, "dst_allowlist", "entry"))
-	r.With(authMW).Post("/api/egress-allowlist", h.AddDstAllow)
-	r.With(authMW).Delete("/api/egress-allowlist/clear-all", clearAllHandler(h.db, "dst_allowlist", h.cfg, "entry"))
-	r.With(authMW).Post("/api/egress-allowlist/bulk-delete", bulkDeleteHandler(h.db, "dst_allowlist", h.cfg))
-	r.With(authMW).Delete("/api/egress-allowlist/{id}", deleteByIDHandler(h.db, "dst_allowlist", h.cfg))
+	r.With(authMW, snapshotBefore("an egress allowlist addition")).Post("/api/egress-allowlist", h.AddDstAllow)
+	r.With(authMW, snapshotBefore("clearing the egress allowlist")).Delete("/api/egress-allowlist/clear-all", clearAllHandler(h.db, "dst_allowlist", h.cfg, "entry"))
+	r.With(authMW, snapshotBefore("an egress allowlist removal")).Post("/api/egress-allowlist/bulk-delete", bulkDeleteHandler(h.db, "dst_allowlist", h.cfg))
+	r.With(authMW, snapshotBefore("an egress allowlist removal")).Delete("/api/egress-allowlist/{id}", deleteByIDHandler(h.db, "dst_allowlist", h.cfg))
 
 	// Import endpoints
 	r.With(authMW).Post("/api/blacklists/import", h.Import)

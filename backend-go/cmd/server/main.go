@@ -238,6 +238,7 @@ func run() error {
 	handlers.NewTrajectoryHandlers(db).Register(r, authMW)
 	handlers.NewTokenHandlers(db).Register(r, authMW)
 	handlers.NewLogForwardHandlers(db).Register(r, authMW)
+	handlers.NewSnapshotHandlers(db, cfg).Register(r, authMW)
 	handlers.RegisterAPIDocs(r, authMW)
 
 	// ── Prometheus metrics (internal network only; not proxied by nginx) ──────

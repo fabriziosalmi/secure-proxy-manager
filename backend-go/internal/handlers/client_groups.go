@@ -20,10 +20,10 @@ import (
 
 func (h *BlacklistHandlers) registerClientGroups(r chi.Router, authMW func(http.Handler) http.Handler) {
 	r.With(authMW).Get("/api/client-groups", h.listClientGroups)
-	r.With(authMW).Post("/api/client-groups", h.saveClientGroup(false))
+	r.With(authMW, snapshotBefore("a client group added")).Post("/api/client-groups", h.saveClientGroup(false))
 	r.With(authMW).Get("/api/client-groups/{id}", h.getClientGroup)
-	r.With(authMW).Put("/api/client-groups/{id}", h.saveClientGroup(true))
-	r.With(authMW).Delete("/api/client-groups/{id}", h.deleteClientGroup)
+	r.With(authMW, snapshotBefore("a client group edit")).Put("/api/client-groups/{id}", h.saveClientGroup(true))
+	r.With(authMW, snapshotBefore("a client group removed")).Delete("/api/client-groups/{id}", h.deleteClientGroup)
 	for _, l := range listRoutes[:2] { // the IP and domain blacklists
 		r.With(authMW).Put("/api/"+l.path+"/sources/{id}/scope", h.setSourceScope(l))
 	}
