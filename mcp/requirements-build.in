@@ -1,0 +1,2 @@
+# Build backend for the image, compiled with hashes into requirements-build.txt.
+hatchling
