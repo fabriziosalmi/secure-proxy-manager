@@ -160,13 +160,15 @@ func (h *SettingsHandlers) SyncProxyLDAP() (changed bool, err error) {
 		}
 		return changed, nil
 	}
-	if have, err := os.ReadFile(confPath); err != nil || !bytes.Equal(have, conf) { // #nosec G304 -- fixed name in the secrets dir
+	haveConf, confErr := os.ReadFile(confPath) // #nosec G304 -- fixed name in the secrets dir
+	if confErr != nil || !bytes.Equal(haveConf, conf) {
 		if err := atomicfile.Write(confPath, conf, 0o600); err != nil {
 			return changed, err
 		}
 		changed = true
 	}
-	if have, err := os.ReadFile(passPath); err != nil || !bytes.Equal(have, pass) { // #nosec G304 -- fixed name in the secrets dir
+	havePass, passErr := os.ReadFile(passPath) // #nosec G304 -- fixed name in the secrets dir
+	if passErr != nil || !bytes.Equal(havePass, pass) {
 		groupSet, err := atomicfile.WriteGroup(passPath, pass, 0o640, proxyGroupID)
 		if err != nil {
 			return changed, err
