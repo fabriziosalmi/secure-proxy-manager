@@ -73,7 +73,10 @@ func (h *SettingsHandlers) validateBody(body map[string]string, clearKeys map[st
 	// With login on and no credentials the proxy refuses every client
 	// (generate_squid_conf.sh fails closed), so login cannot be turned on, or
 	// its credentials removed, without the other half.
-	if carriesProxyLogin(body, clearKeys) && effective(settingProxyAuth) == "true" {
+	if (carriesProxyLogin(body, clearKeys) || carriesProxyLDAP(body) || clearKeys[settingLDAPBindPass]) &&
+		effective(settingProxyAuth) == "true" && effective(settingProxyAuthSource) == proxyAuthLDAP {
+		h.ldapLoginErrors(errs, effective, h.secretAfterSave(settingLDAPBindPass, body, clearKeys))
+	} else if carriesProxyLogin(body, clearKeys) && effective(settingProxyAuth) == "true" {
 		const why = ": with proxy login on and no credentials the proxy refuses every client"
 		if errs[settingProxyUsername] == "" && effective(settingProxyUsername) == "" {
 			errs[settingProxyUsername] = "set the username devices sign in with" + why
@@ -88,13 +91,19 @@ func (h *SettingsHandlers) validateBody(body map[string]string, clearKeys map[st
 // proxyPasswordAfterSave reports whether a proxy password will be stored
 // once the request is saved: a typed one, or the stored one kept.
 func (h *SettingsHandlers) proxyPasswordAfterSave(body map[string]string, clearKeys map[string]bool) bool {
-	if clearKeys[settingProxyPassword] {
+	return h.secretAfterSave(settingProxyPassword, body, clearKeys)
+}
+
+// secretAfterSave reports whether the secret key will be stored once the
+// request is saved: a typed value, or the stored one kept.
+func (h *SettingsHandlers) secretAfterSave(key string, body map[string]string, clearKeys map[string]bool) bool {
+	if clearKeys[key] {
 		return false
 	}
-	if body[settingProxyPassword] != "" {
+	if body[key] != "" {
 		return true
 	}
-	return h.dbSetting(settingProxyPassword, "") != ""
+	return h.dbSetting(key, "") != ""
 }
 
 // writeFieldErrors answers 400 with every refused field in errors and, for a

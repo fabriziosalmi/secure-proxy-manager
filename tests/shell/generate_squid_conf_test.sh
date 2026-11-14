@@ -420,6 +420,32 @@ conf="$(generate "$UP_BADPW")"
 grep -qxF 'cache_peer 10.0.0.9 parent 3128 0 no-query no-digest default name=spm_upstream' <<<"$conf" \
   && ok "a password with a space or # is dropped, the parent kept without a login" || bad "a password with a space or # is dropped" "$(grep '^cache_peer' <<<"$conf")"
 
+echo "── proxy login from LDAP ──"
+LDAP_SEED='mkdir -p /secrets; touch /config/proxy_auth_enabled /config/proxy_auth_ldap; printf "bind-pass" > /secrets/ldap_bind_password; printf "LDAP_URL=ldaps://dc1.corp.example:636\nLDAP_BIND_DN=cn=Proxy Bind,ou=Service Accounts,dc=corp,dc=example\nLDAP_USER_BASE=ou=people,dc=corp,dc=example\nLDAP_USER_FILTER=(sAMAccountName=%%s)\n" > /secrets/ldap.conf'
+conf="$(generate "$LDAP_SEED")"
+grep -qxF 'auth_param basic program /usr/lib/squid/basic_ldap_auth -v 3 -D "cn=Proxy Bind,ou=Service Accounts,dc=corp,dc=example" -W /secrets/ldap_bind_password -H ldaps://dc1.corp.example:636 -b "ou=people,dc=corp,dc=example" -f "(sAMAccountName=%s)"' <<<"$conf" \
+  && ok "LDAP: basic_ldap_auth with the quoted DN and the password file" || bad "LDAP: basic_ldap_auth line" "$(grep '^auth_param basic program' <<<"$conf")"
+grep -qx 'http_access deny !localhost spm_r_proxy_auth !authenticated' <<<"$conf" && ! grep -q 'basic_ncsa_auth' <<<"$conf" \
+  && ok "LDAP: login required, the local file not used" || bad "LDAP: login required, the local file not used"
+! grep -q 'spm_ldap_group' <<<"$conf" && ok "LDAP: no group, no group rule" || bad "LDAP: no group, no group rule"
+parses "$LDAP_SEED" && ok "LDAP: squid -k parse accepts it" || bad "LDAP: squid -k parse accepts it" "$(parse_log "$LDAP_SEED" | grep -iE 'error|fatal' | head -3)"
+status="$(docker run --rm --memory 256m --entrypoint /bin/bash "$IMAGE" -c "mkdir -p /config /etc/squid; $LDAP_SEED; /usr/local/bin/generate_squid_conf.sh >/dev/null 2>&1; cat /config/proxy_auth_status.json" 2>/dev/null)"
+grep -q '"state":"ldap"' <<<"$status" && ok "LDAP: the proxy reports state ldap" || bad "LDAP: the proxy reports state ldap" "$status"
+LDAP_GROUP_SEED="$LDAP_SEED"'; printf "LDAP_GROUP=proxy-users\nLDAP_GROUP_BASE=ou=groups,dc=corp,dc=example\nLDAP_GROUP_FILTER=(&(cn=%%g)(member=%%u))\n" >> /secrets/ldap.conf'
+conf="$(generate "$LDAP_GROUP_SEED")"
+grep -qxF 'external_acl_type spm_ldap_group ttl=300 negative_ttl=60 %LOGIN /usr/lib/squid/ext_ldap_group_acl -v 3 -D "cn=Proxy Bind,ou=Service Accounts,dc=corp,dc=example" -W /secrets/ldap_bind_password -H ldaps://dc1.corp.example:636 -b "ou=groups,dc=corp,dc=example" -f "(&(cn=%g)(member=%u))" -B "ou=people,dc=corp,dc=example" -F "(sAMAccountName=%s)"' <<<"$conf" \
+  && grep -qx 'acl spm_ldap_group external spm_ldap_group proxy-users' <<<"$conf" && grep -qx 'http_access deny !localhost spm_r_proxy_auth !spm_ldap_group all' <<<"$conf" \
+  && ok "LDAP group: members only, a non-member gets 403" || bad "LDAP group rule" "$(grep -E 'spm_ldap_group' <<<"$conf")"
+parses "$LDAP_GROUP_SEED" && ok "LDAP group: squid -k parse accepts it" || bad "LDAP group: squid -k parse accepts it" "$(parse_log "$LDAP_GROUP_SEED" | grep -iE 'error|fatal' | head -3)"
+LDAP_NOCONF='mkdir -p /secrets; touch /config/proxy_auth_enabled /config/proxy_auth_ldap; printf "u:\$6\$x\$y\n" > /config/proxy_users.htpasswd'
+conf="$(generate "$LDAP_NOCONF")"
+grep -qx 'http_access deny !localhost spm_r_proxy_auth_unset' <<<"$conf" && ! grep -q 'basic_ncsa_auth' <<<"$conf" \
+  && ok "LDAP chosen with no conf: every client refused, the local file not used instead" || bad "LDAP chosen with no conf" "$(grep -E 'auth_param|spm_r_proxy_auth' <<<"$conf")"
+LDAP_QUOTE='mkdir -p /secrets; touch /config/proxy_auth_enabled /config/proxy_auth_ldap; printf "p" > /secrets/ldap_bind_password; printf "LDAP_URL=ldap://dc1\nLDAP_BIND_DN=cn=x\" -H ldap://evil\nLDAP_USER_BASE=dc=corp\nLDAP_USER_FILTER=(uid=%%s)\n" > /secrets/ldap.conf'
+conf="$(generate "$LDAP_QUOTE")"
+grep -q 'evil' <<<"$conf" && bad "LDAP: a DN with a quote is refused" "$(grep evil <<<"$conf")" \
+  || { grep -qx 'http_access deny !localhost spm_r_proxy_auth_unset' <<<"$conf" && ok "LDAP: a DN with a quote is refused, every client refused" || bad "LDAP: a DN with a quote" "$(grep -E 'auth_param|spm_r_proxy_auth' <<<"$conf")"; }
+
 echo "── injection: nothing in a /config settings file is executed ──"
 # The previous check grepped squid.conf for "pwned", which says nothing about
 # whether a command RAN, and safe_source did run "KEY=value command": a space

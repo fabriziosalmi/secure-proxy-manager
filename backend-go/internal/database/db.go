@@ -420,6 +420,18 @@ var DefaultSettings = [][]string{
 	{"enable_bandwidth_limits", "false"},
 	{"bandwidth_limit_mbps", "100"},
 	{"bandwidth_limit_per_user_kbps", "0"},
+	// Proxy login against LDAP (handlers/proxy_ldap.go): the local password
+	// file stays the source until LDAP is chosen; the filters are the usual
+	// OpenLDAP ones (Active Directory uses (sAMAccountName=%s)).
+	{"proxy_auth_source", "local"},
+	{"ldap_url", ""},
+	{"ldap_bind_dn", ""},
+	{"ldap_bind_password", ""},
+	{"ldap_user_base_dn", ""},
+	{"ldap_user_filter", "(uid=%s)"},
+	{"ldap_group", ""},
+	{"ldap_group_base_dn", ""},
+	{"ldap_group_filter", "(&(cn=%g)(member=%u))"},
 	// The upstream proxy (handlers/upstream_proxy.go): off; when switched on,
 	// every request goes through it, on the port proxies usually listen on.
 	{"upstream_proxy_enabled", "false"},

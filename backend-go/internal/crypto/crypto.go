@@ -29,6 +29,9 @@ var SensitiveKeys = map[string]struct{}{
 	// The upstream proxy's password. Squid needs it in clear: the backend
 	// writes it only to the proxy-secrets volume (handlers/upstream_proxy.go).
 	"upstream_proxy_password": {},
+	// The LDAP account the proxy searches the directory with. Written in clear
+	// only to the proxy-secrets volume, which the helper reads (-W).
+	"ldap_bind_password": {},
 }
 
 // IsSensitive returns true if the setting key should be encrypted.

@@ -675,6 +675,14 @@ func (h *SettingsHandlers) writeSquidArtefacts(body map[string]string) []string 
 		failedArtifacts = append(failedArtifacts, "squid_settings.env")
 	}
 
+	// The proxy's LDAP files follow the stored settings, the bind password
+	// included.
+	if carriesProxyLDAP(body) {
+		if failed := h.syncProxyLDAPAndReload(); failed != "" {
+			failedArtifacts = append(failedArtifacts, failed)
+		}
+	}
+
 	// The upstream proxy's files follow the stored settings, the password
 	// included, which the body may leave out as a secret.
 	if carriesUpstream(body) {

@@ -1,0 +1,36 @@
+dn: ou=people,dc=example,dc=com
+objectClass: organizationalUnit
+ou: people
+
+dn: ou=groups,dc=example,dc=com
+objectClass: organizationalUnit
+ou: groups
+
+dn: ou=Service Accounts,dc=example,dc=com
+objectClass: organizationalUnit
+ou: Service Accounts
+
+dn: cn=Proxy Bind,ou=Service Accounts,dc=example,dc=com
+objectClass: inetOrgPerson
+cn: Proxy Bind
+sn: Bind
+userPassword: bind-pass-123
+
+dn: uid=alice,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+uid: alice
+cn: Alice
+sn: Example
+userPassword: alice-pass-123
+
+dn: uid=bob,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+uid: bob
+cn: Bob
+sn: Example
+userPassword: bob-pass-123
+
+dn: cn=proxy-users,ou=groups,dc=example,dc=com
+objectClass: groupOfNames
+cn: proxy-users
+member: uid=alice,ou=people,dc=example,dc=com
