@@ -70,7 +70,7 @@ var squidTail = tailSpec{
 	maxLines: maxBatchLines,
 	// The proxy's own outcome, counted where every line is already parsed — one
 	// Inc on a path that is doing a DB write anyway (SECURE-OBS-01).
-	onEntry: func(entry map[string]any) { metrics.ProxyRequest(entry["blocked"] == 1) },
+	onEntry: countProxyEntry,
 }
 
 // tailOnce reads what has been appended to the log since offset, stores it, and

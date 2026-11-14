@@ -6,6 +6,8 @@
  * - analytics/blocked-by-day?tz=<zone>: blocked requests per calendar day,
  *   by rule;
  * - analytics/coverage: what is switched on and enforced now;
+ * - analytics/cache-by-day?tz=<zone>: what the proxy's cache did with the
+ *   requests of each calendar day, in requests and in bytes;
  * - waf/stats (or waf_status saying why not): the WAF's own category counters,
  *   the only WAF call: the dashboard summary is not downloaded for it;
  * - analytics/shadow-it, analytics/user-agents, analytics/file-extensions:
@@ -28,12 +30,13 @@ import { Link, useLocation } from 'react-router';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getData } from '../lib/api';
-import type { BlockedByDay, Coverage, FileExtData, ServiceTypeData, ShadowItService, TopDestination, WafTrajectory } from '../types';
+import type { BlockedByDay, CacheByDay, Coverage, FileExtData, ServiceTypeData, ShadowItService, TopDestination, WafTrajectory } from '../types';
 import { settingsQuery } from '../lib/queries';
 import { Trajectories } from '../components/analytics/Trajectories';
 import { readWafStats, type WafReading } from '../lib/wafStats';
 import { PageHeader } from '../components/ui/PageHeader';
 import { BlockedPerDay } from '../components/analytics/BlockedPerDay';
+import { CachePerDay } from '../components/analytics/CachePerDay';
 import { ProtectionCoverage } from '../components/analytics/ProtectionCoverage';
 import { FileTypes, ServiceKinds, ServicesInUse, WafCategories } from '../components/analytics/TrafficSections';
 import { viewerTimeZone } from '../components/analytics/days';
@@ -65,6 +68,11 @@ export function Analytics() {
   const days = useQuery<BlockedByDay | null>({
     queryKey: ['analytics', 'blocked-by-day', tz],
     queryFn: () => getData<BlockedByDay>(`analytics/blocked-by-day?tz=${encodeURIComponent(tz)}`),
+    refetchInterval,
+  });
+  const cacheDays = useQuery<CacheByDay | null>({
+    queryKey: ['analytics', 'cache-by-day', tz],
+    queryFn: () => getData<CacheByDay>(`analytics/cache-by-day?tz=${encodeURIComponent(tz)}`),
     refetchInterval,
   });
   const coverage = useQuery<Coverage | null>({
@@ -130,6 +138,8 @@ export function Analytics() {
         <BlockedPerDay data={days.data} loading={days.isPending} error={days.isError} />
         <ProtectionCoverage data={coverage.data} loading={coverage.isPending} error={coverage.isError} />
       </div>
+
+      <CachePerDay data={cacheDays.data} loading={cacheDays.isPending} error={cacheDays.isError} />
 
       <div id="trajectories" className="scroll-mt-4">
         <Trajectories

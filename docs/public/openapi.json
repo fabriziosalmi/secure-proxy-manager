@@ -835,6 +835,41 @@
         "x-spm-token-scope": "read"
       }
     },
+    "/api/analytics/cache-by-day": {
+      "get": {
+        "operationId": "get_api_analytics_cache_by_day",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "What the cache did with the client requests of each calendar day, today and the 6 days before (?tz=Europe/Rome, default UTC): requests and bytes sent, by outcome (hit, revalidated, miss, tunnel, refused, other)",
+        "tags": [
+          "analytics"
+        ],
+        "x-spm-token-scope": "read"
+      }
+    },
     "/api/analytics/coverage": {
       "get": {
         "operationId": "get_api_analytics_coverage",

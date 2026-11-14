@@ -223,6 +223,7 @@ func run() error {
 	// ── Prometheus metrics (internal network only; not proxied by nginx) ──────
 	metrics.SetBuildInfo(config.AppVersion)
 	metrics.RegisterDBStats(db)
+	metrics.RegisterCacheStore(handlers.CacheStoreReader(cfg.ConfigDir))
 	r.Handle("/metrics", metrics.Handler())
 
 	mountPprof(r, authMW)

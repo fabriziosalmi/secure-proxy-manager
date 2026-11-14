@@ -48,6 +48,24 @@ func dayBounds(now time.Time, loc *time.Location, n int) []time.Time {
 	return out
 }
 
+// dayBucket is the SQL expression giving a row's day index among the days
+// that bounds (from dayBounds) delimit, 0 the oldest, and its arguments. One
+// CASE arm per day, newest first: a row is in the first day whose midnight it
+// is not before. The midnight and the day's index are both bound, so the text
+// is constants and placeholders only. A row before the first midnight is
+// day 0: the query's WHERE keeps it out.
+func dayBucket(bounds []time.Time) (database.SQLText, []any) {
+	n := len(bounds) - 1
+	var bucket database.SQLText = "CASE"
+	args := make([]any, 0, 2*n+2)
+	for i := n - 1; i > 0; i-- {
+		bucket += " WHEN unix_timestamp >= ? THEN ?"
+		args = append(args, bounds[i].Unix(), i)
+	}
+	bucket += " ELSE 0 END"
+	return bucket, args
+}
+
 // viewerZone reads ?tz=, an IANA zone name, UTC when absent. ok is false for
 // a name that is not one, and for "Local", which is the server's zone, not
 // the viewer's.
@@ -84,16 +102,7 @@ func (h *AnalyticsHandlers) BlockedByDay(w http.ResponseWriter, r *http.Request)
 	internal := h.src.Present()
 	ext, extArgs := notInternal(internal)
 
-	// One CASE arm per day, newest first: a row is in the first day whose
-	// midnight it is not before. The midnight and the day's index are both
-	// bound, so the text is constants and placeholders only.
-	var bucket database.SQLText = "CASE"
-	args := make([]any, 0, 2*blockedByDayDays+2+len(extArgs))
-	for i := blockedByDayDays - 1; i > 0; i-- {
-		bucket += " WHEN unix_timestamp >= ? THEN ?"
-		args = append(args, bounds[i].Unix(), i)
-	}
-	bucket += " ELSE 0 END"
+	bucket, args := dayBucket(bounds)
 	args = append(args, bounds[0].Unix(), bounds[blockedByDayDays].Unix())
 	args = append(args, extArgs...)
 

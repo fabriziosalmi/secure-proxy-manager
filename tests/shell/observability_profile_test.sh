@@ -2,7 +2,8 @@
 # Verify that the observability profile in docker-compose.yml starts cleanly,
 # Prometheus loads its configuration and sees the backend:5000 and waf:8080
 # scrape targets, promtool validates the alert rules in /etc/prometheus/rules,
-# and Grafana starts with the provisioned Prometheus datasource.
+# and Grafana starts with the provisioned Prometheus datasource and the
+# Proxy cache dashboard.
 set -uo pipefail
 
 cd "$(dirname "$0")/../.." || exit 1
@@ -109,6 +110,21 @@ if printf '%s' "$DS_JSON" | grep -q '"type":"prometheus"'; then
   ok "grafana provisioned the prometheus datasource"
 else
   bad "grafana provisioned the prometheus datasource" "$DS_JSON"
+fi
+
+# The dashboard provider and its one dashboard: an error in the JSON or in
+# the provider leaves Grafana healthy and the dashboard missing, so its uid is
+# asked for, not the health endpoint.
+DASH_JSON=""
+for _ in $(seq 1 20); do
+  DASH_JSON="$(docker exec secure-proxy-manager-grafana wget -qO- "http://admin:${ADMIN_PW}@127.0.0.1:3000/api/dashboards/uid/spm-cache" 2>&1 || true)"
+  printf '%s' "$DASH_JSON" | grep -q '"title":"Proxy cache"' && break
+  sleep 1
+done
+if printf '%s' "$DASH_JSON" | grep -q '"title":"Proxy cache"' && printf '%s' "$DASH_JSON" | grep -q '"provisioned":true'; then
+  ok "grafana provisioned the Proxy cache dashboard (uid spm-cache)"
+else
+  bad "grafana provisioned the Proxy cache dashboard (uid spm-cache)" "$(printf '%s' "$DASH_JSON" | head -c 300) $(docker logs secure-proxy-manager-grafana 2>&1 | grep -i 'provision' | tail -5)"
 fi
 
 printf "\n  %d passed, %d failed\n" "$PASS" "$FAIL"

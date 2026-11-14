@@ -534,6 +534,33 @@ export interface BlockedByDay {
   internal_sources: number;
 }
 
+/** What the cache did with a request (workers.CacheOutcome in the backend). */
+export type CacheOutcome = 'hit' | 'revalidated' | 'miss' | 'tunnel' | 'refused' | 'other';
+
+/** One count per outcome, every outcome present. */
+export type CacheCounts = Record<CacheOutcome, number>;
+
+/** One calendar day of GET /api/analytics/cache-by-day. */
+export interface CacheDay {
+  date: string;
+  start: number;
+  end: number;
+  requests: CacheCounts;
+  /** Bytes the proxy sent to the clients. */
+  bytes: CacheCounts;
+}
+
+/** GET /api/analytics/cache-by-day: today and the 6 days before, every day and every outcome present. */
+export interface CacheByDay {
+  tz: string;
+  /** Every outcome in the API's order, with its label. */
+  outcomes: { outcome: CacheOutcome; label: string }[];
+  days: CacheDay[];
+  totals: { requests: CacheCounts; bytes: CacheCounts };
+  /** Internal sources that sent client requests in these 7 days (networks in GDPR mode); no day counts their rows. */
+  internal_sources: number;
+}
+
 /**
  * The proxy's own record of proxy login (proxy_auth_status.json, written by
  * generate_squid_conf.sh): off, enforced, or no_credentials (login is on and

@@ -388,6 +388,7 @@ func (h *AnalyticsHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 	r.With(authMW, etag).Get("/api/analytics/top-domains", h.TopDomains)
 	r.With(authMW, etag).Get("/api/analytics/top-destinations", h.TopDestinations)
 	r.With(authMW, etag).Get("/api/analytics/blocked-by-day", h.BlockedByDay)
+	r.With(authMW, etag).Get("/api/analytics/cache-by-day", h.CacheByDay)
 	r.With(authMW).Get("/api/analytics/coverage", h.Coverage)
 	r.With(authMW, etag).Get("/api/audit-log", h.AuditLog)
 	r.With(authMW).Post("/api/waf/test-rule", h.TestRule)
