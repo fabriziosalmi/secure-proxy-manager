@@ -226,7 +226,11 @@ connected then.
   become spaces, so a value cannot start a forged second event.
 - **A slow or down target.** Events wait in a queue of 10,000 and are sent
   when the target is back; past that, new events are dropped. Nothing waits on
-  the target: the log ingestion goes on.
+  the target: the log ingestion goes on. A TCP or TLS connection the target
+  closes (a restart of the syslog server) is noticed before the next write and
+  made again. Neither TCP nor TLS syslog acknowledges an event, so one written
+  in the moment the target goes away can still be lost; UDP gives no signal at
+  all.
 - **Send a test event** (`POST /api/log-forward/test`) sends one event to the
   saved target, whether forwarding is on or not; over UDP it can only say the
   event left.
