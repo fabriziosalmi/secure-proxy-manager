@@ -1042,8 +1042,17 @@ fi
 
 # DNS: use dnsmasq for domain blackhole. Resolve WAF IP at boot time
 # and replace the hostname in ICAP config so Squid doesn't need DNS for WAF.
-DNS_IP=$(getent hosts dns 2>/dev/null | awk '{print $1}')
-WAF_IP=$(getent hosts waf 2>/dev/null | awk '{print $1}')
+# A container on more than one network shared with the proxy has one address
+# per network, and getent printed one line each: the second landed alone in
+# squid.conf, and a WAF address on two lines broke the sed below, so squid
+# -k parse failed (issue #619). Every IPv4 address, sorted, the same order the
+# watchdog compares (blacklist_watchdog.resolved_ips): all of them for
+# dns_nameservers, the lowest for the ICAP URL.
+resolve_all() {
+    getent ahostsv4 "$1" 2>/dev/null | awk '{print $1}' | sort -u -t. -k1,1n -k2,2n -k3,3n -k4,4n
+}
+DNS_IP=$(resolve_all dns | tr '\n' ' ' | sed 's/ *$//')
+WAF_IP=$(resolve_all waf | head -n 1)
 
 if [ -n "$DNS_IP" ]; then
     if ! grep -q "dns_nameservers" "$SQUID_CONF"; then
