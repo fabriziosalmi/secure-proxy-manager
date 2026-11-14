@@ -298,3 +298,35 @@ func TestNothingIsQueuedWhenOff(t *testing.T) {
 		t.Errorf("%d events queued while off", len(f.queue))
 	}
 }
+
+// A target that closes the connection (a restart of the syslog server) is
+// noticed before the next write: the events after it go on a new
+// connection, none is written into the closed one and lost.
+func TestAClosedTargetIsReconnectedWithoutLosingEvents(t *testing.T) {
+	fast(t)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	f := start(t, Config{Enabled: true, Host: "127.0.0.1", Port: port(t, ln.Addr()), Protocol: ProtoTCP, Format: FormatRFC5424, Events: EventsAll}, 100)
+	f.Access(entry("10.4.4.1", 0))
+	conn, err := ln.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if msg := readOctetCounted(t, bufio.NewReader(conn)); !strings.Contains(msg, "client=10.4.4.1 ") {
+		t.Fatalf("first: %s", msg)
+	}
+	conn.Close()
+	time.Sleep(200 * time.Millisecond)
+	f.Access(entry("10.4.4.2", 0))
+	f.Access(entry("10.4.4.3", 0))
+	r := acceptOne(t, ln)
+	for _, want := range []string{"10.4.4.2", "10.4.4.3"} {
+		if msg := readOctetCounted(t, r); !strings.Contains(msg, "client="+want+" ") {
+			t.Errorf("want %s, got %s", want, msg)
+		}
+	}
+}

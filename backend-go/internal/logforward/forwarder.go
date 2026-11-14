@@ -186,11 +186,16 @@ func (f *Forwarder) Run(ctx context.Context) {
 	var conn net.Conn
 	var connCfg Config
 	var nextDial time.Time
+	// closed fires when the target closes a TCP or TLS connection: a write
+	// into a connection the other side has closed still succeeds once, and
+	// the event is lost, so the close is noticed by reading (a syslog server
+	// sends nothing; a read returns only when the connection ends).
+	var closed <-chan struct{}
 	backoff := firstBackoff
 	closeConn := func() {
 		if conn != nil {
 			conn.Close() //nolint:errcheck // a failed close changes nothing here
-			conn = nil
+			conn, closed = nil, nil
 			metrics.LogForwardConnected(false)
 		}
 	}
@@ -206,6 +211,9 @@ func (f *Forwarder) Run(ctx context.Context) {
 				backoff = min(backoff*2, maxBackoff)
 			} else {
 				conn, connCfg, backoff = nc, c, firstBackoff
+				if c.Protocol != ProtoUDP {
+					closed = watchClose(nc)
+				}
 				metrics.LogForwardConnected(true)
 			}
 		}
@@ -229,6 +237,10 @@ func (f *Forwarder) Run(ctx context.Context) {
 				nextDial = time.Time{}
 			}
 		case <-wait:
+		case <-closed:
+			log.Warn().Str("target", connCfg.Addr()).Msg("log forwarding: the target closed the connection, reconnecting")
+			closeConn()
+			nextDial = time.Time{}
 		case e := <-q:
 			if !c.Enabled {
 				metrics.LogForward(metrics.LogForwardDropped)
@@ -246,6 +258,22 @@ func (f *Forwarder) Run(ctx context.Context) {
 			metrics.LogForward(metrics.LogForwardSent)
 		}
 	}
+}
+
+// watchClose returns a channel closed when a read on conn ends: the target
+// closed the connection, or the forwarder did.
+func watchClose(conn net.Conn) <-chan struct{} {
+	ch := make(chan struct{})
+	go func() {
+		buf := make([]byte, 512)
+		for {
+			if _, err := conn.Read(buf); err != nil {
+				close(ch)
+				return
+			}
+		}
+	}()
+	return ch
 }
 
 // SendTest sends one test event to c's target now, outside the queue, and
