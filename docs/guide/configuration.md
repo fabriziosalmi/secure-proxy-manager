@@ -181,8 +181,60 @@ masked to `/24` (`192.168.1.x`) and IPv6 addresses to `/64`
 `GET /api/dashboard/summary`, clients are grouped by their `/24` or `/64`
 network CIDR (`network`, `addresses`), and `GET /api/clients/{ip}/details` and
 `source_ip` filters on `GET /api/logs` and `GET /api/logs/export` accept the
-network CIDR while refusing single addresses with `400`. The SQLite database
-and `GET /api/database/export` keep the full unmasked client addresses.
+network CIDR while refusing single addresses with `400`. Logs forwarded to a
+syslog server or SIEM carry the masked address too. The SQLite database and
+`GET /api/database/export` keep the full unmasked client addresses.
+
+## Log forwarding to a syslog server or SIEM
+
+Settings > Logs and privacy > Forward to a syslog server or SIEM sends each
+request the proxy logs, and each admin action the audit log records, as it is
+recorded. The backend reads these settings every 10 seconds; a new target is
+connected then.
+
+| Setting | Values | Default |
+|---|---|---|
+| `log_forward_enabled` | `true`, `false` | `false` |
+| `log_forward_host` | an IP address or a host name, no scheme or port | empty (forwarding stays off) |
+| `log_forward_port` | 1 to 65535 | `514` |
+| `log_forward_protocol` | `udp`, `tcp`, `tls` | `udp` |
+| `log_forward_format` | `rfc5424`, `json` | `rfc5424` |
+| `log_forward_events` | `blocked`, `all`, `none`: the requests sent | `blocked` |
+| `log_forward_audit` | `true`, `false`: admin audit events | `true` |
+| `log_forward_hostname` | the host name each event carries | empty (`secure-proxy-manager`) |
+
+- **Syslog** is RFC 5424 with facility local0, severity warning for a blocked
+  request, info for an allowed one and notice for an audit event, APP-NAME
+  `secure-proxy-manager`, MSGID `access` or `audit`, no structured data, and
+  the fields as `key=value` pairs (a value with a space, a quote or `=` is
+  quoted):
+
+  ```
+  <132>1 2026-11-14T13:45:00.123Z proxy-1 secure-proxy-manager - access - client=192.168.1.20 method=GET destination=http://a.example/ status=TCP_MISS/403 bytes=205 elapsed_ms=12 blocked=true reason=waf event_id=...
+  ```
+
+- **JSON** is one object per event: `time`, `host`, `app`, `kind`
+  (`access`, `audit`), `severity` and the same fields.
+- **Framing.** UDP sends one event per datagram. Over TCP and TLS a syslog
+  message is prefixed with its length (RFC 6587 octet counting, which RFC
+  5425 requires for TLS) and a JSON object ends with a newline.
+- **TLS** checks the target's certificate against the system's roots and its
+  host name or address.
+- **Fields.** Access: `client`, `method`, `destination`, `status`, `bytes`,
+  `elapsed_ms`, `blocked`, `reason`, `event_id` when the WAF reported one.
+  Audit: `user`, `action`, `target`, `details`. Control characters in a value
+  become spaces, so a value cannot start a forged second event.
+- **A slow or down target.** Events wait in a queue of 10,000 and are sent
+  when the target is back; past that, new events are dropped. Nothing waits on
+  the target: the log ingestion goes on.
+- **Send a test event** (`POST /api/log-forward/test`) sends one event to the
+  saved target, whether forwarding is on or not; over UDP it can only say the
+  event left.
+
+`/metrics` on the backend: `spm_log_forward_events_total{outcome}` (`sent`,
+`dropped`, `failed`, `connect_failed`), `spm_log_forward_connected`,
+`spm_log_forward_queue_length` and
+`spm_log_forward_last_sent_timestamp_seconds`.
 
 ## WAF custom rules
 

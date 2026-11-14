@@ -15,6 +15,18 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Added
+
+- **Log forwarding to a syslog server or SIEM** (Settings > Logs and
+  privacy): the access log (blocked requests, every request, or none) and
+  the admin audit log, as RFC 5424 syslog or JSON lines, over UDP, TCP or
+  TLS (certificate checked against the system's roots). Events wait in a
+  queue of 10,000 while the target is slow or down and go when it is back;
+  past that they are dropped and counted. Client addresses are masked in
+  GDPR mode, as everywhere else they leave the backend. A *Send a test
+  event* button (`POST /api/log-forward/test`) and
+  `spm_log_forward_*` metrics on `/metrics`.
+
 ## [3.32.1] - 2026-11-14
 
 A configuration backup now survives a restore when client groups are in

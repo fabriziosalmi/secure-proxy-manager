@@ -198,6 +198,7 @@ Details: [Settings and Maintenance API](./settings.md).
 | `GET`    | `/api/security/download-ca` | The SSL-bump CA certificate (`/config/ssl_cert.pem`) |
 | `GET`    | `/api/security/rate-limits` | Failed-login counts per address |
 | `DELETE` | `/api/security/rate-limits/{ip}` | Clear one address's count |
+| `POST`   | `/api/log-forward/test` | Send one test event to the saved [log forwarding](../guide/configuration.md#log-forwarding-to-a-syslog-server-or-siem) target now, whether forwarding is on or not; `502` with the reason when it did not go |
 | `POST`   | `/api/notifications/test` | Send one test alert to every channel that has all its settings (webhook, Gotify, Telegram, ntfy, Teams), outside the [notification limits](./settings.md#notification-limits); `data.channels` reports each delivery |
 | `GET`    | `/api/notifications/status` | For each channel used since the backend started (`since`, kept in memory): `last_attempt`, `last_delivered`, `last_error` and `last_error_at` (why the last failed delivery failed, without the URL), `last_failed`, `delivered`, `failed`. Test alerts count |
 
