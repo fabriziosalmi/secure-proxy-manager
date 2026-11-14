@@ -82,6 +82,8 @@ export const SECTION_KEYS: Record<SectionId, string[]> = {
   engine: [
     'cache_size', 'memory_cache', 'extra_ssl_ports',
     'aggressive_caching_enabled', 'cache_bypass_domains', 'enable_offline_mode',
+    'upstream_proxy_enabled', 'upstream_proxy_host', 'upstream_proxy_port',
+    'upstream_proxy_username', 'upstream_proxy_password', 'upstream_proxy_direct_domains',
   ],
   // Stored in the browser (ThemeProvider), never sent to the backend.
   appearance: [],
@@ -191,6 +193,12 @@ export const APPLY_MODE: Record<string, ApplyMode> = {
   aggressive_caching_enabled: 'reload',
   enable_offline_mode: 'reload',
   cache_bypass_domains: 'reload',
+  upstream_proxy_enabled: 'reload',
+  upstream_proxy_host: 'reload',
+  upstream_proxy_port: 'reload',
+  upstream_proxy_username: 'reload',
+  upstream_proxy_password: 'reload',
+  upstream_proxy_direct_domains: 'reload',
 };
 
 /** What each key is called on the page, for messages that name a field. */
@@ -254,6 +262,12 @@ export const FIELD_LABELS: Record<string, string> = {
   aggressive_caching_enabled: 'Cache static files longer',
   enable_offline_mode: 'Offline mode',
   cache_bypass_domains: 'Never cache these domains',
+  upstream_proxy_enabled: 'Forward through an upstream proxy',
+  upstream_proxy_host: 'Upstream host',
+  upstream_proxy_port: 'Upstream port',
+  upstream_proxy_username: 'Upstream username',
+  upstream_proxy_password: 'Upstream password',
+  upstream_proxy_direct_domains: 'Go direct to these domains',
 };
 
 export function fieldLabel(key: string): string {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -31,8 +32,10 @@ func setupTestDB(t *testing.T) (*sql.DB, *auth.Service, *config.Config, func()) 
 	// Wait for schema initialization.
 	_, _ = db.Exec("INSERT OR REPLACE INTO settings (setting_name, setting_value) VALUES (?, ?)", "proxy_host", "localhost")
 
+	_ = os.MkdirAll(filepath.Join(tmpDir, "secrets"), 0o700)
 	cfg := &config.Config{
 		ConfigDir:         tmpDir, // Use temporary directory for testing
+		SecretsDir:        filepath.Join(tmpDir, "secrets"),
 		AdminUsername:     "admin",
 		AdminPassword:     adminPass,
 		AdminPasswordHash: adminHash,

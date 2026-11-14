@@ -20,7 +20,7 @@ import { formatKilobytes, formatCount } from '../../../lib/format';
 import { Section } from '../../ui/Section';
 import { Notice } from '../../ui/Notice';
 import { Unavailable } from '../../ui/Unavailable';
-import { TextField, ToggleRow } from '../fields';
+import { SecretRow, TextField, ToggleRow } from '../fields';
 import type { SectionForm } from '../sectionForm';
 
 function Code({ children }: { children: string }) {
@@ -114,6 +114,42 @@ export function EngineSection({ form }: { form: SectionForm }) {
             hint="Separated by commas. Each one covers its subdomains."
           />
         </div>
+      </Section>
+
+      <Section level={3} title="Upstream proxy" description="For a network whose only way out is another proxy: this proxy forwards the clients' requests to it instead of to the destinations.">
+        <ToggleRow
+          form={form}
+          setting="upstream_proxy_enabled"
+          label="Forward through an upstream proxy"
+          help="Every request goes through it, HTTPS as CONNECT tunnels, except those to the domains listed below; while it is down, requests fail. Takes effect when the proxy reloads after the save. With the host empty, nothing is forwarded."
+        />
+        <div className="grid gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <TextField
+            form={form}
+            setting="upstream_proxy_host"
+            label="Upstream host"
+            placeholder="e.g. proxy.corp.example"
+            hint="An IP address or a host name, without a scheme or a port."
+          />
+          <TextField form={form} setting="upstream_proxy_port" label="Upstream port" inputMode="numeric" />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <TextField
+            form={form}
+            setting="upstream_proxy_username"
+            label="Upstream username"
+            autoComplete="off"
+            hint="Only when the upstream proxy asks for a login (Basic). Letters, digits, dots, hyphens, underscores or @."
+          />
+          <SecretRow form={form} setting="upstream_proxy_password" label="Upstream password" placeholder="Type to replace" />
+        </div>
+        <TextField
+          form={form}
+          setting="upstream_proxy_direct_domains"
+          label="Go direct to these domains"
+          placeholder="e.g. intranet.example, corp.example"
+          hint="Separated by commas. Each one covers its subdomains; requests to them never go through the upstream proxy."
+        />
       </Section>
 
       <Section level={3} title="Cache statistics" description="From the proxy's last collection, once a minute.">

@@ -420,6 +420,14 @@ var DefaultSettings = [][]string{
 	{"enable_bandwidth_limits", "false"},
 	{"bandwidth_limit_mbps", "100"},
 	{"bandwidth_limit_per_user_kbps", "0"},
+	// The upstream proxy (handlers/upstream_proxy.go): off; when switched on,
+	// every request goes through it, on the port proxies usually listen on.
+	{"upstream_proxy_enabled", "false"},
+	{"upstream_proxy_host", ""},
+	{"upstream_proxy_port", "3128"},
+	{"upstream_proxy_username", ""},
+	{"upstream_proxy_password", ""},
+	{"upstream_proxy_direct_domains", ""},
 	// Log forwarding to a syslog server or SIEM (internal/logforward): off,
 	// and when switched on, blocked requests and audit events as RFC 5424
 	// over UDP 514, the port and protocol every syslog server listens on.

@@ -16,6 +16,7 @@ export const SECRET_KEYS: ReadonlySet<string> = new Set([
   'ntfy_url',
   'ntfy_topic',
   'proxy_auth_password',
+  'upstream_proxy_password',
 ]);
 
 /** What the page knows about a secret: never its value. */

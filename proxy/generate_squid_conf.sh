@@ -1026,6 +1026,51 @@ else
     echo "Bandwidth throttling disabled"
 fi
 
+# ── Upstream (parent) proxy ──────────────────────────────────────────────
+# The backend writes upstream_proxy.conf (handlers/upstream_proxy.go) when an
+# upstream proxy is switched on and set, and removes it otherwise. It holds the
+# parent's password in clear, as cache_peer login= needs it, so it lives in the
+# proxy-secrets volume (/secrets), which only the backend and this container
+# mount, not in /config, which the DNS and WAF containers mount too. Every value
+# is checked again here: the file is read as root and its values end up in
+# squid.conf, so a value that is not of its form is dropped with a warning,
+# and without a host nothing is written.
+# Every request goes through the parent (never_direct), CONNECT included,
+# except those to the domains in upstream_direct_domains.txt; while the parent
+# is down, requests fail.
+UPSTREAM_CONF="${UPSTREAM_CONF:-/secrets/upstream_proxy.conf}"
+UPSTREAM_HOST="" UPSTREAM_PORT="" UPSTREAM_USER="" UPSTREAM_PASSWORD=""
+if [ -f "$UPSTREAM_CONF" ]; then
+    load_settings "$UPSTREAM_CONF" \
+        'UPSTREAM_HOST=[A-Za-z0-9][A-Za-z0-9.:-]{0,252}' \
+        'UPSTREAM_PORT=[0-9]{1,5}' \
+        'UPSTREAM_USER=[A-Za-z0-9._@-]{0,64}' \
+        'UPSTREAM_PASSWORD=[A-Za-z0-9!$&()*+,./:;<=>?@^_{|}~-]{0,128}'
+fi
+if [ -n "$UPSTREAM_HOST" ] && [ -n "$UPSTREAM_PORT" ] && [ "$UPSTREAM_PORT" -ge 1 ] && [ "$UPSTREAM_PORT" -le 65535 ]; then
+    UPSTREAM_LOGIN=""
+    if [ -n "$UPSTREAM_USER" ] && [ -n "$UPSTREAM_PASSWORD" ]; then
+        UPSTREAM_LOGIN=" login=${UPSTREAM_USER}:${UPSTREAM_PASSWORD}"
+    fi
+    {
+        echo ""
+        echo "# ── Upstream proxy ──"
+        echo "cache_peer ${UPSTREAM_HOST} parent ${UPSTREAM_PORT} 0 no-query no-digest default name=spm_upstream${UPSTREAM_LOGIN}"
+        if [ -s /config/upstream_direct_domains.txt ]; then
+            echo "acl spm_upstream_direct dstdomain \"/config/upstream_direct_domains.txt\""
+            echo "always_direct allow spm_upstream_direct"
+        fi
+        echo "never_direct allow all"
+    } >> "$SQUID_CONF"
+    if [ -n "$UPSTREAM_LOGIN" ]; then
+        echo "Upstream proxy: ${UPSTREAM_HOST}:${UPSTREAM_PORT}, with a login"
+    else
+        echo "Upstream proxy: ${UPSTREAM_HOST}:${UPSTREAM_PORT}"
+    fi
+else
+    echo "Upstream proxy: none"
+fi
+
 # ── Offline Mode / Serve Stale Cache ────────────────────────────────────────
 
 if [ -f /config/offline_mode_enabled ]; then
