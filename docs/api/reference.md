@@ -155,6 +155,7 @@ Details: [Logs and Analytics API](./logs.md).
 | `GET`  | `/api/analytics/top-domains` | Top 50 domains |
 | `GET`  | `/api/analytics/top-destinations` | The 20 hosts the clients asked for most in the last 7 days, internal sources left out, each with `requests` and `blocked` |
 | `GET`  | `/api/analytics/blocked-by-day` | Blocked requests per day by rule, today and the 6 days before (`tz`, default UTC) |
+| `GET`  | `/api/analytics/cache-by-day` | What the cache did with the client requests of each day, today and the 6 days before (`tz`, default UTC): `requests` and `bytes` sent per outcome (`hit`, `revalidated`, `miss`, `tunnel`, `refused`, `other`), every outcome present, and the 7 days' `totals` |
 | `GET`  | `/api/analytics/coverage` | Which protections are switched on now: list sizes, WAF rules, HTTPS inspection, alerts and the other access settings |
 | `GET`  | `/api/audit-log` | Audit log, newest first, 50 a page (`limit` up to 200). `category` = `all`, `changes` or `signins` and `q` (text in the user, action, target or details) filter on the server; `meta.retention_days` is 365 |
 | `GET`  | `/api/security/score` | Retired: `410 Gone` |

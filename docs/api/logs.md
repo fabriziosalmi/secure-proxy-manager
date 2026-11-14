@@ -314,6 +314,7 @@ These return JSON in the standard envelope, in the shape the UI renders:
 | `GET /api/analytics/file-extensions` | Requests of the last 7 days by file extension |
 | `GET /api/analytics/top-domains` | Top 50 domains |
 | `GET /api/analytics/blocked-by-day` | Blocked requests per day by rule for 7 days (`tz`, default UTC) |
+| `GET /api/analytics/cache-by-day` | Requests and bytes per day by what the cache did, for 7 days (`tz`, default UTC) |
 | `GET /api/analytics/coverage` | What protection is on now |
 | `GET /api/waf/stats` | WAF statistics, from the WAF. When there are none it answers `502` (`503` while the circuit breaker is open) with `waf_status`, the reason in the words of `dashboard/summary`: `unreachable`, `auth_failed` (the WAF refused the backend's credential) or `error` |
 | `GET /api/waf/status` | What the WAF runs: `status` as above; rule and category counts, with those only logged (`categories_observed`, `rules_observed`); and `running`, from the WAF's `/health`: `engine` (`hybrid` adds the OWASP Core Rule Set), `threshold` (the score that blocks), `regex_engine`, `regex_shadow`, `heuristics`, `policy_mode` (`block`, or `observe` for Log only), `policy_exceptions`, `policy_reload_failed` and `policy_observe_rules` (single rules the policy makes log-only; a category it observes counts in `categories_observed`). `running` is `null` when `/health` did not answer |
