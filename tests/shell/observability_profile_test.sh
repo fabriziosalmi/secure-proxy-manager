@@ -72,8 +72,11 @@ else
   bad "prometheus is ready on :9090" "$(docker logs secure-proxy-manager-prometheus 2>&1 | tail -10)"
 fi
 
+# Grafana took over 40 s to answer on a GitHub runner (2026-11-14): its
+# health and datasource checks failed while the dashboard check, which waits,
+# passed. It gets up to 120 s, and every Grafana check waits for its answer.
 graf_ready=0
-for _ in $(seq 1 40); do
+for _ in $(seq 1 120); do
   if docker exec secure-proxy-manager-grafana wget -qO- http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
     graf_ready=1
     break
@@ -105,7 +108,12 @@ else
   bad "promtool check rules /etc/prometheus/rules/spm.rules.yml" "$RULES_OUT"
 fi
 
-DS_JSON="$(docker exec secure-proxy-manager-grafana wget -qO- "http://admin:${ADMIN_PW}@127.0.0.1:3000/api/datasources" 2>&1 || true)"
+DS_JSON=""
+for _ in $(seq 1 20); do
+  DS_JSON="$(docker exec secure-proxy-manager-grafana wget -qO- "http://admin:${ADMIN_PW}@127.0.0.1:3000/api/datasources" 2>&1 || true)"
+  printf '%s' "$DS_JSON" | grep -q '"type":"prometheus"' && break
+  sleep 1
+done
 if printf '%s' "$DS_JSON" | grep -q '"type":"prometheus"'; then
   ok "grafana provisioned the prometheus datasource"
 else
