@@ -188,15 +188,12 @@ func TestForwarderSendsOverTLSOnlyToAVerifiedServer(t *testing.T) {
 
 	// Untrusted: the system roots do not know this certificate.
 	go func() {
-		for {
-			conn, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			_ = conn.(*tls.Conn).Handshake()
-			conn.Close()
+		conn, err := ln.Accept()
+		if err != nil {
 			return
 		}
+		_ = conn.(*tls.Conn).Handshake()
+		conn.Close()
 	}()
 	if err := SendTest(context.Background(), c); err == nil {
 		t.Fatal("a certificate no root trusts was accepted")
