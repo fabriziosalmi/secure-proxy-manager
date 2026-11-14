@@ -15,6 +15,20 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.32.0] - 2026-11-14
+
+The Analytics page shows what the proxy's cache did with the requests of
+each day, and the backend's `/metrics` and the Grafana of the
+`observability` profile count it by outcome. Nothing is **BREAKING** and
+`X-API-Version` stays 1.
+
+**Upgrade notes.** No schema or configuration change is needed. The daily
+chart reads the access log already stored, so it shows the last 7 days as
+soon as the new backend runs. The `spm_proxy_cache_*_total` counters start
+at 0 when the backend starts. Grafana reads its dashboard providers only
+when it starts: an install already running the `observability` profile
+gets the Proxy cache dashboard after `docker compose restart grafana`.
+
 ### Added
 
 - **What the cache did, per day** on the Analytics page: the client
