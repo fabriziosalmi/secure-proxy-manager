@@ -15,6 +15,21 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A restored backup keeps each list's source and scope, the client groups
+  and the WAF policy** (`backup_version` 3). Restore used to put every list
+  entry under one new Restore source of scope global and the backup did not
+  carry the groups or the policy: a list that blocked only a group's clients
+  came back blocking every client, an allowlist-only group came back as no
+  group at all, and the WAF policy stayed whatever it was. The backup now
+  carries the list sources, each entry's sources, the client groups and the
+  WAF policy; restore puts each entry back under its source, recreates the
+  groups (a group of the same name is replaced) and writes the policy
+  through the WAF's own check. Restoring the same file twice adds nothing.
+  A file from an older version restores as before, and the response and the
+  restore dialog say what it did not carry.
+
 ## [3.32.0] - 2026-11-14
 
 The Analytics page shows what the proxy's cache did with the requests of

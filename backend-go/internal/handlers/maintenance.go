@@ -88,7 +88,7 @@ func (h *MaintenanceHandlers) BackupConfig(w http.ResponseWriter, r *http.Reques
 			writeInternalError(w, "backup_config", err)
 			return
 		}
-		lists[t.list] = entries
+		lists[string(t.list)] = entries
 	}
 	// dst_allowlist records no source; its type is re-derived on restore, see
 	// restoreEgressType.

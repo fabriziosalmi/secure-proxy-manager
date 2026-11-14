@@ -192,7 +192,7 @@ Details: [Settings and Maintenance API](./settings.md).
 | `POST`   | `/api/maintenance/reload-config` | Export the lists, ask the proxy to regenerate and reload, and report what it did |
 | `POST`   | `/api/maintenance/reload-dns` | Export every list again and ask dnsmasq to reload; says how many domain entries the DNS sinkhole got |
 | `POST`   | `/api/maintenance/clear-cache` | Clear the Squid cache (see [Settings and Maintenance](./settings.md#clear-proxy-cache)) |
-| `GET`    | `/api/maintenance/backup-config` | The settings and the five lists, as a backup |
+| `GET`    | `/api/maintenance/backup-config` | The settings, the five lists with each entry's sources, the client groups and the WAF policy, as a backup |
 | `POST`   | `/api/maintenance/restore-config` | Add what a backup holds |
 | `GET`    | `/api/maintenance/check-cert-security` | Whether the CA certificate and the certificate database exist, and whether the CA key is out of `/config` |
 | `GET`    | `/api/security/download-ca` | The SSL-bump CA certificate (`/config/ssl_cert.pem`) |

@@ -65,7 +65,7 @@ type skippedItem struct {
 // sourceListTables are the lists whose entries record a source, each with its
 // value column and its table of other sources, written out so no table name is
 // built from input.
-var sourceListTables = []struct{ list, col, others string }{
+var sourceListTables = []struct{ list, col, others database.SQLText }{
 	{"ip_blacklist", "ip", "ip_blacklist_sources"},
 	{"ip_whitelist", "ip", "ip_whitelist_sources"},
 	{"domain_blacklist", "domain", "domain_blacklist_sources"},
@@ -92,10 +92,10 @@ func exportSources(db *sql.DB) ([]backupSource, error) {
 
 // exportSourcedEntries reads one list with each entry's source and its other
 // sources.
-func exportSourcedEntries(db *sql.DB, list, col, others string) ([]backupEntry, error) {
+func exportSourcedEntries(db *sql.DB, list, col, others database.SQLText) ([]backupEntry, error) {
 	also := map[int64][]int64{}
 	// #nosec G202 -- table names come from sourceListTables, constants
-	arows, err := db.Query("SELECT entry_id, source_id FROM " + others + " ORDER BY entry_id, source_id")
+	arows, err := db.Query(string("SELECT entry_id, source_id FROM " + others + " ORDER BY entry_id, source_id"))
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +112,7 @@ func exportSourcedEntries(db *sql.DB, list, col, others string) ([]backupEntry, 
 		return nil, err
 	}
 	// #nosec G202 -- table and column names come from sourceListTables, constants
-	rows, err := db.Query("SELECT id, " + col + ", COALESCE(description,''), source_id FROM " + list + " ORDER BY " + col)
+	rows, err := db.Query(string("SELECT id, " + col + ", COALESCE(description,''), source_id FROM " + list + " ORDER BY " + col))
 	if err != nil {
 		return nil, err
 	}
@@ -216,7 +216,7 @@ func restoreSources(tx *sql.Tx, sources []backupSource, lists map[string][]backu
 func sourceValues(lists map[string][]backupEntry) map[int64][]string {
 	out := map[int64][]string{}
 	for _, t := range sourceListTables {
-		for _, e := range lists[t.list] {
+		for _, e := range lists[string(t.list)] {
 			if e.Source != nil {
 				out[*e.Source] = append(out[*e.Source], strings.TrimSpace(e.Value))
 			}
@@ -233,17 +233,19 @@ func sameEventSource(tx *sql.Tx, s backupSource, values []string) (int64, bool, 
 	if len(values) == 0 {
 		return 0, false, nil
 	}
-	var col string
+	// The table and column are the constants of the list the file names, never
+	// the file's text.
+	var table, col database.SQLText
 	for _, t := range sourceListTables {
-		if t.list == s.List {
-			col = t.col
+		if string(t.list) == s.List {
+			table, col = t.list, t.col
 		}
 	}
-	if col == "" {
+	if table == "" {
 		return 0, false, nil
 	}
-	// #nosec G202 -- table and column names come from sourceListTables, constants
-	q := "SELECT source_id FROM " + s.List + " WHERE " + col + " = ?"
+	// #nosec G202 -- table and column are constants of sourceListTables
+	q := string("SELECT source_id FROM " + table + " WHERE " + col + " = ?")
 	var found int64
 	for _, v := range values {
 		var id sql.NullInt64
@@ -268,8 +270,8 @@ func sameEventSource(tx *sql.Tx, s backupSource, values []string) (int64, bool, 
 		}
 		return 0, false, err
 	}
-	// #nosec G202 -- table name from sourceListTables, a constant
-	if err := tx.QueryRow("SELECT COUNT(*) FROM "+s.List+" WHERE source_id = ?", found).Scan(&n); err != nil {
+	// #nosec G202 -- table is a constant of sourceListTables
+	if err := tx.QueryRow(string("SELECT COUNT(*) FROM "+table+" WHERE source_id = ?"), found).Scan(&n); err != nil {
 		return 0, false, err
 	}
 	if kind != s.Kind || n != len(values) {
