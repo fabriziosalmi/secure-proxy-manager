@@ -15,6 +15,16 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.34.0] - 2026-11-14
+
+Proxy login can check each user against an LDAP directory. Nothing is
+**BREAKING** and `X-API-Version` stays 1.
+
+**Upgrade notes.** No schema or configuration change is needed: proxy login
+keeps its local proxy account until *Who signs in* is set to *LDAP
+directory*. The search account's password is written to the `proxy-secrets`
+volume added in 3.33.0.
+
 ### Added
 
 - **Proxy login from an LDAP directory** (Settings > Clients and access >
