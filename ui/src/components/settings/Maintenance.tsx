@@ -51,7 +51,14 @@ function RestoreSummaryText({ summary }: { summary: BackupSummary }) {
           </ul>
         </div>
       )}
-      <p>Nothing is removed: settings and entries that are not in the file stay as they are.</p>
+      {summary.groups !== null && summary.groups > 0 && (
+        <p>The {formatCount(summary.groups)} client {summary.groups === 1 ? 'group' : 'groups'} in the file replace the groups of the same name, with their members, schedules and lists.</p>
+      )}
+      {summary.wafPolicy && <p>The WAF policy in the file replaces the current one, once the WAF has checked it.</p>}
+      <p>Nothing is removed: settings, entries and groups that are not in the file stay as they are.</p>
+      {summary.groups === null && (
+        <p>This file was made before backups carried client groups, the WAF policy and where each list entry came from: its entries are restored for every client.</p>
+      )}
       <p>
         {summary.exportedAt ? `Exported ${formatDateTime(summary.exportedAt)}` : 'The file does not say when it was exported'}
         {summary.appVersion ? ` by version ${summary.appVersion}.` : '.'}
@@ -80,6 +87,8 @@ function RestoreResult({ outcome }: { outcome: RestoreOutcome }) {
   const skipped = r.skipped_settings ?? [];
   const failed = r.failed_files ?? [];
   const providersRestored = r.restored_egress_providers ?? 0;
+  const skippedGroups = r.skipped_groups ?? [];
+  const skippedSources = r.skipped_sources ?? [];
   return (
     <div className={cn('flex flex-col gap-1.5 text-sm', TONE[failed.length ? 'warning' : apply.tone])}>
       <p className="font-medium">
@@ -100,6 +109,25 @@ function RestoreResult({ outcome }: { outcome: RestoreOutcome }) {
       )}
       {!r.skipped_settings && (r.skipped ?? 0) > 0 && <p>{formatCount(r.skipped ?? 0)} settings were not restored; this backend does not say which.</p>}
       {(r.skipped_entries ?? 0) > 0 && <p>{formatCount(r.skipped_entries ?? 0)} list entries failed validation and were skipped.</p>}
+      {(r.restored_groups ?? 0) > 0 && <p>Restored {formatCount(r.restored_groups ?? 0)} client {r.restored_groups === 1 ? 'group' : 'groups'}.</p>}
+      {skippedGroups.length + skippedSources.length > 0 && (
+        <div>
+          <p>Not restored:</p>
+          <ul className="mt-0.5 list-disc pl-4">
+            {skippedGroups.map((s) => <li key={`g-${s.name}`}>Group {s.name}: {s.reason}</li>)}
+            {skippedSources.map((s) => <li key={`s-${s.name}`}>{s.name}: {s.reason}</li>)}
+          </ul>
+        </div>
+      )}
+      {r.waf_policy && (
+        <p>
+          {r.waf_policy.restored
+            ? 'The WAF policy was restored.'
+            : r.waf_policy.unchanged
+              ? 'The WAF policy in the file is the one in use.'
+              : `The WAF policy was not restored: ${r.waf_policy.detail ?? 'no reason given'}. The rest of the restore stands.`}
+        </p>
+      )}
       {failed.length > 0 && <p>These proxy configuration files could not be written: {failed.join(', ')}.</p>}
       <p>{apply.text}</p>
     </div>
