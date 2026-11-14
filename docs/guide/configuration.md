@@ -240,6 +240,50 @@ connected then.
 `spm_log_forward_queue_length` and
 `spm_log_forward_last_sent_timestamp_seconds`.
 
+## Proxy login from an LDAP directory
+
+Settings > Clients and access > Login, with *Require proxy login* on and
+*Who signs in* set to *LDAP directory*: each user signs in to the proxy with
+their own account in an LDAP directory (OpenLDAP, Active Directory) instead of
+one shared proxy account.
+
+| Setting | Values | Default |
+|---|---|---|
+| `proxy_auth_source` | `local` (the proxy account), `ldap` | `local` |
+| `ldap_url` | `ldap://host` or `ldaps://host`, optional `:port`, nothing after | empty |
+| `ldap_bind_dn` | the account the proxy searches with: a DN, or on Active Directory a user principal name | empty |
+| `ldap_bind_password` | its password (stored encrypted) | empty |
+| `ldap_user_base_dn` | the DN users are searched under, subtree included | empty |
+| `ldap_user_filter` | an LDAP filter with `%s` for the username typed | `(uid=%s)`; `(sAMAccountName=%s)` for Active Directory |
+| `ldap_group` | optional: only members of this group may use the proxy | empty |
+| `ldap_group_base_dn` | where groups are searched | empty |
+| `ldap_group_filter` | an LDAP filter with `%g` for the group and `%u` for the user's DN | `(&(cn=%g)(member=%u))` |
+
+- **How it checks.** Squid's `basic_ldap_auth` finds the user with the search
+  account and the user filter, then binds as that user with the password typed;
+  with a group set, `ext_ldap_group_acl` checks membership. A wrong password, an
+  unknown user or no credentials get `407`; a right password for a user outside
+  the group gets `403`.
+- **Fails closed.** With LDAP chosen and its settings incomplete or invalid,
+  every client is refused (`403`) and the dashboard says so; the proxy never
+  falls back to the local proxy account. A save with login on from LDAP and the
+  URL, search account, its password or the user base missing is refused.
+- **The search account's password** is written in clear only to
+  `ldap_bind_password` in the `proxy-secrets` volume, `root:proxy` `0640`, and
+  the helper reads it from there (`-W`): it is not on a command line and not in
+  `squid.conf`.
+- **Caching.** A sign-in is remembered for an hour, and a group answer for 5
+  minutes (1 minute when it was no), so a disabled account or a removed member
+  stops getting in within those times. Usernames are compared without case.
+- **Values.** DNs may contain spaces (`cn=Proxy Bind,ou=Service
+  Accounts,...`); quotes, backslashes, `#` and spaces in filters and group
+  names are refused, as the proxy's configuration cannot carry them.
+- **ldaps://** checks the directory's certificate against the system's roots;
+  a directory with a private CA is not supported yet. `ldap://` sends the
+  passwords in clear.
+- **Tested** against OpenLDAP (with a search account whose DN has spaces, and a
+  `groupOfNames` group) and lldap; not against Active Directory itself.
+
 ## Upstream proxy
 
 Settings > Proxy engine > Upstream proxy makes the proxy forward the clients'

@@ -567,7 +567,7 @@ export interface CacheByDay {
  * there is no user to check against, so every client is refused).
  */
 export interface ProxyAuthStatus {
-  state: 'off' | 'enforced' | 'no_credentials';
+  state: 'off' | 'enforced' | 'ldap' | 'no_credentials';
   users: number;
   written_at: number;
 }

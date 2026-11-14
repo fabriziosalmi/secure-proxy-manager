@@ -371,6 +371,13 @@ jobs:
       # turning login off removes them. Reuses the images the matrix built.
       - name: Proxy login end to end (backend and proxy, upgrade state)
         run: bash tests/shell/proxy_login_upgrade_test.sh
+      # Proxy login from an LDAP directory: the generated block run by real
+      # Squid helpers against a real OpenLDAP (tests/fixtures/openldap): right
+      # password in, wrong password, unknown user and no credentials 407, a
+      # non-member 403, the search password neither in squid.conf nor on a
+      # command line, and a DN with spaces passed as one argument.
+      - name: Proxy login from LDAP (real Squid helpers, real OpenLDAP)
+        run: bash tests/shell/proxy_login_ldap_test.sh
 
   # ── 5e. Observability profile (Prometheus + Grafana) ──────────────────
   # Starts the optional observability profile against infra/ and verifies that

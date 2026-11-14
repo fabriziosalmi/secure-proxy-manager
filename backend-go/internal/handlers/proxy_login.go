@@ -267,7 +267,7 @@ func readProxyAuthStatus(configDir string) *ProxyAuthStatus {
 		return nil
 	}
 	switch s.State {
-	case "off", "enforced", "no_credentials":
+	case "off", "enforced", "ldap", "no_credentials":
 		return &ProxyAuthStatus{State: s.State, Users: *s.Users, WrittenAt: s.WrittenAt}
 	}
 	return nil

@@ -890,7 +890,62 @@ proxy_users_count() {
     grep -cE '^[^#[:space:]:][^:]*:[^[:space:]]+' "$PROXY_USERS_FILE" 2>/dev/null || true
 }
 
-if [ -f /config/proxy_auth_enabled ]; then
+# ── Proxy login against an LDAP directory ──
+# The backend creates /config/proxy_auth_ldap while login is on and its source
+# is LDAP (handlers/proxy_ldap.go), and writes ldap.conf and the bind password
+# to the proxy-secrets volume while they are complete. With the marker and no
+# usable conf, every client is refused: never the local password file instead.
+# The helper reads the bind password from its file (-W), so it is not on a
+# command line; the file is root:proxy 0640, the helper runs as proxy.
+# Each value is checked again here; Squid passes a quoted value with spaces as
+# one argument (a DN such as cn=Proxy Bind,ou=Service Accounts,...).
+if [ -f /config/proxy_auth_enabled ] && [ -f /config/proxy_auth_ldap ]; then
+    echo "Proxy authentication ENABLED: clients sign in with their LDAP directory account"
+    LDAP_CONF="${LDAP_CONF:-/secrets/ldap.conf}"
+    LDAP_PASSWORD_FILE="${LDAP_PASSWORD_FILE:-/secrets/ldap_bind_password}"
+    LDAP_URL="" LDAP_BIND_DN="" LDAP_USER_BASE="" LDAP_USER_FILTER="" LDAP_GROUP="" LDAP_GROUP_BASE="" LDAP_GROUP_FILTER=""
+    if [ -f "$LDAP_CONF" ]; then
+        load_settings "$LDAP_CONF" \
+            'LDAP_URL=ldaps?://[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?' \
+            'LDAP_BIND_DN=[A-Za-z0-9][A-Za-z0-9 =,._@-]{0,511}' \
+            'LDAP_USER_BASE=[A-Za-z0-9][A-Za-z0-9 =,._@-]{0,511}' \
+            'LDAP_USER_FILTER=\([A-Za-z0-9=()&|!*%._@-]{1,254}\)' \
+            'LDAP_GROUP=[A-Za-z0-9._-]{1,64}' \
+            'LDAP_GROUP_BASE=[A-Za-z0-9][A-Za-z0-9 =,._@-]{0,511}' \
+            'LDAP_GROUP_FILTER=\([A-Za-z0-9=()&|!*%._@-]{1,254}\)'
+    fi
+    if [ -n "$LDAP_URL" ] && [ -n "$LDAP_BIND_DN" ] && [ -n "$LDAP_USER_BASE" ] && [ -n "$LDAP_USER_FILTER" ] && [ -s "$LDAP_PASSWORD_FILE" ]; then
+        LDAP_ARGS="-v 3 -D \"${LDAP_BIND_DN}\" -W ${LDAP_PASSWORD_FILE} -H ${LDAP_URL}"
+        # A directory account disabled or changed takes effect within the
+        # credentials TTL. Usernames are compared without case, as
+        # directories do.
+        policy="# ── Proxy Authentication (LDAP) ──
+auth_param basic program /usr/lib/squid/basic_ldap_auth ${LDAP_ARGS} -b \"${LDAP_USER_BASE}\" -f \"${LDAP_USER_FILTER}\"
+auth_param basic realm Secure Proxy Manager
+auth_param basic credentialsttl 1 hour
+auth_param basic casesensitive off
+acl authenticated proxy_auth REQUIRED
+http_access deny !localhost spm_r_proxy_auth !authenticated"
+        if [ -n "$LDAP_GROUP" ] && [ -n "$LDAP_GROUP_BASE" ] && [ -n "$LDAP_GROUP_FILTER" ]; then
+            # "all" last: a member of no group gets 403, not a 407 that asks
+            # again for a password that was right.
+            policy="${policy}
+external_acl_type spm_ldap_group ttl=300 negative_ttl=60 %LOGIN /usr/lib/squid/ext_ldap_group_acl ${LDAP_ARGS} -b \"${LDAP_GROUP_BASE}\" -f \"${LDAP_GROUP_FILTER}\" -B \"${LDAP_USER_BASE}\" -F \"${LDAP_USER_FILTER}\"
+acl spm_ldap_group external spm_ldap_group ${LDAP_GROUP}
+http_access deny !localhost spm_r_proxy_auth !spm_ldap_group all"
+            echo "Proxy login from LDAP: ${LDAP_URL}, members of ${LDAP_GROUP} only"
+        else
+            echo "Proxy login from LDAP: ${LDAP_URL}"
+        fi
+        insert_policy "$policy" || { return 1 2>/dev/null || exit 1; }
+        write_proxy_auth_status ldap 0
+    else
+        echo "WARNING: proxy login from LDAP is on but its settings or bind password are missing or invalid: every client is refused until they are set in Settings, Clients and access, Login" >&2
+        insert_policy '# ── Proxy login from LDAP is on and its settings are incomplete: refuse every client ──
+http_access deny !localhost spm_r_proxy_auth_unset' || { return 1 2>/dev/null || exit 1; }
+        write_proxy_auth_status no_credentials 0
+    fi
+elif [ -f /config/proxy_auth_enabled ]; then
     echo "Proxy authentication ENABLED: requiring Basic Auth for proxy access"
     # An operator who passes BASIC_AUTH_USERNAME/PASSWORD to this container by
     # hand gets the file created from them, once, when it does not exist.

@@ -156,7 +156,7 @@ describe('Settings sections', () => {
     it('asks for the proxy credentials when login is turned on, and refuses the save without them', async () => {
       const { container } = renderAt('/settings/access')
       const auth = await screen.findByRole('switch', { name: 'Require proxy login' })
-      expect(auth).toHaveAccessibleDescription('Every client signs in with the proxy username and password below before it can browse.')
+      expect(auth).toHaveAccessibleDescription("Every client signs in before it can browse: with the proxy username and password below, or with each user's account in an LDAP directory.")
       expect(document.getElementById('enable_proxy_auth-label')!.parentElement!.querySelector('[data-apply]')).toHaveTextContent(/^Proxy reload/)
       expect(screen.queryByLabelText('Proxy username')).not.toBeInTheDocument()
 
@@ -192,6 +192,38 @@ describe('Settings sections', () => {
         bandwidth_limit_mbps: '100',
       })
       expect(reloads()).toHaveLength(1)
+    })
+
+    // From an LDAP directory the local credentials are not asked for: the
+    // directory's URL, search account, its password and the user base are,
+    // and they are what the save sends.
+    it('signs users in against an LDAP directory, and asks for the directory instead of a proxy account', async () => {
+      const { container } = renderAt('/settings/access')
+      fireEvent.click(await screen.findByRole('switch', { name: 'Require proxy login' }))
+      fireEvent.click(within(screen.getByRole('group', { name: 'Who signs in' })).getByRole('button', { name: 'LDAP directory' }))
+      expect(screen.queryByLabelText('Proxy username')).not.toBeInTheDocument()
+      expect(screen.getByLabelText('Search account password')).toHaveAttribute('type', 'password')
+      expect(screen.getByText('Set the directory before you save')).toBeInTheDocument()
+      await expectNoAxeViolations(container)
+      save()
+      expect(settingsPosts()).toHaveLength(0)
+      expect(screen.getByLabelText('Directory URL')).toHaveAccessibleDescription(/set the directory's URL: with proxy login from LDAP on/i)
+      expect(screen.getByLabelText('Search account password')).toHaveAccessibleDescription(/set the search account's password/i)
+
+      fireEvent.change(screen.getByLabelText('Directory URL'), { target: { value: 'ldaps://dc1.corp.example' } })
+      fireEvent.change(screen.getByLabelText('Search account'), { target: { value: 'proxy@corp.example' } })
+      fireEvent.change(screen.getByLabelText('Search account password'), { target: { value: 'bind pass' } })
+      fireEvent.change(screen.getByLabelText('Users are under'), { target: { value: 'ou=people,dc=corp,dc=example' } })
+      fireEvent.change(screen.getByLabelText('User filter'), { target: { value: '(sAMAccountName=%s)' } })
+      expect(screen.getByText(/until its user signs in with their directory account/)).toBeInTheDocument()
+      save()
+      expect(await screen.findByText(/^Applied to the proxy at \d\d:\d\d\.$/)).toBeInTheDocument()
+      expect(settingsPosts()[0][1]).toMatchObject({
+        enable_proxy_auth: 'true', proxy_auth_source: 'ldap', ldap_url: 'ldaps://dc1.corp.example',
+        ldap_bind_dn: 'proxy@corp.example', ldap_bind_password: 'bind pass', ldap_user_base_dn: 'ou=people,dc=corp,dc=example',
+        ldap_user_filter: '(sAMAccountName=%s)',
+      })
+      expect(settingsPosts()[0][1]).not.toHaveProperty('proxy_auth_username')
     })
 
     it('says every client is refused while login is on with no credentials stored, as after an upgrade', async () => {

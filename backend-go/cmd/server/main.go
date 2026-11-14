@@ -118,6 +118,12 @@ func run() error {
 		handlers.NewSettingsHandlers(db, cfg).SyncProxyUsersAtStartup()
 		return nil
 	})
+	// And for the proxy's LDAP login files: an upgrade, a restore or a
+	// changed key reaches the proxy here.
+	_ = database.StartupStep("sync_proxy_ldap", func() error {
+		handlers.NewSettingsHandlers(db, cfg).SyncProxyLDAPAtStartup()
+		return nil
+	})
 	// And for the upstream proxy's files, in the proxy-secrets volume: an
 	// upgrade, a restore or a changed key reaches the proxy here.
 	_ = database.StartupStep("sync_upstream_proxy", func() error {

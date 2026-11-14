@@ -284,6 +284,11 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 		// The proxy password file follows the stored settings, the password
 		// included, which applied leaves out as a secret: a backup that
 		// carries only the password still reaches the file.
+		if carriesProxyLDAP(body.Config) && !carriesProxyLDAP(applied) {
+			if failed := sh.syncProxyLDAPAndReload(); failed != "" {
+				failedFiles = append(failedFiles, failed)
+			}
+		}
 		if carriesUpstream(body.Config) && !carriesUpstream(applied) {
 			if failed := sh.syncUpstreamProxy(); failed != "" {
 				failedFiles = append(failedFiles, failed)
