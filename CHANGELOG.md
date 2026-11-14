@@ -15,6 +15,17 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.32.1] - 2026-11-14
+
+A configuration backup now survives a restore when client groups are in
+use. Nothing is **BREAKING** and `X-API-Version` stays 1.
+
+**Upgrade notes.** No schema or configuration change is needed. Take a new
+backup after upgrading: a file made by an earlier version does not carry
+the client groups, the WAF policy or where each list entry came from, and
+restoring it puts every entry back for every client, as before (the restore
+dialog says so).
+
 ### Fixed
 
 - **A restored backup keeps each list's source and scope, the client groups
