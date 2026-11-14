@@ -15,6 +15,20 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.33.0] - 2026-11-14
+
+The backend can forward the access log and the audit log to a syslog
+server or SIEM, and the proxy can send every request through an upstream
+proxy. Nothing is **BREAKING** and `X-API-Version` stays 1.
+
+**Upgrade notes.** No schema change is needed; both features are off until
+switched on. The compose files add a named volume, `proxy-secrets`, mounted
+by the backend and the proxy: `docker compose up -d` (or the installer)
+creates it. An install that runs its own compose file must add it to both
+services, or the upstream proxy's login is not written and the save says
+so. Log forwarding needs no change to the compose file: the backend already
+reaches the network through which alerts leave.
+
 ### Added
 
 - **Upstream proxy** (Settings > Proxy engine): the proxy forwards every
