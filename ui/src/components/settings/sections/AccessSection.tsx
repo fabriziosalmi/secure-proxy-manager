@@ -8,14 +8,16 @@
  * only while the toggle is on and are saved with it. The proxy login's
  * credentials also show while some are stored, so they can be removed.
  *
- * Proxy login needs its own username and password (the password is
- * write-only, lib/secrets). The backend writes their bcrypt line to the file
- * the proxy checks; with login on and none set the proxy refuses every
- * client, which this section says before a save and after.
+ * Proxy login checks either its own username and password (the password is
+ * write-only, lib/secrets; the backend writes their bcrypt line to the file
+ * the proxy checks) or each user's account in an LDAP directory
+ * (handlers/proxy_ldap.go). With login on and what it checks against not set
+ * the proxy refuses every client, which this section says before a save and
+ * after.
  */
 import { Section } from '../../ui/Section';
 import { Notice } from '../../ui/Notice';
-import { SecretRow, TextField, ToggleRow } from '../fields';
+import { ChoiceRow, SecretRow, TextField, ToggleRow } from '../fields';
 import type { SectionForm } from '../sectionForm';
 import type { ProxyAuthStatus } from '../../../lib/queries';
 import { PROXY_LOGIN_NO_CREDENTIALS, proxyLoginWithoutCredentials } from '../../../lib/attention';
@@ -32,16 +34,23 @@ function Code({ children }: { children: string }) {
  * no credentials now (every client refused), the draft would save that, or
  * the draft turns login on and every device will have to sign in.
  */
-function LoginNotice({ running, draft, turningOn }: { running: boolean; draft: boolean; turningOn: boolean }) {
+function LoginNotice({ running, draft, turningOn, ldap }: { running: boolean; draft: boolean; turningOn: boolean; ldap: boolean }) {
   if (running) {
     return (
       <Notice tone="danger" title={PROXY_LOGIN_NO_CREDENTIALS} className="mt-3">
-        Devices get 403 on every request. Set a username and a password and save, or turn proxy login off.
+        {ldap
+          ? 'Devices get 403 on every request. Set the directory URL, the search account and its password, and where users are, and save, or turn proxy login off.'
+          : 'Devices get 403 on every request. Set a username and a password and save, or turn proxy login off.'}
       </Notice>
     );
   }
   if (draft) {
-    return (
+    return ldap ? (
+      <Notice tone="warning" title="Set the directory before you save" className="mt-3">
+        With proxy login from LDAP and no directory to ask the proxy refuses every client, so the save is refused until the
+        directory URL, the search account and its password, and where users are, are set.
+      </Notice>
+    ) : (
       <Notice tone="warning" title="Set the proxy username and password before you save" className="mt-3">
         With proxy login on and no credentials the proxy refuses every client, so the save is refused until both are set.
       </Notice>
@@ -50,12 +59,73 @@ function LoginNotice({ running, draft, turningOn }: { running: boolean; draft: b
   if (turningOn) {
     return (
       <Notice tone="warning" title="Every device must sign in after you save" className="mt-3">
-        A device set up without a proxy login gets 407 Proxy Authentication Required on every request until its proxy settings
-        carry the proxy username and password.
+        {ldap
+          ? 'A device set up without a proxy login gets 407 Proxy Authentication Required on every request until its user signs in with their directory account.'
+          : 'A device set up without a proxy login gets 407 Proxy Authentication Required on every request until its proxy settings carry the proxy username and password.'}
       </Notice>
     );
   }
   return null;
+}
+
+/** The directory the proxy checks users against, when the source is LDAP. */
+function DirectoryFields({ form }: { form: SectionForm }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm leading-5 text-ink-muted">
+        Each user signs in with their own directory account. The proxy searches for it with the search account, then checks the
+        password the user typed against the directory; it remembers a sign-in for an hour, so a disabled account stops working
+        within the hour.
+      </p>
+      <div className="grid gap-4 md:grid-cols-2">
+        <TextField
+          form={form}
+          setting="ldap_url"
+          label="Directory URL"
+          placeholder="e.g. ldaps://dc1.corp.example"
+          hint="ldaps:// checks the directory's certificate against the system's roots. ldap:// sends the passwords in clear."
+        />
+        <TextField
+          form={form}
+          setting="ldap_user_base_dn"
+          label="Users are under"
+          placeholder="e.g. ou=people,dc=corp,dc=example"
+          hint="The DN users are searched under, subtree included."
+        />
+        <TextField
+          form={form}
+          setting="ldap_bind_dn"
+          label="Search account"
+          autoComplete="off"
+          placeholder="e.g. cn=Proxy Bind,ou=Service Accounts,dc=corp,dc=example"
+          hint="A DN, or on Active Directory a user principal name such as proxy@corp.example. A read-only account is enough."
+        />
+        <SecretRow form={form} setting="ldap_bind_password" label="Search account password" placeholder="Type to replace" />
+        <TextField
+          form={form}
+          setting="ldap_user_filter"
+          label="User filter"
+          hint="%s is the username typed. (uid=%s) for OpenLDAP, (sAMAccountName=%s) for Active Directory."
+        />
+      </div>
+      <div className="grid gap-4 md:grid-cols-3">
+        <TextField
+          form={form}
+          setting="ldap_group"
+          label="Only members of"
+          placeholder="e.g. proxy-users"
+          hint="Optional. Empty lets in every account the filter finds; a member of no such group gets 403."
+        />
+        <TextField form={form} setting="ldap_group_base_dn" label="Groups are under" placeholder="e.g. ou=groups,dc=corp,dc=example" />
+        <TextField
+          form={form}
+          setting="ldap_group_filter"
+          label="Group filter"
+          hint="%g is the group, %u the user's DN. (&(cn=%g)(member=%u)) for groupOfNames and Active Directory."
+        />
+      </div>
+    </div>
+  );
 }
 
 export function AccessSection({ form, proxyAuth }: { form: SectionForm; proxyAuth?: ProxyAuthStatus }) {
@@ -66,9 +136,18 @@ export function AccessSection({ form, proxyAuth }: { form: SectionForm; proxyAut
   const storedCredentials = !!form.stored.proxy_auth_username || password.state !== 'unset';
   // What runs now (the stored settings and the proxy's own record), and what
   // the draft would save.
-  const runningWithout = proxyLoginWithoutCredentials(form.stored, { proxy_auth_password: password.state }, proxyAuth);
+  const ldapPassword = form.secretProps('ldap_bind_password');
+  const ldap = v.proxy_auth_source === 'ldap';
+  const runningWithout = proxyLoginWithoutCredentials(
+    form.stored,
+    { proxy_auth_password: password.state, ldap_bind_password: ldapPassword.state },
+    proxyAuth,
+  );
   const passwordAfterSave = password.edit ? password.edit.kind === 'replace' : password.state !== 'unset';
-  const draftWithout = loginOn && (!v.proxy_auth_username || !passwordAfterSave);
+  const ldapPasswordAfterSave = ldapPassword.edit ? ldapPassword.edit.kind === 'replace' : ldapPassword.state !== 'unset';
+  const draftWithout = loginOn && (ldap
+    ? !v.ldap_url || !v.ldap_bind_dn || !v.ldap_user_base_dn || !ldapPasswordAfterSave
+    : !v.proxy_auth_username || !passwordAfterSave);
   const turningHoursOn = v.enable_time_restrictions === 'true' && form.stored.enable_time_restrictions !== 'true';
   const hours = v.time_restriction_start && v.time_restriction_end ? `${v.time_restriction_start} to ${v.time_restriction_end} UTC` : null;
   // The proxy reads the window on its own clock, UTC: the same hours on the
@@ -98,9 +177,19 @@ export function AccessSection({ form, proxyAuth }: { form: SectionForm; proxyAut
           form={form}
           setting="enable_proxy_auth"
           label="Require proxy login"
-          help="Every client signs in with the proxy username and password below before it can browse."
+          help="Every client signs in before it can browse: with the proxy username and password below, or with each user's account in an LDAP directory."
         />
-        {(loginOn || storedCredentials) && (
+        {loginOn && (
+          <ChoiceRow
+            form={form}
+            setting="proxy_auth_source"
+            label="Who signs in"
+            help="One shared proxy account, or each user with their own account in an LDAP directory such as OpenLDAP or Active Directory."
+            options={[{ value: 'local', label: 'Proxy account' }, { value: 'ldap', label: 'LDAP directory' }]}
+          />
+        )}
+        {loginOn && ldap && <DirectoryFields form={form} />}
+        {!ldap && (loginOn || storedCredentials) && (
           <div className="flex flex-col gap-3">
             <p className="text-sm leading-5 text-ink-muted">
               Devices enter these in their proxy settings. They are not your dashboard login: they only let a device use the
@@ -118,7 +207,7 @@ export function AccessSection({ form, proxyAuth }: { form: SectionForm; proxyAut
             </div>
           </div>
         )}
-        <LoginNotice running={runningWithout} draft={draftWithout} turningOn={turningAuthOn} />
+        <LoginNotice running={runningWithout} draft={draftWithout} turningOn={turningAuthOn} ldap={ldap} />
       </Section>
 
       <Section level={3} title="Allowed hours">

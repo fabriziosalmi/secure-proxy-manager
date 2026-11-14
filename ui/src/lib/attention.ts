@@ -49,8 +49,10 @@ export const PROXY_LOGIN_NO_CREDENTIALS = 'Proxy login is on but no proxy creden
 
 /**
  * Whether proxy login is on with no credentials to check: the stored
- * settings lack the username or the password, or the proxy itself reports
- * that it has no user (its password file could not be written, for one).
+ * settings lack the username or the password (with the source LDAP, the
+ * directory's URL, search account, its password or the user base), or the
+ * proxy itself reports that it has no user (its password file could not be
+ * written, for one).
  */
 export function proxyLoginWithoutCredentials(
   values: Record<string, string>,
@@ -59,6 +61,11 @@ export function proxyLoginWithoutCredentials(
 ): boolean {
   if (proxyAuth?.state === 'no_credentials') return true;
   if (values.enable_proxy_auth !== 'true') return false;
+  // From an LDAP directory: the proxy needs where it is, the account it
+  // searches with and where users are (handlers/proxy_ldap.go).
+  if (values.proxy_auth_source === 'ldap') {
+    return !values.ldap_url || !values.ldap_bind_dn || !values.ldap_user_base_dn || (secrets.ldap_bind_password ?? 'unset') === 'unset';
+  }
   return !values.proxy_auth_username || (secrets.proxy_auth_password ?? 'unset') === 'unset';
 }
 

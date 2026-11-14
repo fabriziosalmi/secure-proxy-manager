@@ -107,6 +107,7 @@ function loginLine(on: boolean | null, status: Coverage['proxy_login_status']): 
     return { ...base, state: SHARED_SEVERITY.proxyLoginWithoutCredentials, text: 'Proxy login: on, but no proxy credentials are set: every client is refused until you set them' };
   }
   if (on === null) return { ...base, state: 'unknown', text: 'Proxy login: not reported' };
+  if (on && status?.state === 'ldap') return { ...base, state: 'on', text: 'Proxy login: on, each user signs in with their LDAP directory account' };
   return on
     ? { ...base, state: 'on', text: 'Proxy login: on, a device signs in to use the proxy' }
     : { ...base, state: SHARED_SEVERITY.proxyLoginOff, text: 'Proxy login: off, any device on an allowed network can use the proxy' };

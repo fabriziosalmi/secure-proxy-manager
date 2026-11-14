@@ -163,7 +163,11 @@ function SettingsPage() {
       const passwordAfterSave = pwEdit
         ? pwEdit.kind === 'replace'
         : secretStateOf(parsed.secrets, 'proxy_auth_password') !== 'unset';
-      for (const [k, m] of Object.entries(validateProxyLogin(values, passwordAfterSave))) errors[k] ??= m;
+      const ldapEdit = drafts.secretEdits.access?.ldap_bind_password;
+      const ldapPasswordAfterSave = ldapEdit
+        ? ldapEdit.kind === 'replace'
+        : secretStateOf(parsed.secrets, 'ldap_bind_password') !== 'unset';
+      for (const [k, m] of Object.entries(validateProxyLogin(values, passwordAfterSave, ldapPasswordAfterSave))) errors[k] ??= m;
     }
     // An empty allowlist with default-deny on leaves only LAN destinations
     // and Allowed IPs reachable (lib/egress).

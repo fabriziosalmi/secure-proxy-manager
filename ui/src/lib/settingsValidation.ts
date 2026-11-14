@@ -107,9 +107,26 @@ const NO_CREDENTIALS = ': with proxy login on and no credentials the proxy refus
  * password will be stored once the section is saved (typed, or stored and
  * not removed).
  */
-export function validateProxyLogin(values: Record<string, string>, passwordAfterSave: boolean): Record<string, string> {
+export function validateProxyLogin(
+  values: Record<string, string>,
+  passwordAfterSave: boolean,
+  ldapPasswordAfterSave = false,
+): Record<string, string> {
   if (!on(values, 'enable_proxy_auth')) return {};
   const errors: Record<string, string> = {};
+  // From an LDAP directory: the directory replaces the local credentials, as
+  // the backend checks (handlers/proxy_ldap.go).
+  if (values.proxy_auth_source === 'ldap') {
+    const why = ': with proxy login from LDAP on, the proxy refuses every client without it';
+    if ((values.ldap_url ?? '') === '') errors.ldap_url = `set the directory's URL${why}`;
+    if ((values.ldap_bind_dn ?? '') === '') errors.ldap_bind_dn = `set the account the proxy searches with${why}`;
+    if ((values.ldap_user_base_dn ?? '') === '') errors.ldap_user_base_dn = `set where users are searched${why}`;
+    if (!ldapPasswordAfterSave) errors.ldap_bind_password = `set the search account's password${why}`;
+    if ((values.ldap_group ?? '') !== '' && (values.ldap_group_base_dn ?? '') === '') {
+      errors.ldap_group_base_dn = 'set where groups are searched, or clear the group';
+    }
+    return errors;
+  }
   if ((values.proxy_auth_username ?? '') === '') errors.proxy_auth_username = `set the username devices sign in with${NO_CREDENTIALS}`;
   if (!passwordAfterSave) errors.proxy_auth_password = `set the password devices sign in with${NO_CREDENTIALS}`;
   return errors;
