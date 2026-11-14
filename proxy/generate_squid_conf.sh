@@ -1054,10 +1054,17 @@ if [ -n "$UPSTREAM_HOST" ] && [ -n "$UPSTREAM_PORT" ] && [ "$UPSTREAM_PORT" -ge 
     if [ -n "$UPSTREAM_USER" ] && [ -n "$UPSTREAM_PASSWORD" ]; then
         UPSTREAM_LOGIN=" login=${UPSTREAM_USER}:${UPSTREAM_PASSWORD}"
     fi
+    # A "default" parent is Squid's last resort: used only when nothing else,
+    # direct included, can serve the request. That is right for always, where
+    # never_direct leaves nothing else; for fallback it meant always direct
+    # (measured: the parent up and never used), so there the parent is chosen
+    # by round-robin, which Squid tries before going direct.
+    UPSTREAM_SELECT="default"
+    [ "${UPSTREAM_MODE:-always}" = "fallback" ] && UPSTREAM_SELECT="round-robin"
     {
         echo ""
         echo "# ── Upstream proxy (${UPSTREAM_MODE:-always}) ──"
-        echo "cache_peer ${UPSTREAM_HOST} parent ${UPSTREAM_PORT} 0 no-query no-digest default name=spm_upstream${UPSTREAM_LOGIN}"
+        echo "cache_peer ${UPSTREAM_HOST} parent ${UPSTREAM_PORT} 0 no-query no-digest ${UPSTREAM_SELECT} name=spm_upstream${UPSTREAM_LOGIN}"
         if [ -s /config/upstream_direct_domains.txt ]; then
             echo "acl spm_upstream_direct dstdomain \"/config/upstream_direct_domains.txt\""
             echo "always_direct allow spm_upstream_direct"

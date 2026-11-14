@@ -408,7 +408,7 @@ grep -qx 'never_direct allow all' <<<"$conf" && ok "always: nothing else goes di
 parses "$UP_ALWAYS" && ok "always: squid -k parse accepts it" || bad "always: squid -k parse accepts it" "$(parse_log "$UP_ALWAYS" | grep -iE 'error|fatal' | head -3)"
 UP_FALLBACK='mkdir -p /secrets; printf "UPSTREAM_HOST=10.0.0.9\nUPSTREAM_PORT=3128\nUPSTREAM_MODE=fallback\n" > /secrets/upstream_proxy.conf'
 conf="$(generate "$UP_FALLBACK")"
-grep -qxF 'cache_peer 10.0.0.9 parent 3128 0 no-query no-digest default name=spm_upstream' <<<"$conf" && grep -qx 'nonhierarchical_direct off' <<<"$conf" \
+grep -qxF 'cache_peer 10.0.0.9 parent 3128 0 no-query no-digest round-robin name=spm_upstream' <<<"$conf" && grep -qx 'nonhierarchical_direct off' <<<"$conf" \
   && ! grep -q '^never_direct' <<<"$conf" \
   && ok "fallback: the parent first, direct allowed, no login" || bad "fallback: the parent first, direct allowed, no login" "$(grep -E '^(cache_peer|never_direct|nonhierarchical)' <<<"$conf")"
 parses "$UP_FALLBACK" && ok "fallback: squid -k parse accepts it" || bad "fallback: squid -k parse accepts it" "$(parse_log "$UP_FALLBACK" | grep -iE 'error|fatal' | head -3)"
