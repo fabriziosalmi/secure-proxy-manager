@@ -693,6 +693,29 @@ test.describe('UI: Analytics', () => {
     if (pls !== null) expect(['off', 'enforced', 'no_credentials']).toContain(pls.state);
   });
 
+  // The real backend answers every outcome on every day, and refuses a zone
+  // it cannot resolve, as blocked-by-day does.
+  test('cache-by-day returns the 7 calendar days of a zone with every outcome', async ({ request }) => {
+    const token = await apiToken(request);
+    const headers = { Authorization: `Bearer ${token}` };
+    const res = await request.get(`${API_URL}/api/analytics/cache-by-day?tz=Europe/Rome`, { headers });
+    expect(res.ok(), await res.text()).toBeTruthy();
+    const { data } = (await res.json()) as {
+      data: { tz: string; outcomes: { outcome: string; label: string }[]; days: { requests: Record<string, number>; bytes: Record<string, number> }[]; totals: { requests: Record<string, number> } };
+    };
+    const outcomes = ['hit', 'revalidated', 'miss', 'tunnel', 'refused', 'other'];
+    expect(data.tz).toBe('Europe/Rome');
+    expect(data.outcomes.map((o) => o.outcome)).toEqual(outcomes);
+    expect(data.days).toHaveLength(7);
+    for (const d of data.days) {
+      expect(Object.keys(d.requests).sort()).toEqual([...outcomes].sort());
+      expect(Object.keys(d.bytes).sort()).toEqual([...outcomes].sort());
+    }
+    expect(Object.keys(data.totals.requests).sort()).toEqual([...outcomes].sort());
+    const bad = await request.get(`${API_URL}/api/analytics/cache-by-day?tz=Mars/Olympus`, { headers });
+    expect(bad.status()).toBe(400);
+  });
+
   test('shows the sections of the mockup, and the old Threat Intel address leads here', async ({ page }) => {
     await page.goto('/threats');
     await expect(page).toHaveURL(/\/analytics$/);
@@ -701,6 +724,7 @@ test.describe('UI: Analytics', () => {
     await expect(page.getByRole('heading', { level: 2 })).toHaveText([
       'Blocked requests per day, by rule',
       'Protection coverage',
+      'What the cache did, per day',
       'Client trajectories',
       'WAF rule matches',
       'Cloud services in use',
