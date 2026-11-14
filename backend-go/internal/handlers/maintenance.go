@@ -52,7 +52,7 @@ func (h *MaintenanceHandlers) Register(r chi.Router, authMW func(http.Handler) h
 
 // backupVersion is the schema of the export envelope. An importer checks it
 // rather than guessing from the shape.
-const backupVersion = 2
+const backupVersion = 3
 
 // BackupConfig exports the state worth restoring, not just the toggles.
 //
@@ -81,30 +81,41 @@ func (h *MaintenanceHandlers) BackupConfig(w http.ResponseWriter, r *http.Reques
 	}
 	rows.Close()
 
-	lists := map[string]any{}
-	for _, spec := range []struct {
-		name, query string
-	}{
-		{"ip_blacklist", "SELECT ip, COALESCE(description,'') FROM ip_blacklist ORDER BY ip"},
-		{"ip_whitelist", "SELECT ip, COALESCE(description,'') FROM ip_whitelist ORDER BY ip"},
-		{"domain_blacklist", "SELECT domain, COALESCE(description,'') FROM domain_blacklist ORDER BY domain"},
-		{"domain_whitelist", "SELECT domain, COALESCE(description,'') FROM domain_whitelist ORDER BY domain"},
-		{"dst_allowlist", "SELECT entry, COALESCE(description,'') FROM dst_allowlist ORDER BY entry"}, // type is re-derived on restore, see restoreEgressType
-	} {
-		entries := []map[string]string{}
-		lrows, err := h.db.Query(spec.query)
+	lists := map[string][]backupEntry{}
+	for _, t := range sourceListTables {
+		entries, err := exportSourcedEntries(h.db, t.list, t.col, t.others)
 		if err != nil {
 			writeInternalError(w, "backup_config", err)
 			return
 		}
-		for lrows.Next() {
-			var value, desc string
-			if err := lrows.Scan(&value, &desc); err == nil {
-				entries = append(entries, map[string]string{"value": value, "description": desc})
-			}
+		lists[t.list] = entries
+	}
+	// dst_allowlist records no source; its type is re-derived on restore, see
+	// restoreEgressType.
+	allow := []backupEntry{}
+	lrows, err := h.db.Query("SELECT entry, COALESCE(description,'') FROM dst_allowlist ORDER BY entry")
+	if err != nil {
+		writeInternalError(w, "backup_config", err)
+		return
+	}
+	for lrows.Next() {
+		var e backupEntry
+		if err := lrows.Scan(&e.Value, &e.Description); err == nil {
+			allow = append(allow, e)
 		}
-		lrows.Close()
-		lists[spec.name] = entries
+	}
+	lrows.Close()
+	lists["dst_allowlist"] = allow
+
+	sources, err := exportSources(h.db)
+	if err != nil {
+		writeInternalError(w, "backup_config", err)
+		return
+	}
+	groups, err := exportGroups(h.db)
+	if err != nil {
+		writeInternalError(w, "backup_config", err)
+		return
 	}
 
 	egressProviders := []map[string]any{}
@@ -127,14 +138,25 @@ func (h *MaintenanceHandlers) BackupConfig(w http.ResponseWriter, r *http.Reques
 	}
 	prows.Close()
 
-	writeOK(w, map[string]any{
+	out := map[string]any{
 		"backup_version":   backupVersion,
 		"app_version":      config.AppVersion,
 		"exported_at":      time.Now().UTC().Format(time.RFC3339),
 		"settings":         settings,
 		"lists":            lists,
 		"egress_providers": egressProviders,
-	})
+		"list_sources":     sources,
+		"client_groups":    groups,
+	}
+	// The WAF policy file, when there is one that parses. A file that does
+	// not parse is named, not copied: restoring it would be refused anyway.
+	ph := &WAFPolicyHandlers{db: h.db, cfg: h.cfg}
+	if pol, _, exists, perr := ph.readPolicy(); perr != nil {
+		out["waf_policy_unreadable"] = perr.Error()
+	} else if exists {
+		out["waf_policy"] = pol
+	}
+	writeOK(w, out)
 }
 
 type backupEgressProvider struct {
@@ -150,10 +172,16 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 		// before backup_version 2 can be restored.
 		Config map[string]string `json:"config"`
 		// v2 shape: settings plus the lists that carry the product's content.
-		BackupVersion   int                            `json:"backup_version"`
-		Settings        map[string]string              `json:"settings"`
-		Lists           map[string][]map[string]string `json:"lists"`
-		EgressProviders []backupEgressProvider         `json:"egress_providers"`
+		BackupVersion   int                      `json:"backup_version"`
+		Settings        map[string]string        `json:"settings"`
+		Lists           map[string][]backupEntry `json:"lists"`
+		EgressProviders []backupEgressProvider   `json:"egress_providers"`
+		// Version 3: where each entry came from, the client groups, the WAF
+		// policy. Pointers, so a file without them is told apart from one
+		// that carries none.
+		Sources      *[]backupSource `json:"list_sources"`
+		ClientGroups *[]backupGroup  `json:"client_groups"`
+		WAFPolicy    *wafPolicyFile  `json:"waf_policy"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "no configuration data provided")
@@ -162,7 +190,8 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 	if len(body.Settings) > 0 {
 		body.Config = body.Settings
 	}
-	if len(body.Config) == 0 && len(body.Lists) == 0 && len(body.EgressProviders) == 0 {
+	if len(body.Config) == 0 && len(body.Lists) == 0 && len(body.EgressProviders) == 0 &&
+		body.ClientGroups == nil && body.WAFPolicy == nil {
 		writeError(w, http.StatusBadRequest, "no configuration data provided")
 		return
 	}
@@ -182,22 +211,42 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusInternalServerError, "failed to restore configuration (rolled back)")
 		return
 	}
+	// The sources first, so each entry goes back under the source it came
+	// from, with that source's scope: a list for some groups stays theirs.
+	sr := &sourceRestore{ids: map[int64]int64{}, skipped: []skippedItem{}}
+	if body.Sources != nil {
+		if sr, err = restoreSources(tx, *body.Sources, body.Lists); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to restore list sources (rolled back)")
+			return
+		}
+	}
 	// Restore the lists in the SAME transaction as the settings, so a partial
 	// restore cannot leave the toggles applied and the blacklists not.
 	perList := map[string]*listRestore{}
-	listsRestored, skippedEntries, err := restoreLists(tx, body.Lists, perList)
+	listsRestored, skippedEntries, err := restoreLists(tx, body.Lists, sr.ids, perList)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to restore lists (rolled back)")
 		return
+	}
+	groupsRestored, skippedGroups := 0, []skippedItem{}
+	if body.ClientGroups != nil {
+		if groupsRestored, skippedGroups, err = restoreGroups(tx, *body.ClientGroups, sr.ids); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to restore client groups (rolled back)")
+			return
+		}
 	}
 	provRestored, provSkipped, err := restoreEgressProviders(tx, body.EgressProviders)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to restore egress providers (rolled back)")
 		return
 	}
+	if err := dropUnusedRestoredSources(tx, sr.created); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to restore list sources (rolled back)")
+		return
+	}
 	settingsRestored := restored
 	skippedEntries += provSkipped
-	restored += listsRestored + provRestored
+	restored += listsRestored + provRestored + groupsRestored
 
 	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to commit configuration")
@@ -242,8 +291,21 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
+	// The WAF policy after the commit: the WAF validates it first, and its
+	// refusal is reported without undoing what the database now holds.
+	var policyOutcome map[string]any
+	if body.WAFPolicy != nil {
+		policyOutcome = h.restoreWAFPolicy(r.Context(), body.WAFPolicy)
+	}
+
 	username, _ := r.Context().Value(middleware.CtxUsername).(string)
 	database.Audit(h.db, username, "restore_config", "", fmt.Sprintf("%d settings restored, %d skipped", settingsRestored, skipped))
+	if body.ClientGroups != nil {
+		auditChange(h.db, r, "restore_client_groups", "", map[string]any{"restored": groupsRestored, "skipped": len(skippedGroups)})
+	}
+	if policyOutcome != nil {
+		auditChange(h.db, r, "restore_waf_policy", h.cfg.WAFPolicyFile, policyOutcome)
+	}
 	// One row per list the backup carried, with the entries that were new
 	// and the ones refused. The restore_config row above counts settings only.
 	names := make([]string, 0, len(perList))
@@ -275,6 +337,14 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 		"skipped_entries": skippedEntries,
 		// Proxy configuration files that could not be written.
 		"failed_files": failedFiles,
+		// Version 3: the client groups restored and the ones skipped, the
+		// list sources the restore could not use, the WAF policy's outcome
+		// (null when the backup has none), and what the backup did not carry.
+		"restored_groups": groupsRestored,
+		"skipped_groups":  skippedGroups,
+		"skipped_sources": sr.skipped,
+		"waf_policy":      policyOutcome,
+		"not_in_backup":   notInBackup(body.Sources != nil, body.ClientGroups != nil, body.WAFPolicy != nil),
 	})
 }
 
@@ -351,7 +421,7 @@ type listRestore struct {
 // as its add endpoint would. An invalid entry is skipped and counted; a failed
 // insert aborts (the caller rolls back). per, when not nil, receives what
 // happened to each known list.
-func restoreLists(tx *sql.Tx, lists map[string][]map[string]string, per map[string]*listRestore) (restored, skippedEntries int, err error) {
+func restoreLists(tx *sql.Tx, lists map[string][]backupEntry, ids map[int64]int64, per map[string]*listRestore) (restored, skippedEntries int, err error) {
 	listTargets := map[string][2]string{
 		"ip_blacklist":     {"ip_blacklist", "ip"},
 		"ip_whitelist":     {"ip_whitelist", "ip"},
@@ -378,7 +448,7 @@ func restoreLists(tx *sql.Tx, lists map[string][]map[string]string, per map[stri
 		var sourceID int64
 		var added, skippedHere int64
 		for _, e := range entries {
-			value := strings.TrimSpace(e["value"])
+			value := strings.TrimSpace(e.Value)
 			if value == "" {
 				continue
 			}
@@ -411,26 +481,48 @@ func restoreLists(tx *sql.Tx, lists map[string][]map[string]string, per map[stri
 				var res sql.Result
 				res, err = tx.Exec(
 					"INSERT OR IGNORE INTO dst_allowlist(entry, type, description) VALUES(?,?,?)",
-					value, egressEntryType(value), e["description"],
+					value, egressEntryType(value), e.Description,
 				)
 				if err == nil {
 					n, _ := res.RowsAffected()
 					added += n
 				}
 			} else {
-				if sourceID == 0 {
-					if sourceID, err = database.NewSource(tx, target[0], database.SourceRestore, ""); err != nil {
-						return restored, skippedEntries, err
+				// The entry's own source when the backup records one this
+				// restore could map; otherwise the one "Restore" source.
+				sid, mapped := int64(0), false
+				if e.Source != nil {
+					sid, mapped = ids[*e.Source]
+				}
+				if !mapped {
+					if sourceID == 0 {
+						if sourceID, err = database.NewSource(tx, target[0], database.SourceRestore, ""); err != nil {
+							return restored, skippedEntries, err
+						}
 					}
+					sid = sourceID
 				}
 				var res sql.Result
 				res, err = tx.Exec(
 					fmt.Sprintf("INSERT OR IGNORE INTO %s(%s, description, source_id) VALUES(?,?,?)", target[0], target[1]),
-					value, e["description"], sourceID,
+					value, e.Description, sid,
 				)
 				if err == nil {
 					n, _ := res.RowsAffected()
 					added += n
+					// Already listed here: the backup's source becomes one of
+					// its other sources, so removing either keeps the entry.
+					if n == 0 && mapped {
+						_, err = database.LinkListed(tx, target[0], value, sid)
+					}
+				}
+				for _, old := range e.Also {
+					if err != nil {
+						break
+					}
+					if other, ok := ids[old]; ok {
+						_, err = database.LinkListed(tx, target[0], value, other)
+					}
 				}
 			}
 			if err != nil {
