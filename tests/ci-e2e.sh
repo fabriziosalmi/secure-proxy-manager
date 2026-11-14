@@ -138,7 +138,10 @@ served=$(curl -s -m 10 http://127.0.0.1:8011/ca.crt | openssl x509 -noout -finge
 proxy_fp=$(openssl x509 -in config/ssl_cert.pem -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2)
 [ -n "$proxy_fp" ] && [ "$served" = "$proxy_fp" ] && ok "/ca.crt on port 80, without a login, is the proxy's CA" \
   || bad "/ca.crt is the proxy's CA (served: $served, proxy: $proxy_fp)"
-described=$(curl -sk -m 10 https://127.0.0.1:8443/api/client-setup | python3 -c 'import json,sys; print((json.load(sys.stdin)["data"]["ca"] or {}).get("sha256",""))' 2>/dev/null)
+# API answers are read from a variable, not piped from curl into python: the
+# scanners report any "curl | interpreter" as running downloaded code.
+setup_json=$(curl -sk -m 10 https://127.0.0.1:8443/api/client-setup)
+described=$(python3 -c 'import json,sys; print((json.load(sys.stdin)["data"]["ca"] or {}).get("sha256",""))' <<<"$setup_json" 2>/dev/null)
 [ -n "$proxy_fp" ] && [ "$described" = "$proxy_fp" ] && ok "/api/client-setup, without a login, gives the CA fingerprint" \
   || bad "/api/client-setup gives the CA fingerprint (got: $described)"
 code=$(curl -sk -m 10 -o /dev/null -w '%{http_code}' https://127.0.0.1:8443/setup)
@@ -157,17 +160,18 @@ sc=$(curl -s -m 20 -x "$PROXY" -o /dev/null -w '%{http_code}' https://example.co
 GROUP_HOST='e2e-group.example'
 curl -s -m 10 -u "$AUTH" -X POST -H 'Content-Type: application/json' \
   -d "{\"type\":\"domain\",\"content\":\"${GROUP_HOST}\"}" "$API/api/blacklists/import" >/dev/null
-gsrc=$(curl -s -m 10 -u "$AUTH" "$API/api/domain-blacklist/sources" | python3 -c '
+sources_json=$(curl -s -m 10 -u "$AUTH" "$API/api/domain-blacklist/sources")
+gsrc=$(python3 -c '
 import json, sys
 rows = [s for s in json.load(sys.stdin)["data"] if s.get("kind") == "paste" and s.get("id")]
-print(max(s["id"] for s in rows) if rows else "")' 2>/dev/null)
+print(max(s["id"] for s in rows) if rows else "")' <<<"$sources_json" 2>/dev/null)
 curl -s -m 10 -u "$AUTH" -X PUT -H 'Content-Type: application/json' -d '{"scope":"groups"}' \
   "$API/api/domain-blacklist/sources/${gsrc}/scope" >/dev/null
 curl -s -m 20 -x "$PROXY" -o /dev/null http://example.com/
 me=$(docker compose exec -T proxy tail -n 1 /var/log/squid/access.log 2>/dev/null | awk '{print $3}')
-gid=$(curl -s -m 10 -u "$AUTH" -X POST -H 'Content-Type: application/json' \
-  -d "{\"name\":\"e2e\",\"members\":[\"${me}\"],\"lists\":[${gsrc:-0}]}" "$API/api/client-groups" \
-  | python3 -c 'import json, sys; print(json.load(sys.stdin)["data"]["id"])' 2>/dev/null)
+group_json=$(curl -s -m 10 -u "$AUTH" -X POST -H 'Content-Type: application/json' \
+  -d "{\"name\":\"e2e\",\"members\":[\"${me}\"],\"lists\":[${gsrc:-0}]}" "$API/api/client-groups")
+gid=$(python3 -c 'import json, sys; print(json.load(sys.stdin)["data"]["id"])' <<<"$group_json" 2>/dev/null)
 applied=0
 for _ in $(seq 1 20); do # up to ~40s
   if docker compose exec -T proxy grep -qxF "http_access deny spm_g${gid} spm_s${gsrc}_domain spm_r_group_list" /etc/squid/squid.conf 2>/dev/null \
