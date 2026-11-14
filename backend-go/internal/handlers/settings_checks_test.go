@@ -141,6 +141,9 @@ func TestBulkUpdateReportsTheWAFPush(t *testing.T) {
 		{"different token", "tok", http.StatusForbidden, 0, "must be the same on the waf and backend"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			// The WAF breaker is shared by the package: a test that made the
+			// WAF fail before this one left it open, and the push was never tried.
+			freshWAFBreaker(t)
 			db, _, cfg, cleanup := setupTestDB(t)
 			defer cleanup()
 			cfg.WAFURL = wafStub(t, c.status, "").URL
@@ -170,6 +173,7 @@ func TestBulkUpdateReportsTheWAFPush(t *testing.T) {
 }
 
 func TestWAFHeuristicsReportsTheRunningState(t *testing.T) {
+	freshWAFBreaker(t)
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
 	cfg.WAFURL = wafStub(t, http.StatusOK, `{"status":"ok","data":{"waf_h_entropy":true,"waf_h_sequence":false,"other":true}}`).URL
