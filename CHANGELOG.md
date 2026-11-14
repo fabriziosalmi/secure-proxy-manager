@@ -15,15 +15,23 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.35.0] - 2026-11-14
+
+Every change to the configuration can be compared and undone. Nothing is
+**BREAKING** and `X-API-Version` stays 1.
+
+**Upgrade notes.** Nothing to do: the new `config_snapshots` table is created
+at start, and the first snapshot is taken before the next change.
+
 ### Added
 
 - **Configuration history** (Settings > Admin and backup): a snapshot of
-  the settings, client groups, WAF policy and egress allowlist is taken
+  the settings, client groups, WAF policy and Default-deny allowlist is taken
   before every change to them, and on demand. Any snapshot can be compared
   with the configuration in force (a secret is named, never shown) and
   restored exactly; a restore takes a snapshot first, so it can be undone.
-  The newest 200 are kept. The blacklists and whitelists are not in a
-  snapshot: the full backup has them.
+  The newest 200 are kept. The blacklists and the IP and domain exceptions
+  are not in a snapshot: the full backup has them.
 
 ## [3.34.0] - 2026-11-14
 
