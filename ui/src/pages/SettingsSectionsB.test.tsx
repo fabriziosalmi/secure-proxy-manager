@@ -62,6 +62,13 @@ const rows: Row[] = [
   { setting_name: 'log_forward_events', setting_value: 'blocked' },
   { setting_name: 'log_forward_audit', setting_value: 'true' },
   { setting_name: 'log_forward_hostname', setting_value: '' },
+  { setting_name: 'upstream_proxy_enabled', setting_value: 'false' },
+  { setting_name: 'upstream_proxy_host', setting_value: '' },
+  { setting_name: 'upstream_proxy_port', setting_value: '3128' },
+  { setting_name: 'upstream_proxy_mode', setting_value: 'always' },
+  { setting_name: 'upstream_proxy_username', setting_value: '' },
+  { setting_name: 'upstream_proxy_password', setting_value: '', secret: true, is_set: false },
+  { setting_name: 'upstream_proxy_direct_domains', setting_value: '' },
   { setting_name: 'default_password_changed', setting_value: 'true' },
 ]
 
@@ -399,6 +406,29 @@ describe('Settings sections, part B', () => {
       for (const gone of [/Allowed Networks/, /Tailscale/, /Dynamic DNS/]) expect(screen.queryByText(gone)).not.toBeInTheDocument()
       headingsInOrder()
       await expectNoAxeViolations(container)
+    })
+
+    // The upstream proxy is saved with its login as a secret, and the proxy
+    // reloads, which is when Squid starts forwarding to it.
+    it('sets an upstream proxy with a login, and reloads the proxy on save', async () => {
+      const { container } = renderAt('/settings/engine')
+      fireEvent.click(await screen.findByRole('switch', { name: 'Forward through an upstream proxy' }))
+      fireEvent.change(screen.getByLabelText('Upstream host'), { target: { value: 'proxy.corp.example' } })
+      fireEvent.change(screen.getByLabelText('Upstream port'), { target: { value: '8080' } })
+      fireEvent.click(within(screen.getByRole('group', { name: 'When the upstream proxy is down' })).getByRole('button', { name: 'Go direct' }))
+      fireEvent.change(screen.getByLabelText('Upstream username'), { target: { value: 'spm-svc' } })
+      expect(screen.getByLabelText('Upstream password')).toHaveAttribute('type', 'password')
+      fireEvent.change(screen.getByLabelText('Upstream password'), { target: { value: 's3cr(e)t' } })
+      fireEvent.change(screen.getByLabelText('Go direct to these domains'), { target: { value: 'intranet.example' } })
+      await expectNoAxeViolations(container)
+      save()
+      await waitFor(() => expect(settingsPosts()).toHaveLength(1))
+      expect(settingsPosts()[0][1]).toMatchObject({
+        upstream_proxy_enabled: 'true', upstream_proxy_host: 'proxy.corp.example', upstream_proxy_port: '8080',
+        upstream_proxy_mode: 'fallback', upstream_proxy_username: 'spm-svc', upstream_proxy_password: 's3cr(e)t',
+        upstream_proxy_direct_domains: 'intranet.example',
+      })
+      await waitFor(() => expect(api.post).toHaveBeenCalledWith('maintenance/reload-config', expect.anything()))
     })
 
     it('warns before offline mode, and checks the bypass list before sending', async () => {
