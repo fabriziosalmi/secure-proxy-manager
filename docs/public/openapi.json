@@ -4192,6 +4192,41 @@
         "x-spm-token-scope": "write"
       }
     },
+    "/api/log-forward/test": {
+      "post": {
+        "operationId": "post_api_log_forward_test",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Send one test event to the saved log forwarding target now, whether forwarding is on or not: sent, target, protocol, format and a note (UDP has no answer); 502 with the reason when it did not go",
+        "tags": [
+          "log-forward"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
     "/api/logout": {
       "post": {
         "operationId": "post_api_logout",
