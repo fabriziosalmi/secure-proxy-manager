@@ -77,7 +77,9 @@ describe('Maintenance', () => {
     const dialog = await screen.findByRole('alertdialog', { name: 'Restore proxy-backup-2026-10-20.json?' })
     expect(within(dialog).getByText('The 3 settings in the file replace the current values.')).toBeInTheDocument()
     expect(within(dialog).getByText('IP blacklist: 1')).toBeInTheDocument()
-    expect(within(dialog).getByText('Nothing is removed: settings and entries that are not in the file stay as they are.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Nothing is removed: settings, entries and groups that are not in the file stay as they are.')).toBeInTheDocument()
+    // A version 2 file carries no groups, policy or sources, and the dialog says what that means.
+    expect(within(dialog).getByText(/made before backups carried client groups, the WAF policy and where each list entry came from/)).toBeInTheDocument()
     expect(within(dialog).getByText(/by version 3\.14\.3\./)).toBeInTheDocument()
     await expectNoAxeViolations(dialog)
     fireEvent.click(within(dialog).getByRole('button', { name: 'Restore' }))
@@ -88,6 +90,44 @@ describe('Maintenance', () => {
     expect(screen.getByText('default_password_changed')).toBeInTheDocument()
     expect(screen.getByText(/managed by the application, not restored from a file/)).toBeInTheDocument()
     expect(screen.getByText(/^Applied to the proxy at \d\d:\d\d\.$/)).toBeInTheDocument()
+    await expectNoAxeViolations(container)
+  })
+
+  // A version 3 file: the dialog says groups and the WAF policy are replaced,
+  // and the result names the groups restored, the one skipped and why, and a
+  // WAF policy the WAF refused while the rest stood.
+  it('restores client groups and the WAF policy from a version 3 file, and says what it could not', async () => {
+    const v3 = {
+      ...envelope,
+      backup_version: 3,
+      list_sources: [{ id: 4, list: 'domain_blacklist', kind: 'paste', source: '', label: 'kids', scope: 'groups' }],
+      client_groups: [{ name: 'Kids' }, { name: 'Lost' }],
+      waf_policy: { version: 1, mode: 'observe' },
+    }
+    vi.mocked(api.post).mockImplementation((url: string) => {
+      if (url === 'maintenance/restore-config') {
+        return Promise.resolve({ data: {
+          ...restoreAnswer,
+          restored_groups: 1,
+          skipped_groups: [{ name: 'Lost', reason: "its lists 99 are not in the backup's sources" }],
+          skipped_sources: [],
+          waf_policy: { restored: false, detail: 'the WAF refused the policy: unknown rule' },
+          not_in_backup: [],
+        } })
+      }
+      if (url === 'maintenance/reload-config') return Promise.resolve({ data: { status: 'success', message: 'Proxy reloaded' } })
+      return Promise.resolve({ data: { status: 'success' } })
+    })
+    const { container } = renderWithProviders(<Maintenance />)
+    chooseFile(JSON.stringify(v3))
+    const dialog = await screen.findByRole('alertdialog', { name: 'Restore proxy-backup-2026-10-20.json?' })
+    expect(within(dialog).getByText('The 2 client groups in the file replace the groups of the same name, with their members, schedules and lists.')).toBeInTheDocument()
+    expect(within(dialog).getByText('The WAF policy in the file replaces the current one, once the WAF has checked it.')).toBeInTheDocument()
+    expect(within(dialog).queryByText(/made before backups carried client groups/)).toBeNull()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Restore' }))
+    expect(await screen.findByText('Restored 1 client group.')).toBeInTheDocument()
+    expect(screen.getByText("Group Lost: its lists 99 are not in the backup's sources")).toBeInTheDocument()
+    expect(screen.getByText('The WAF policy was not restored: the WAF refused the policy: unknown rule. The rest of the restore stands.')).toBeInTheDocument()
     await expectNoAxeViolations(container)
   })
 

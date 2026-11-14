@@ -22,12 +22,20 @@ export interface BackupEnvelope {
   config?: Record<string, string>;
   lists?: Record<string, { value: string; description?: string }[]>;
   egress_providers?: { kind?: string; name: string; url?: string; enabled?: boolean }[];
+  /** Version 3: where each entry came from, the client groups, the WAF policy. */
+  list_sources?: { id: number; list: string; kind: string; source: string; label: string; scope: string }[];
+  client_groups?: { name: string }[];
+  waf_policy?: Record<string, unknown>;
 }
 
 export interface BackupSummary {
   settings: number;
   lists: { name: string; label: string; count: number }[];
   egressProviders: number;
+  /** Client groups in the file; null when the file is older than version 3 and carries none. */
+  groups: number | null;
+  /** Whether the file carries the WAF policy. */
+  wafPolicy: boolean;
   exportedAt?: string;
   appVersion?: string;
 }
@@ -59,7 +67,9 @@ export function parseBackupFile(text: string): { envelope: BackupEnvelope; summa
     .filter(([, entries]) => Array.isArray(entries))
     .map(([name, entries]) => ({ name, label: LIST_LABELS[name] ?? name, count: (entries as unknown[]).length }));
   const egressProviders = Array.isArray(raw.egress_providers) ? raw.egress_providers.length : 0;
-  if (settingsCount === 0 && listSummary.every((l) => l.count === 0) && egressProviders === 0) {
+  const groups = Array.isArray(raw.client_groups) ? raw.client_groups.length : null;
+  const wafPolicy = isMap(raw.waf_policy);
+  if (settingsCount === 0 && listSummary.every((l) => l.count === 0) && egressProviders === 0 && !groups && !wafPolicy) {
     throw new Error('The file holds no settings and no list entries to restore.');
   }
   return {
@@ -68,6 +78,8 @@ export function parseBackupFile(text: string): { envelope: BackupEnvelope; summa
       settings: settingsCount,
       lists: listSummary,
       egressProviders,
+      groups,
+      wafPolicy,
       exportedAt: typeof raw.exported_at === 'string' ? raw.exported_at : undefined,
       appVersion: typeof raw.app_version === 'string' ? raw.app_version : undefined,
     },
@@ -83,6 +95,14 @@ export interface RestoreResponse {
   skipped_settings?: { key: string; reason: string }[];
   skipped_entries?: number;
   failed_files?: string[];
+  /** Version 3 backends. */
+  restored_groups?: number;
+  skipped_groups?: { name: string; reason: string }[];
+  skipped_sources?: { name: string; reason: string }[];
+  /** The WAF policy's outcome; null when the file carried none. */
+  waf_policy?: { restored: boolean; unchanged?: boolean; detail?: string } | null;
+  /** What the file did not carry: list_sources, client_groups, waf_policy. */
+  not_in_backup?: string[];
   /** Older backends: totals only. */
   restored?: number;
   skipped?: number;

@@ -38,10 +38,13 @@ import (
 type WAFPolicyHandlers struct {
 	db  *sql.DB
 	cfg *config.Config
-	// mu serialises read-modify-write: two exceptions added at once must
-	// both end up in the file.
-	mu sync.Mutex
 }
+
+// wafPolicyMu serialises read-modify-write of the policy file: two exceptions
+// added at once must both end up in the file, and a configuration restore
+// must not interleave with an edit. Package-level because the restore writes
+// the file through its own WAFPolicyHandlers value.
+var wafPolicyMu sync.Mutex
 
 func NewWAFPolicyHandlers(db *sql.DB, cfg *config.Config) *WAFPolicyHandlers {
 	return &WAFPolicyHandlers{db: db, cfg: cfg}
@@ -249,8 +252,8 @@ func (h *WAFPolicyHandlers) Put(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, `send {"policy": {...}, "sha256": "<the sha256 GET /api/waf/policy returned>"}`)
 		return
 	}
-	h.mu.Lock()
-	defer h.mu.Unlock()
+	wafPolicyMu.Lock()
+	defer wafPolicyMu.Unlock()
 	before, digest, _, readErr := h.readPolicy()
 	if digest != *body.SHA256 {
 		writeError(w, http.StatusConflict, "the policy file changed since it was read: read it again and redo the change")
@@ -291,8 +294,8 @@ func (h *WAFPolicyHandlers) AddException(w http.ResponseWriter, r *http.Request)
 	}
 	e.Rule, e.Host, e.Path, e.Target = strings.TrimSpace(e.Rule), strings.TrimSpace(e.Host), strings.TrimSpace(e.Path), strings.TrimSpace(e.Target)
 	e.Comment = strings.TrimSpace(e.Comment)
-	h.mu.Lock()
-	defer h.mu.Unlock()
+	wafPolicyMu.Lock()
+	defer wafPolicyMu.Unlock()
 	f, _, _, err := h.readPolicy()
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error()+": fix the file, or replace it from the WAF policy settings")
@@ -325,8 +328,8 @@ func (h *WAFPolicyHandlers) ObserveRule(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	rule := strings.TrimSpace(body.Rule)
-	h.mu.Lock()
-	defer h.mu.Unlock()
+	wafPolicyMu.Lock()
+	defer wafPolicyMu.Unlock()
 	f, _, _, err := h.readPolicy()
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error()+": fix the file, or replace it from the WAF policy settings")

@@ -385,7 +385,17 @@ what it did:
 GET /api/maintenance/backup-config
 ```
 
-Returns, in `data`, the backup envelope: `backup_version`, `app_version`, `exported_at`, every setting as stored (secrets stay encrypted with this install's key) and the five lists (`ip_blacklist`, `ip_whitelist`, `domain_blacklist`, `domain_whitelist`, `dst_allowlist`). The audit log and the users table are not included. The Settings page saves `data` as the backup file.
+Returns, in `data`, the backup envelope (`backup_version` 3):
+
+- `backup_version`, `app_version`, `exported_at`;
+- `settings`: every setting as stored (secrets stay encrypted with this install's key);
+- `lists`: the five lists (`ip_blacklist`, `ip_whitelist`, `domain_blacklist`, `domain_whitelist`, `dst_allowlist`). In the first four each entry has `value`, `description`, `source` (the id of the source that added it, absent when it was not recorded) and `also` (the other sources that list it);
+- `list_sources`: every source of those four lists, with `id`, `list`, `kind` (`url`, `manual`, `geo`, `preset`, `paste`, `restore`), `source` (the URL, country or preset), `label` and `scope` (`global`, or `groups` for a list only client groups use);
+- `client_groups`: each group with `name`, `description`, `members`, `lists` (source ids), `schedule` and `allowlist_only`;
+- `waf_policy`: the WAF policy file, when there is one. A policy file that does not parse is named in `waf_policy_unreadable` instead;
+- `egress_providers`.
+
+The audit log, the users table and the API tokens are not included. The Settings page saves `data` as the backup file.
 
 ---
 
@@ -397,7 +407,15 @@ POST /api/maintenance/restore-config
 
 Restores from a backup created by `/api/maintenance/backup-config`.
 
-The body is the backup envelope (or, for an older backup, `{"config": {...}}`). Each setting in the file replaces the stored one; settings that are not in the file are left as they are. List entries are added; entries already present stay, and none are removed. After the transaction the proxy configuration files the settings drive are written, as a Save writes them; ask `POST /api/maintenance/reload-config` to apply them.
+The body is the backup envelope (or, for an older backup, `{"config": {...}}`). Each setting in the file replaces the stored one; settings that are not in the file are left as they are. List entries are added; entries already present stay, and none are removed.
+
+From a version 3 file:
+
+- **Sources.** Each entry is restored under its own source, with the source's scope, so a list only some groups use stays theirs. A source keyed by its URL, country, preset or the manual entries is the existing one when there is one; a pasted list is recognised when one source here holds exactly its entries, so restoring the same file twice adds nothing. An entry already listed here keeps its source, and the file's source is added as one of its other sources. A URL source whose URL is not `http` or `https` is not restored: its entries go under the one Restore source, and the source is listed in `skipped_sources`.
+- **Client groups.** A group with the name of one here replaces it, members, schedule and lists included; the others are added. A group the groups API would refuse, or one that names a source the file does not carry, is listed in `skipped_groups` with the reason.
+- **WAF policy.** After the database is committed, the policy goes through the same path as `PUT /api/waf/policy`: the WAF checks it, and nothing is written when it refuses or cannot be asked. `waf_policy` reports `restored`, `unchanged` (the file is the policy in use) or the reason; the rest of the restore stands either way.
+
+A file older than version 3 is restored as before, every entry under one Restore source of scope `global`; `not_in_backup` names what it did not carry (`client_groups`, `list_sources`, `waf_policy`). After the transaction the proxy configuration files the settings drive are written, as a Save writes them; ask `POST /api/maintenance/reload-config` to apply them.
 
 List entries are checked with the same rules as the endpoints that add them. An entry that fails is skipped, not fatal, and counted in `skipped_entries`. Settings are checked with the settings API's rules; each one that is not restored is listed in `skipped_settings` with its reason (`default_password_changed`, which every backup contains, is always skipped).
 
@@ -409,8 +427,13 @@ List entries are checked with the same rules as the endpoints that add them. An 
   "skipped_settings": [{ "key": "default_password_changed", "reason": "managed by the application, not restored from a file" }],
   "skipped_entries": 0,
   "failed_files": [],
-  "restored": 161,
-  "skipped": 1
+  "restored": 162,
+  "skipped": 1,
+  "restored_groups": 1,
+  "skipped_groups": [],
+  "skipped_sources": [],
+  "waf_policy": { "restored": true, "sha256": "…", "waf": { "reloaded": true } },
+  "not_in_backup": []
 }
 ```
 

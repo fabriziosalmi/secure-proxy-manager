@@ -335,6 +335,16 @@ func SaveClientGroup(db *sql.DB, g *ClientGroup) error {
 		return err
 	}
 	defer tx.Rollback() //nolint:errcheck // no-op once committed
+	if err := SaveClientGroupTx(tx, g); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// SaveClientGroupTx is SaveClientGroup inside tx, for a caller that writes
+// other rows in the same transaction (a configuration restore). The caller
+// commits.
+func SaveClientGroupTx(tx *sql.Tx, g *ClientGroup) error {
 	for _, id := range g.Lists {
 		var list, scope string
 		err := tx.QueryRow("SELECT list, scope FROM list_sources WHERE id = ?", id).Scan(&list, &scope)
@@ -395,7 +405,7 @@ func SaveClientGroup(db *sql.DB, g *ClientGroup) error {
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 // DeleteClientGroup removes a group, its members and its lists; false when

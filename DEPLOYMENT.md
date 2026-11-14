@@ -269,7 +269,8 @@ delete `data/.enc_key`, restart, and enter them again.
 The database holds the settings, the lists, the access log and the audit log.
 
 - **From the UI**, Settings > Admin and backup:
-  - *Download a backup* saves the settings and the five lists
+  - *Download a backup* saves the settings, the five lists with where each
+    entry came from, the client groups and the WAF policy
     (`GET /api/maintenance/backup-config`); *Restore from a file* reads such a
     file back and adds what it holds.
   - *Export the database* downloads every table as JSON
