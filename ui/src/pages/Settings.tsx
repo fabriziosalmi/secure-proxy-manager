@@ -66,7 +66,7 @@ function SectionBody({ section, form, rows, attention, attentionLoading, dirty, 
     case 'filtering': return <FilteringSection form={form} />;
     case 'inspection': return <InspectionSection form={form} />;
     case 'alerts': return <AlertsSection form={form} unsaved={dirty.alerts} />;
-    case 'logs': return <LogsSection form={form} />;
+    case 'logs': return <LogsSection form={form} unsaved={dirty.logs} />;
     case 'admin': return <AdminSection />;
     case 'engine': return <EngineSection form={form} />;
     case 'appearance': return <AppearanceSection />;
