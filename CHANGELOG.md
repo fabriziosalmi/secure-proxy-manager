@@ -17,6 +17,12 @@ for at least one minor release before disappearing.
 
 ### Added
 
+- **Upstream proxy** (Settings > Proxy engine): the proxy forwards every
+  request, HTTPS included, to another proxy, with an optional Basic login,
+  except those to the domains listed to go direct. While it is down,
+  requests fail rather than go out direct. Its password is stored encrypted
+  and written in clear only to the new `proxy-secrets` volume, shared by the
+  backend and the proxy and by no other container.
 - **Log forwarding to a syslog server or SIEM** (Settings > Logs and
   privacy): the access log (blocked requests, every request, or none) and
   the admin audit log, as RFC 5424 syslog or JSON lines, over UDP, TCP or
@@ -26,6 +32,12 @@ for at least one minor release before disappearing.
   GDPR mode, as everywhere else they leave the backend. A *Send a test
   event* button (`POST /api/log-forward/test`) and
   `spm_log_forward_*` metrics on `/metrics`.
+
+### Fixed
+
+- **"Never cache these domains" accepts `*.name`** as the name and its
+  subdomains, as the settings check already did: the file Squid read had
+  `.*.name`, which no destination matches.
 
 ## [3.32.1] - 2026-11-14
 

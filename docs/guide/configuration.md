@@ -240,6 +240,34 @@ connected then.
 `spm_log_forward_queue_length` and
 `spm_log_forward_last_sent_timestamp_seconds`.
 
+## Upstream proxy
+
+Settings > Proxy engine > Upstream proxy makes the proxy forward the clients'
+requests to another proxy instead of to the destinations, for a network whose
+only way out is a corporate proxy.
+
+| Setting | Values | Default |
+|---|---|---|
+| `upstream_proxy_enabled` | `true`, `false` | `false` |
+| `upstream_proxy_host` | an IP address or a host name, no scheme or port | empty (nothing is forwarded) |
+| `upstream_proxy_port` | 1 to 65535 | `3128` |
+| `upstream_proxy_username` | letters, digits, `.` `_` `@` `-`, at most 64 | empty |
+| `upstream_proxy_password` | at most 128 of: letters, digits and `! $ & ( ) * + , . / : ; < = > ? @ ^ _ { \| } ~ -` (no space, quote, backslash, `#` or `%`, which the proxy's configuration cannot carry) | empty |
+| `upstream_proxy_direct_domains` | domains, separated by commas; each covers its subdomains | empty |
+
+- **Every request goes through it**, HTTPS as CONNECT tunnels, except those to
+  the domains listed to go direct. While it is down, requests fail with `503`:
+  nothing goes out direct. A login it refuses reaches the client as its `407`.
+- **The login** is sent as Basic authentication when both the username and the
+  password are set. The password is stored encrypted like the other secrets,
+  and written in clear only where Squid reads it: `upstream_proxy.conf` in the
+  `proxy-secrets` volume, mounted by the backend and the proxy only (mode
+  `0600`), not in `./config`, which the DNS and WAF containers mount too.
+- **Applied** when the proxy reloads after the save. The access log shows the
+  path of each request in its hierarchy field: `FIRSTUP_PARENT/<upstream>`
+  through it, `HIER_DIRECT/<address>` direct.
+- **Not tested** with HTTPS inspection (SSL bump) on.
+
 ## WAF custom rules
 
 Put one regular expression (Go RE2 syntax) per line in
