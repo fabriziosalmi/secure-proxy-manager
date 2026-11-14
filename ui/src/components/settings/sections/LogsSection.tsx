@@ -84,7 +84,13 @@ export function LogsSection({ form, unsaved = 0 }: { form: SectionForm; unsaved?
           help="Sends each request the proxy logs, and each admin action, as it is recorded. Events wait in a queue of 10,000 while the target is slow or down and are sent when it is back; past that, new events are dropped and counted (spm_log_forward_events_total on /metrics)."
         />
         <div className="grid gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-          <TextField form={form} setting="log_forward_host" label="Host" placeholder="siem.example.internal" hint="An IP address or a host name, without a scheme or a port." />
+          <TextField
+            form={form}
+            setting="log_forward_host"
+            label="Host"
+            placeholder="e.g. siem.example.internal"
+            hint="An IP address or a host name, without a scheme or a port."
+          />
           <TextField form={form} setting="log_forward_port" label="Port" inputMode="numeric" hint="514 for UDP and TCP, 6514 for TLS, by convention." />
         </div>
         <ChoiceRow
@@ -118,7 +124,7 @@ export function LogsSection({ form, unsaved = 0 }: { form: SectionForm; unsaved?
           form={form}
           setting="log_forward_hostname"
           label="Host name in each event"
-          placeholder="secure-proxy-manager"
+          placeholder="e.g. proxy-1.lan"
           className="sm:max-w-[320px]"
           hint="How the target tells this proxy apart from other senders. Empty sends secure-proxy-manager."
         />
