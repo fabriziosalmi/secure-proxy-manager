@@ -95,7 +95,7 @@ func exportSources(db *sql.DB) ([]backupSource, error) {
 func exportSourcedEntries(db *sql.DB, list, col, others database.SQLText) ([]backupEntry, error) {
 	also := map[int64][]int64{}
 	// #nosec G202 -- table names come from sourceListTables, constants
-	arows, err := db.Query(string("SELECT entry_id, source_id FROM " + others + " ORDER BY entry_id, source_id"))
+	arows, err := db.Query(string("SELECT entry_id, source_id FROM " + others + " ORDER BY entry_id, source_id")) // slopless-disable-line VBC-004 -- table and column names are SQLText constants of sourceListTables, values are bound (database/sqltext.go)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +112,7 @@ func exportSourcedEntries(db *sql.DB, list, col, others database.SQLText) ([]bac
 		return nil, err
 	}
 	// #nosec G202 -- table and column names come from sourceListTables, constants
-	rows, err := db.Query(string("SELECT id, " + col + ", COALESCE(description,''), source_id FROM " + list + " ORDER BY " + col))
+	rows, err := db.Query(string("SELECT id, " + col + ", COALESCE(description,''), source_id FROM " + list + " ORDER BY " + col)) // slopless-disable-line VBC-004 -- table and column names are SQLText constants of sourceListTables, values are bound (database/sqltext.go)
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +245,7 @@ func sameEventSource(tx *sql.Tx, s backupSource, values []string) (int64, bool, 
 		return 0, false, nil
 	}
 	// #nosec G202 -- table and column are constants of sourceListTables
-	q := string("SELECT source_id FROM " + table + " WHERE " + col + " = ?")
+	q := string("SELECT source_id FROM " + table + " WHERE " + col + " = ?") // slopless-disable-line VBC-004 -- table and column names are SQLText constants of sourceListTables, values are bound (database/sqltext.go)
 	var found int64
 	for _, v := range values {
 		var id sql.NullInt64
@@ -271,7 +271,7 @@ func sameEventSource(tx *sql.Tx, s backupSource, values []string) (int64, bool, 
 		return 0, false, err
 	}
 	// #nosec G202 -- table is a constant of sourceListTables
-	if err := tx.QueryRow(string("SELECT COUNT(*) FROM "+table+" WHERE source_id = ?"), found).Scan(&n); err != nil {
+	if err := tx.QueryRow(string("SELECT COUNT(*) FROM "+table+" WHERE source_id = ?"), found).Scan(&n); err != nil { // slopless-disable-line VBC-004 -- table and column names are SQLText constants of sourceListTables, values are bound (database/sqltext.go)
 		return 0, false, err
 	}
 	if kind != s.Kind || n != len(values) {
