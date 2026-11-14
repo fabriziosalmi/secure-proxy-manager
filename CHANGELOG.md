@@ -15,6 +15,17 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Added
+
+- **Proxy login from an LDAP directory** (Settings > Clients and access >
+  Login): each user signs in to the proxy with their own account in
+  OpenLDAP or Active Directory, optionally only the members of one group
+  (others get `403`). The search account's password is stored encrypted and
+  written only to the `proxy-secrets` volume, where Squid's helper reads it
+  from a file; it is not on a command line or in `squid.conf`. With LDAP
+  chosen and its settings incomplete, every client is refused: the proxy
+  never falls back to the local proxy account.
+
 ## [3.33.0] - 2026-11-14
 
 The backend can forward the access log and the audit log to a syslog
