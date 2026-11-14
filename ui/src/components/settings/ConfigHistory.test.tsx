@@ -67,7 +67,7 @@ describe('ConfigHistory', () => {
     expect(within(rows[1]).getByText('webhook_url: the secret changes')).toBeInTheDocument()
     expect(within(rows[1]).getByText('Client groups that come back: Kids')).toBeInTheDocument()
     expect(within(rows[1]).getByText('Client groups that go: Guests')).toBeInTheDocument()
-    expect(within(rows[1]).getByText('Egress allowlist entries that go: api.example.com')).toBeInTheDocument()
+    expect(within(rows[1]).getByText('Default-deny allowlist entries that go: api.example.com')).toBeInTheDocument()
   })
 
   it('restores after a confirmation that lists the changes, and says how to undo it', async () => {

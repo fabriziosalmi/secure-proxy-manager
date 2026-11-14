@@ -41,8 +41,8 @@ export function diffLines(d: SnapshotDiff): string[] {
     const p = d.waf_policy;
     out.push(`WAF policy: mode ${p.mode_from || 'none'} becomes ${p.mode_to}, ${formatCount(p.exceptions_from)} exceptions become ${formatCount(p.exceptions_to)}, ${formatCount(p.observe_rules_from)} log-only rules become ${formatCount(p.observe_rules_to)}`);
   }
-  if (d.egress_allowlist_added.length) out.push(`Egress allowlist entries that come back: ${d.egress_allowlist_added.join(', ')}`);
-  if (d.egress_allowlist_removed.length) out.push(`Egress allowlist entries that go: ${d.egress_allowlist_removed.join(', ')}`);
+  if (d.egress_allowlist_added.length) out.push(`Default-deny allowlist entries that come back: ${d.egress_allowlist_added.join(', ')}`);
+  if (d.egress_allowlist_removed.length) out.push(`Default-deny allowlist entries that go: ${d.egress_allowlist_removed.join(', ')}`);
   return out;
 }
 

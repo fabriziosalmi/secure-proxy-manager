@@ -118,7 +118,7 @@ export function ConfigHistory() {
   return (
     <Section
       title="Configuration history"
-      description="A snapshot of the settings, client groups, WAF policy and egress allowlist is taken before every change to them. Restoring one makes the configuration that snapshot's exactly. The blacklists and whitelists are not in it: the backup above has them."
+      description="A snapshot of the settings, client groups, WAF policy and Default-deny allowlist is taken before every change to them. Restoring one makes the configuration that snapshot's exactly. The blacklists and the IP and domain exceptions are not in it: the backup above has them."
     >
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-end gap-3">
