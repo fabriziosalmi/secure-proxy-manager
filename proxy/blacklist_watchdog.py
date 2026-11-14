@@ -279,12 +279,19 @@ def resolved_ips():
     containers are recreated they get NEW IPs, leaving squid pointing at dead
     addresses — 502 on every request (dns) or ICAP failures (waf). We track the
     resolved IPs so the loop can detect that drift and regenerate in place.
+
+    A container on more than one network shared with the proxy has one address
+    per network, returned in no fixed order: gethostbyname took the first, so
+    an order that changed between polls looked like a recreated container and
+    Squid was regenerated in a loop (issue #619). Every IPv4 address, sorted,
+    as the generator writes them.
     """
     ips = []
     for name in ("dns", "waf"):
         try:
-            ips.append(socket.gethostbyname(name))
-        except OSError:
+            found = {ai[4][0] for ai in socket.getaddrinfo(name, None, socket.AF_INET)}
+            ips.append(" ".join(sorted(found, key=ipaddress.IPv4Address)))
+        except (OSError, ValueError):
             ips.append("")
     return ",".join(ips)
 

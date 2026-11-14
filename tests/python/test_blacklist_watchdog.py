@@ -1197,3 +1197,37 @@ def test_no_groups_without_a_manifest(w, groups_env):
     (config / "groups" / "groups.conf").write_bytes(b"group 1 days=- start=- end=- allowlist_only=0 domain=- ip=-\n")
     assert w.sync_groups(_state(w)) == (False, False)
     assert not squid.exists()
+
+
+def test_resolved_ips_do_not_depend_on_the_order_of_the_records(w, monkeypatch):
+    # A container on two networks shared with the proxy has two addresses, and
+    # Docker's DNS may return them in either order. gethostbyname took the
+    # first, so the watchdog saw a "new" address on every other poll and
+    # regenerated Squid in a loop.
+    import socket as _socket
+
+    flip = {"dns": False, "waf": False}
+    addrs = {"dns": ["10.9.0.6", "10.9.0.5"], "waf": ["10.9.0.9", "10.9.0.8"]}
+
+    def fake_getaddrinfo(host, port, family=0, *a, **k):
+        flip[host] = not flip[host]
+        order = addrs[host] if flip[host] else list(reversed(addrs[host]))
+        out = []
+        for ip in order:  # one entry per socket type, as getaddrinfo returns
+            for st in (_socket.SOCK_STREAM, _socket.SOCK_DGRAM):
+                out.append((_socket.AF_INET, st, 0, "", (ip, 0)))
+        return out
+
+    monkeypatch.setattr(w.socket, "getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr(w.socket, "gethostbyname", lambda h: fake_getaddrinfo(h, None)[0][4][0])
+    first, second = w.resolved_ips(), w.resolved_ips()
+    assert first == second == "10.9.0.5 10.9.0.6,10.9.0.8 10.9.0.9"
+
+
+def test_resolved_ips_is_empty_for_a_name_that_does_not_resolve(w, monkeypatch):
+    def fail(*a, **k):
+        raise OSError("no such host")
+
+    monkeypatch.setattr(w.socket, "getaddrinfo", fail)
+    monkeypatch.setattr(w.socket, "gethostbyname", fail)
+    assert w.resolved_ips() == ","

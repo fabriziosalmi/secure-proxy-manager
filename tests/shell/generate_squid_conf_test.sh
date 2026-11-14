@@ -26,7 +26,7 @@ fi
 # resulting squid.conf. Extra shell can be supplied to seed the fixture.
 generate() {
   local seed="$1"
-  docker run --rm --memory 256m --entrypoint /bin/bash "$IMAGE" -c "
+  docker run --rm --memory 256m ${DOCKER_EXTRA:-} --entrypoint /bin/bash "$IMAGE" -c "
     set -e
     mkdir -p /config /etc/squid
     $seed
@@ -38,7 +38,7 @@ generate() {
 # Does squid itself accept the config the generator produced?
 parses() {
   local seed="$1"
-  docker run --rm --memory 256m --entrypoint /bin/bash "$IMAGE" -c "
+  docker run --rm --memory 256m ${DOCKER_EXTRA:-} --entrypoint /bin/bash "$IMAGE" -c "
     set -e
     mkdir -p /config /etc/squid
     $seed
@@ -50,13 +50,27 @@ parses() {
 # What squid says while it parses the config the generator produced.
 parse_log() {
   local seed="$1"
-  docker run --rm --memory 256m --entrypoint /bin/bash "$IMAGE" -c "
+  docker run --rm --memory 256m ${DOCKER_EXTRA:-} --entrypoint /bin/bash "$IMAGE" -c "
     mkdir -p /config /etc/squid
     $seed
     /usr/local/bin/generate_squid_conf.sh >/dev/null 2>&1
     /usr/sbin/squid -k parse 2>&1
   " 2>/dev/null
 }
+
+echo "── dns and waf with two addresses each (a container on two shared networks) ──"
+# getent printed one line per address: the second landed alone in squid.conf
+# after dns_nameservers, and a WAF address on two lines broke the sed that
+# writes the ICAP URL, so squid -k parse failed and the proxy restarted.
+DOCKER_EXTRA="--add-host dns:10.9.0.6 --add-host dns:10.9.0.5 --add-host waf:10.9.0.9 --add-host waf:10.9.0.8"
+conf="$(generate 'true')"
+ns="$(grep '^dns_nameservers' <<<"$conf")"
+[ "$ns" = "dns_nameservers 10.9.0.5 10.9.0.6" ] && ok "one dns_nameservers line with every dns address, sorted" \
+  || bad "one dns_nameservers line with every dns address, sorted" "got: $ns"
+icap="$(grep -c 'icap://10.9.0.8:1344/waf' <<<"$conf")"
+[ "$icap" = 2 ] && ok "both ICAP services use the lowest WAF address" || bad "both ICAP services use the lowest WAF address" "$(grep icap_service <<<"$conf")"
+parses 'true' && ok "squid -k parse accepts it" || bad "squid -k parse accepts it with two addresses" "$(parse_log 'true' | grep -iE 'error|fatal' | head -3)"
+DOCKER_EXTRA=""
 
 echo "── baseline (no toggles) ──"
 conf="$(generate 'true')"
@@ -145,7 +159,7 @@ echo "── proxy login ──"
 # client but localhost, no auth helper, and a record the backend reads.
 # Behaviour (status and logged reason per client): squid_acl_matrix_test.sh.
 login_state() { # seed -> "<deny rules> <auth rules> <helper lines> <status>"
-  docker run --rm --memory 256m --entrypoint /bin/bash "$IMAGE" -c "
+  docker run --rm --memory 256m ${DOCKER_EXTRA:-} --entrypoint /bin/bash "$IMAGE" -c "
     mkdir -p /config /etc/squid; $1
     /usr/local/bin/generate_squid_conf.sh >/tmp/gen.log 2>&1
     printf '%s %s %s %s\n' \
