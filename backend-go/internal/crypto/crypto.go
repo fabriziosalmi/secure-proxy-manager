@@ -26,6 +26,9 @@ var SensitiveKeys = map[string]struct{}{
 	// The password devices sign in to the proxy with. The proxy never sees
 	// it: the backend writes only its bcrypt hash to proxy_users.htpasswd.
 	"proxy_auth_password": {},
+	// The upstream proxy's password. Squid needs it in clear: the backend
+	// writes it only to the proxy-secrets volume (handlers/upstream_proxy.go).
+	"upstream_proxy_password": {},
 }
 
 // IsSensitive returns true if the setting key should be encrypted.

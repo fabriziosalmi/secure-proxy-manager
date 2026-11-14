@@ -395,6 +395,33 @@ empty="$(docker run --rm --memory 256m --entrypoint /bin/bash "$IMAGE" -c '
 ' 2>/dev/null)"
 [ "$empty" = "0" ] && ok "default squid_settings.env loads without a warning" || bad "default squid_settings.env loads without a warning" "$empty warning(s)"
 
+echo "── upstream proxy ──"
+conf="$(generate 'true')"
+grep -q '^cache_peer' <<<"$conf" && bad "no upstream file, no cache_peer" || ok "no upstream file, no cache_peer"
+UP_ALWAYS='mkdir -p /secrets; printf "UPSTREAM_HOST=proxy.corp.example\nUPSTREAM_PORT=8080\nUPSTREAM_MODE=always\nUPSTREAM_USER=spm-svc\nUPSTREAM_PASSWORD=s3cr(e)t:pa\$\$\n" > /secrets/upstream_proxy.conf; printf ".corp.example\n.intranet.example\n" > /config/upstream_direct_domains.txt'
+conf="$(generate "$UP_ALWAYS")"
+grep -qxF 'cache_peer proxy.corp.example parent 8080 0 no-query no-digest default name=spm_upstream login=spm-svc:s3cr(e)t:pa$$' <<<"$conf" \
+  && ok "always: cache_peer with the login" || bad "always: cache_peer with the login" "$(grep '^cache_peer' <<<"$conf")"
+grep -qxF 'acl spm_upstream_direct dstdomain "/config/upstream_direct_domains.txt"' <<<"$conf" && grep -qx 'always_direct allow spm_upstream_direct' <<<"$conf" \
+  && ok "always: the listed domains go direct" || bad "always: the listed domains go direct"
+grep -qx 'never_direct allow all' <<<"$conf" && ok "always: nothing else goes direct" || bad "always: nothing else goes direct"
+parses "$UP_ALWAYS" && ok "always: squid -k parse accepts it" || bad "always: squid -k parse accepts it" "$(parse_log "$UP_ALWAYS" | grep -iE 'error|fatal' | head -3)"
+UP_FALLBACK='mkdir -p /secrets; printf "UPSTREAM_HOST=10.0.0.9\nUPSTREAM_PORT=3128\nUPSTREAM_MODE=fallback\n" > /secrets/upstream_proxy.conf'
+conf="$(generate "$UP_FALLBACK")"
+grep -qxF 'cache_peer 10.0.0.9 parent 3128 0 no-query no-digest default name=spm_upstream' <<<"$conf" && grep -qx 'nonhierarchical_direct off' <<<"$conf" \
+  && ! grep -q '^never_direct' <<<"$conf" \
+  && ok "fallback: the parent first, direct allowed, no login" || bad "fallback: the parent first, direct allowed, no login" "$(grep -E '^(cache_peer|never_direct|nonhierarchical)' <<<"$conf")"
+parses "$UP_FALLBACK" && ok "fallback: squid -k parse accepts it" || bad "fallback: squid -k parse accepts it" "$(parse_log "$UP_FALLBACK" | grep -iE 'error|fatal' | head -3)"
+# A value that is not of its form is dropped: a host with a space would add a
+# directive, a password with a space or # would end the token.
+UP_BAD='mkdir -p /secrets; printf "UPSTREAM_HOST=proxy.corp.example http_access allow all\nUPSTREAM_PORT=8080\n" > /secrets/upstream_proxy.conf'
+conf="$(generate "$UP_BAD")"
+grep -q '^cache_peer' <<<"$conf" && bad "a host with a space is refused" "$(grep '^cache_peer' <<<"$conf")" || ok "a host with a space is refused"
+UP_BADPW='mkdir -p /secrets; printf "UPSTREAM_HOST=10.0.0.9\nUPSTREAM_PORT=3128\nUPSTREAM_USER=u\nUPSTREAM_PASSWORD=p w#x\n" > /secrets/upstream_proxy.conf'
+conf="$(generate "$UP_BADPW")"
+grep -qxF 'cache_peer 10.0.0.9 parent 3128 0 no-query no-digest default name=spm_upstream' <<<"$conf" \
+  && ok "a password with a space or # is dropped, the parent kept without a login" || bad "a password with a space or # is dropped" "$(grep '^cache_peer' <<<"$conf")"
+
 echo "── injection: nothing in a /config settings file is executed ──"
 # The previous check grepped squid.conf for "pwned", which says nothing about
 # whether a command RAN, and safe_source did run "KEY=value command": a space

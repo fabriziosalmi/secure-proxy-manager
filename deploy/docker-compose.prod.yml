@@ -132,6 +132,10 @@ services:
       # Written here when INTERNAL_ALERT_TOKEN is empty (config.serviceToken);
       # the WAF reads it from the same volume.
       - service-token:/var/lib/spm-service-token
+      # The upstream proxy's login (handlers/upstream_proxy.go): Squid needs the
+      # password in clear, so it is written here, shared with the proxy only,
+      # not in ./config, which the DNS and WAF containers also mount.
+      - proxy-secrets:/secrets
     environment:
       - PROXY_HOST=${PROXY_HOST:-proxy}
       - PROXY_PORT=${PROXY_PORT:-3128}
@@ -277,6 +281,7 @@ services:
       - ./ssl:/ssl
       - ./logs:/var/log/squid
       - squid-cache:/var/spool/squid
+      - proxy-secrets:/secrets:ro
     depends_on:
       waf:
         condition: service_healthy
@@ -428,6 +433,8 @@ networks:
 
 volumes:
   service-token:
+    driver: local
+  proxy-secrets:
     driver: local
   squid-cache:
     driver: local

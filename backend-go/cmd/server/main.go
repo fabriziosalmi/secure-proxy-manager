@@ -118,6 +118,12 @@ func run() error {
 		handlers.NewSettingsHandlers(db, cfg).SyncProxyUsersAtStartup()
 		return nil
 	})
+	// And for the upstream proxy's files, in the proxy-secrets volume: an
+	// upgrade, a restore or a changed key reaches the proxy here.
+	_ = database.StartupStep("sync_upstream_proxy", func() error {
+		handlers.NewSettingsHandlers(db, cfg).SyncUpstreamProxyAtStartup()
+		return nil
+	})
 
 	// Load bcrypt hash from DB so auth uses it instead of plaintext env-var.
 	var dbHash string

@@ -675,6 +675,14 @@ func (h *SettingsHandlers) writeSquidArtefacts(body map[string]string) []string 
 		failedArtifacts = append(failedArtifacts, "squid_settings.env")
 	}
 
+	// The upstream proxy's files follow the stored settings, the password
+	// included, which the body may leave out as a secret.
+	if carriesUpstream(body) {
+		if failed := h.syncUpstreamProxy(); failed != "" {
+			failedArtifacts = append(failedArtifacts, failed)
+		}
+	}
+
 	// The proxy password file, last: it follows the stored settings, which
 	// the toggle marker above is part of, and a change to it asks the proxy
 	// to reload. A cleared secret is in body with an empty value.
@@ -743,7 +751,10 @@ func blockedExtensionPattern(ext string) string {
 // cacheBypassEntry is the dstdomain line for one cache-bypass domain: the
 // leading dot covers its subdomains.
 func cacheBypassEntry(d string) string {
-	return "." + strings.TrimPrefix(d, ".")
+	// "*.name" is accepted as "name and its subdomains" (validDomainList), and
+	// Squid writes that as ".name": "*" left in made ".*.name", which no
+	// destination matches.
+	return "." + strings.TrimPrefix(strings.TrimPrefix(d, "*."), ".")
 }
 
 // writeListArtefact writes a comma-separated setting as the newline-separated

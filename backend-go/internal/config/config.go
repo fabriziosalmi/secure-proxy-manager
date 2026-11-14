@@ -40,8 +40,11 @@ type Config struct {
 	// Filesystem
 	DatabasePath string
 	ConfigDir    string
-	LogPath      string
-	DNSLogPath   string
+	// SecretsDir is the proxy-secrets volume shared with the proxy only:
+	// files Squid needs in clear (the upstream proxy's login).
+	SecretsDir string
+	LogPath    string
+	DNSLogPath string
 
 	// Internal component URLs (for WAF/Proxy communication)
 	WAFURL string
@@ -122,6 +125,7 @@ func Load() *Config {
 		ProxyIP:            strings.TrimSpace(os.Getenv("PROXY_IP")),
 		DatabasePath:       envOrDefault("DATABASE_PATH", "/data/proxy_manager.db"),
 		ConfigDir:          envOrDefault("CONFIG_DIR", "/config"),
+		SecretsDir:         envOrDefault("PROXY_SECRETS_DIR", "/secrets"),
 		LogPath:            envOrDefault("LOG_PATH", "/logs/access.log"),
 		DNSLogPath:         envOrDefault("DNS_LOG_PATH", "/logs/dnsmasq.log"),
 		WAFURL:             envOrDefault("WAF_URL", "http://waf:8080"),
