@@ -29,6 +29,7 @@ type docMeta struct {
 // the call a non-browser client needs to stay authenticated (SECURE-API-01).
 var routeDocs = map[string]docMeta{
 	"GET /api/analytics/blocked-by-day":            {auth: true, desc: "Blocked client requests per calendar day by rule, today and the 6 days before (?tz=Europe/Rome, default UTC)"},
+	"GET /api/analytics/cache-by-day":              {auth: true, desc: "What the cache did with the client requests of each calendar day, today and the 6 days before (?tz=Europe/Rome, default UTC): requests and bytes sent, by outcome (hit, revalidated, miss, tunnel, refused, other)"},
 	"GET /api/analytics/coverage":                  {auth: true, desc: "Protection switched on now: blacklist entries and where enforced, the WAF as GET /api/waf/status reports it, HTTPS inspection, proxy login, alerts"},
 	"GET /api/analytics/file-extensions":           {auth: true, desc: "Client requests of the last 7 days whose URL path ends in a file extension, by extension and group (newest 10,000 URL rows)"},
 	"GET /api/analytics/shadow-it":                 {auth: true, desc: "Client requests of the last 7 days to known services (file sharing, messaging, AI, social), by host"},

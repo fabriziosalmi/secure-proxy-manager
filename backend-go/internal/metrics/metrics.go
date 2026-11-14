@@ -156,6 +156,105 @@ func ProxyRequest(blocked bool) {
 	proxyRequests.WithLabelValues("allowed").Inc()
 }
 
+// What the cache did with each proxied request, and how many bytes the proxy
+// sent back for it, by the classes of workers.CacheOutcome. Every line of the
+// access log is counted, the stack's own requests included, as
+// spm_proxy_requests_total counts them. A hit ratio over any window is
+// rate(hit + revalidated) / rate(hit + revalidated + miss): tunnels are not
+// cacheable, so they are left out of it.
+var (
+	proxyCacheRequests = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "spm_proxy_cache_requests_total",
+		Help: "Proxied requests by what the cache did (hit, revalidated, miss, tunnel, refused, other).",
+	}, []string{"outcome"})
+	proxyCacheBytes = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "spm_proxy_cache_bytes_total",
+		Help: "Bytes the proxy sent to clients, by what the cache did (hit, revalidated, miss, tunnel, refused, other).",
+	}, []string{"outcome"})
+)
+
+// InitProxyCache creates the series of every outcome at 0, so a rate over
+// them exists before the first request of each kind.
+func InitProxyCache(outcomes []string) {
+	for _, o := range outcomes {
+		proxyCacheRequests.WithLabelValues(o)
+		proxyCacheBytes.WithLabelValues(o)
+	}
+}
+
+// ProxyCache records one ingested proxy log line by its cache outcome.
+func ProxyCache(outcome string, bytes int64) {
+	proxyCacheRequests.WithLabelValues(outcome).Inc()
+	if bytes > 0 {
+		proxyCacheBytes.WithLabelValues(outcome).Add(float64(bytes))
+	}
+}
+
+// ProxyCacheCount is the request counter of one outcome, for tests.
+func ProxyCacheCount(outcome string) float64 {
+	m := &dto.Metric{}
+	if err := proxyCacheRequests.WithLabelValues(outcome).Write(m); err != nil {
+		return 0
+	}
+	return m.GetCounter().GetValue()
+}
+
+// CacheStore is what the proxy last read from Squid about its store. A nil
+// field is one Squid did not print; its gauge is left out.
+type CacheStore struct {
+	AgeS           int64
+	DiskUsedKB     *int64
+	DiskCapacityKB *int64
+	MemoryUsedKB   *int64
+	Objects        *int64
+}
+
+// RegisterCacheStore exposes the proxy's cache store on every scrape, from
+// read. read reports false when the proxy has written nothing readable; the
+// gauges are then absent rather than 0. Squid's own hit ratios are not
+// exported: they restart from 0 with Squid and disagree with each other (a
+// request ratio of 0.0% next to a byte ratio of 68.4% on the same proxy),
+// so spm_proxy_cache_*_total is the series to compute a ratio from.
+func RegisterCacheStore(read func() (CacheStore, bool)) {
+	prometheus.MustRegister(&cacheStoreCollector{read: read})
+}
+
+type cacheStoreCollector struct{ read func() (CacheStore, bool) }
+
+var (
+	descCacheAge     = prometheus.NewDesc("spm_squid_cache_stats_age_seconds", "Seconds since the proxy last read its cache statistics from Squid.", nil, nil)
+	descCacheDisk    = prometheus.NewDesc("spm_squid_cache_disk_used_bytes", "Bytes the proxy's disk cache holds.", nil, nil)
+	descCacheDiskMax = prometheus.NewDesc("spm_squid_cache_disk_capacity_bytes", "Size of the proxy's disk cache (cache_dir).", nil, nil)
+	descCacheMemory  = prometheus.NewDesc("spm_squid_cache_memory_used_bytes", "Bytes the proxy's memory cache holds.", nil, nil)
+	descCacheEntries = prometheus.NewDesc("spm_squid_cache_objects", "Objects in the proxy's cache (Squid's StoreEntries).", nil, nil)
+	cacheStoreGauges = []*prometheus.Desc{descCacheAge, descCacheDisk, descCacheDiskMax, descCacheMemory, descCacheEntries}
+)
+
+func (c *cacheStoreCollector) Describe(ch chan<- *prometheus.Desc) {
+	for _, d := range cacheStoreGauges {
+		ch <- d
+	}
+}
+
+func (c *cacheStoreCollector) Collect(ch chan<- prometheus.Metric) {
+	s, ok := c.read()
+	if !ok {
+		return
+	}
+	ch <- prometheus.MustNewConstMetric(descCacheAge, prometheus.GaugeValue, float64(s.AgeS))
+	kib := func(d *prometheus.Desc, v *int64) {
+		if v != nil {
+			ch <- prometheus.MustNewConstMetric(d, prometheus.GaugeValue, float64(*v)*1024)
+		}
+	}
+	kib(descCacheDisk, s.DiskUsedKB)
+	kib(descCacheDiskMax, s.DiskCapacityKB)
+	kib(descCacheMemory, s.MemoryUsedKB)
+	if s.Objects != nil {
+		ch <- prometheus.MustNewConstMetric(descCacheEntries, prometheus.GaugeValue, float64(*s.Objects))
+	}
+}
+
 // Notification delivery. The channel by which an operator learns about security
 // events reported its own failures as log lines only, so an expired token or a
 // rotated webhook left a system that looks entirely healthy and simply stops

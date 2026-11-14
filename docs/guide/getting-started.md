@@ -209,7 +209,38 @@ alert rules in `infra/prometheus/rules/spm.rules.yml` (`SPMTargetDown`,
 `SPMBlacklistExportFailed`, `SPMWAFReconcilePushFailed`,
 `SPMNotificationDeliveryFailed`, `SPMDatabaseIntegrityFailed`,
 `SPMLogRetentionDisabled`), and Grafana provisions Prometheus as its default
-datasource.
+datasource and the **Proxy cache** dashboard (folder Secure Proxy Manager,
+from `infra/grafana/provisioning/dashboards/`).
+
+### Cache metrics
+
+The backend counts every line of the proxy's access log by what the cache did
+with the request, from Squid's result code:
+
+| Outcome | Squid result codes |
+|---|---|
+| `hit` | `TCP_HIT`, `TCP_MEM_HIT`, `TCP_IMS_HIT`, `TCP_INM_HIT`, `TCP_NEGATIVE_HIT`, `TCP_OFFLINE_HIT`, `TCP_REFRESH_IGNORED` |
+| `revalidated` | `TCP_REFRESH_UNMODIFIED`, `TCP_REFRESH_FAIL_OLD`: the cached copy, sent after asking the server |
+| `miss` | `TCP_MISS`, `TCP_REFRESH_MODIFIED`, `TCP_CLIENT_REFRESH_MISS`, `TCP_SWAPFAIL_MISS`, `TCP_REFRESH_FAIL_ERR` |
+| `tunnel` | `TCP_TUNNEL`: a CONNECT tunnel, relayed without being read, so not cacheable |
+| `refused` | a request the proxy blocked, and `TCP_DENIED` |
+| `other` | anything else, such as `NONE_NONE` |
+
+- `spm_proxy_cache_requests_total{outcome}` and
+  `spm_proxy_cache_bytes_total{outcome}` (bytes sent to the clients). The
+  share answered by the cache over a window is
+  `rate(hit + revalidated) / rate(hit + revalidated + miss)`: tunnels and
+  refused requests are left out, since no cache can answer them.
+- `spm_squid_cache_disk_used_bytes`, `spm_squid_cache_disk_capacity_bytes`,
+  `spm_squid_cache_memory_used_bytes` and `spm_squid_cache_objects`: what
+  Squid reported about its store at the proxy's last reading (once a minute),
+  and `spm_squid_cache_stats_age_seconds`, how long ago that was. They are
+  absent until the proxy has written a reading.
+
+Squid's own hit ratios are not exported: they restart from zero with Squid,
+and its request and byte ratios can disagree (0.0% and 68.4% on the same
+proxy). The Analytics page shows the same outcomes per day, counted from the
+stored access log (`GET /api/analytics/cache-by-day`).
 
 ## Troubleshooting
 

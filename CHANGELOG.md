@@ -15,6 +15,23 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Added
+
+- **What the cache did, per day** on the Analytics page: the client
+  requests of the last 7 days, in requests or in bytes sent, by outcome
+  (from the cache, checked with the server, fetched from the server, HTTPS
+  tunnel, refused, other), and the share of the cacheable requests the cache
+  answered. It is counted from the stored access log, so a restart of the
+  proxy does not empty it (`GET /api/analytics/cache-by-day`).
+- **Cache metrics** on the backend's `/metrics`:
+  `spm_proxy_cache_requests_total{outcome}` and
+  `spm_proxy_cache_bytes_total{outcome}`, counted as the access log is
+  ingested, and Squid's store (`spm_squid_cache_disk_used_bytes`,
+  `spm_squid_cache_disk_capacity_bytes`, `spm_squid_cache_memory_used_bytes`,
+  `spm_squid_cache_objects`, `spm_squid_cache_stats_age_seconds`).
+- **A Proxy cache dashboard** in the Grafana of the `observability`
+  profile, provisioned from `infra/grafana/provisioning/dashboards/`.
+
 ## [3.31.1] - 2026-11-14
 
 The proxy starts when the dns or waf container has more than one address,

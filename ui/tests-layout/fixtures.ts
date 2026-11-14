@@ -69,6 +69,34 @@ const blockedByDay = {
 };
 
 /**
+ * GET /api/analytics/cache-by-day: the week of an install without HTTPS
+ * inspection, as measured on one: tunnels carry nearly every byte, and the
+ * cache answers a small share of the rest. Large byte counts, so the axis
+ * and the table lay out GB figures.
+ */
+const cacheRequests = [0, 0, 600, 1500, 1200, 4200, 2000];
+const cacheByDay = {
+  tz: TIME_ZONE,
+  internal_sources: 2,
+  outcomes: [
+    { outcome: 'hit', label: 'From the cache' },
+    { outcome: 'revalidated', label: 'From the cache, checked with the server' },
+    { outcome: 'miss', label: 'Fetched from the server' },
+    { outcome: 'tunnel', label: 'HTTPS tunnel (not cacheable)' },
+    { outcome: 'refused', label: 'Refused by the proxy' },
+    { outcome: 'other', label: 'Other' },
+  ],
+  days: days.map((date, i) => {
+    const n = cacheRequests[i];
+    const requests = { hit: Math.round(n * 0.001), revalidated: Math.round(n * 0.013), miss: Math.round(n * 0.048), tunnel: Math.round(n * 0.83), refused: Math.round(n * 0.097), other: Math.round(n * 0.002) };
+    const bytes = { hit: requests.hit * 4096, revalidated: requests.revalidated * 450_000, miss: requests.miss * 200_000, tunnel: requests.tunnel * 780_000, refused: requests.refused * 500, other: 0 };
+    return { date, start: 0, end: 0, requests, bytes };
+  }),
+};
+const sumDays = (key: 'requests' | 'bytes') => Object.fromEntries(Object.keys(cacheByDay.days[0][key]).map((k) => [k, cacheByDay.days.reduce((n, d) => n + d[key][k as keyof typeof d.requests], 0)]));
+const cacheByDayBody = { ...cacheByDay, totals: { requests: sumDays('requests'), bytes: sumDays('bytes') } };
+
+/**
  * GET /api/waf/status: a hybrid WAF in Log only that also kept an old policy,
  * so the Overview and Inspection lay out both notices and every row.
  */
@@ -237,6 +265,7 @@ export function answer(url: URL): Json | undefined {
     case 'logs/timeline': return ok(timeline);
     case 'cache/statistics': return ok({ state: 'not_collected', collected_at: null, age_s: null });
     case 'analytics/blocked-by-day': return ok(blockedByDay);
+    case 'analytics/cache-by-day': return ok(cacheByDayBody);
     case 'analytics/coverage': return ok(coverage);
     case 'analytics/shadow-it': return ok([
       { name: 'iCloud', domain: 'icloud.com', requests: 397, category: 'File Sharing' },

@@ -1,0 +1,13 @@
+apiVersion: 1
+
+# The dashboards in ./json, read-only in Grafana: change them here, in the
+# repository, so an upgrade does not overwrite an edit made in the UI.
+providers:
+  - name: Secure Proxy Manager
+    folder: Secure Proxy Manager
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 60
+    options:
+      path: /etc/grafana/provisioning/dashboards/json

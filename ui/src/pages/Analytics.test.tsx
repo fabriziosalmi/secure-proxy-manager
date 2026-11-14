@@ -4,7 +4,8 @@ import { AxiosError, AxiosHeaders } from 'axios'
 import { renderWithProviders, simulateItalianLocale, setRomeTimeZone } from '../test/helpers'
 import { expectNoAxeViolations } from '../test/axe'
 import { api } from '../lib/api'
-import type { BlockedByDay, Coverage } from '../types'
+import type { BlockedByDay, CacheByDay, Coverage } from '../types'
+import { cacheByDayFixture } from '../test/cacheByDay'
 import { Analytics } from './Analytics'
 
 // The bodies the endpoints really return (backend-go/internal/handlers:
@@ -49,6 +50,7 @@ const wafStats = { total_requests: 1030, total_blocked: 1, avg_url_entropy: 2, h
 const bodies: Record<string, unknown> = {
   'analytics/blocked-by-day': blockedByDay,
   'analytics/coverage': coverage,
+  'analytics/cache-by-day': cacheByDayFixture() satisfies CacheByDay,
   'waf/stats': wafStats,
   'analytics/shadow-it': [{ name: 'Facebook', domain: 'facebook.com', requests: 1328, category: 'Social' }],
   'analytics/user-agents': { methods: [], service_types: [{ name: 'Other', count: 50772 }, { name: 'CDN', count: 230 }] },
@@ -99,6 +101,7 @@ describe('Analytics', () => {
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       'Blocked requests per day, by rule',
       'Protection coverage',
+      'What the cache did, per day',
       'Client trajectories',
       'WAF rule matches',
       'Cloud services in use',
