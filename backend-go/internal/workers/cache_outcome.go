@@ -3,6 +3,7 @@ package workers
 import (
 	"strings"
 
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/logforward"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/metrics"
 )
 
@@ -89,11 +90,12 @@ func CacheOutcome(status string, blocked bool) string {
 func init() { metrics.InitProxyCache(CacheOutcomes) }
 
 // countProxyEntry counts one parsed access log line: its outcome, and what
-// the cache did with it.
+// the cache did with it; and hands it to the log forwarder.
 func countProxyEntry(entry map[string]any) {
 	blocked := entry["blocked"] == 1
 	metrics.ProxyRequest(blocked)
 	status, _ := entry["status"].(string)
 	bytes, _ := entry["bytes"].(int64)
 	metrics.ProxyCache(CacheOutcome(status, blocked), bytes)
+	logforward.Access(entry)
 }

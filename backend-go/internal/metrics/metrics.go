@@ -255,6 +255,72 @@ func (c *cacheStoreCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 }
 
+// Log forwarding to a syslog server or SIEM (internal/logforward). An event
+// is sent, dropped (the queue was full, or forwarding was switched off with
+// events waiting), or failed (its write failed); a connection attempt that
+// fails is counted on its own. The queue length shows a target falling
+// behind before events are dropped.
+const (
+	LogForwardSent          = "sent"
+	LogForwardDropped       = "dropped"
+	LogForwardFailed        = "failed"
+	LogForwardConnectFailed = "connect_failed"
+)
+
+var (
+	logForwardEvents = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "spm_log_forward_events_total",
+		Help: "Events for the log forwarding target, by outcome (sent, dropped, failed, connect_failed).",
+	}, []string{"outcome"})
+	logForwardConnected = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "spm_log_forward_connected",
+		Help: "1 while the log forwarder holds a connection to its target, 0 otherwise.",
+	})
+	logForwardQueue = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "spm_log_forward_queue_length",
+		Help: "Events waiting to be sent to the log forwarding target.",
+	})
+	logForwardLastSent = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "spm_log_forward_last_sent_timestamp_seconds",
+		Help: "Unix time of the last event sent to the log forwarding target.",
+	})
+)
+
+func init() {
+	for _, o := range []string{LogForwardSent, LogForwardDropped, LogForwardFailed, LogForwardConnectFailed} {
+		logForwardEvents.WithLabelValues(o)
+	}
+}
+
+// LogForward counts one event, or one connection attempt, by outcome.
+func LogForward(outcome string) {
+	logForwardEvents.WithLabelValues(outcome).Inc()
+	if outcome == LogForwardSent {
+		logForwardLastSent.SetToCurrentTime()
+	}
+}
+
+// LogForwardCount is the counter of one outcome, for tests.
+func LogForwardCount(outcome string) float64 {
+	m := &dto.Metric{}
+	if err := logForwardEvents.WithLabelValues(outcome).Write(m); err != nil {
+		return 0
+	}
+	return m.GetCounter().GetValue()
+}
+
+// LogForwardConnected records whether the forwarder holds a connection.
+func LogForwardConnected(up bool) {
+	if up {
+		logForwardConnected.Set(1)
+		return
+	}
+	logForwardConnected.Set(0)
+}
+
+// LogForwardQueue records how many events wait.
+func LogForwardQueue(n int) { logForwardQueue.Set(float64(n)) }
+
 // Notification delivery. The channel by which an operator learns about security
 // events reported its own failures as log lines only, so an expired token or a
 // rotated webhook left a system that looks entirely healthy and simply stops

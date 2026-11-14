@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -419,6 +420,17 @@ var DefaultSettings = [][]string{
 	{"enable_bandwidth_limits", "false"},
 	{"bandwidth_limit_mbps", "100"},
 	{"bandwidth_limit_per_user_kbps", "0"},
+	// Log forwarding to a syslog server or SIEM (internal/logforward): off,
+	// and when switched on, blocked requests and audit events as RFC 5424
+	// over UDP 514, the port and protocol every syslog server listens on.
+	{"log_forward_enabled", "false"},
+	{"log_forward_host", ""},
+	{"log_forward_port", "514"},
+	{"log_forward_protocol", "udp"},
+	{"log_forward_format", "rfc5424"},
+	{"log_forward_events", "blocked"},
+	{"log_forward_audit", "true"},
+	{"log_forward_hostname", ""},
 	{"enable_time_restrictions", "false"},
 	{"time_restriction_start", "08:00"},
 	{"time_restriction_end", "18:00"},
@@ -890,4 +902,21 @@ func Audit(db *sql.DB, username, action, target, details string) {
 		"INSERT INTO audit_log(username,action,target,details) VALUES(?,?,?,?)",
 		username, action, target, details,
 	)
+	if h := auditHook.Load(); h != nil {
+		(*h)(username, action, target, details)
+	}
+}
+
+// auditHook receives every audit event after it is stored: the log forwarder
+// (logforward.Audit), set once at start. A hook rather than an import, so
+// this package does not depend on the forwarder.
+var auditHook atomic.Pointer[func(username, action, target, details string)]
+
+// SetAuditHook sets the function every audit event is passed to.
+func SetAuditHook(h func(username, action, target, details string)) {
+	if h == nil {
+		auditHook.Store(nil)
+		return
+	}
+	auditHook.Store(&h)
 }

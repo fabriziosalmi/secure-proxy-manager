@@ -54,6 +54,14 @@ const rows: Row[] = [
   { setting_name: 'gotify_token', setting_value: '', secret: true },
   { setting_name: 'log_retention_days', setting_value: '30' },
   { setting_name: 'gdpr_mode', setting_value: 'false' },
+  { setting_name: 'log_forward_enabled', setting_value: 'false' },
+  { setting_name: 'log_forward_host', setting_value: '10.0.0.5' },
+  { setting_name: 'log_forward_port', setting_value: '514' },
+  { setting_name: 'log_forward_protocol', setting_value: 'udp' },
+  { setting_name: 'log_forward_format', setting_value: 'rfc5424' },
+  { setting_name: 'log_forward_events', setting_value: 'blocked' },
+  { setting_name: 'log_forward_audit', setting_value: 'true' },
+  { setting_name: 'log_forward_hostname', setting_value: '' },
   { setting_name: 'default_password_changed', setting_value: 'true' },
 ]
 
@@ -324,6 +332,44 @@ describe('Settings sections, part B', () => {
       expect(screen.queryByText(/GDPR Mode/)).not.toBeInTheDocument()
       headingsInOrder()
       await expectNoAxeViolations(container)
+    })
+
+    it('shows where logs are forwarded, as stored, and when a change takes effect', async () => {
+      const { container } = renderAt('/settings/logs')
+      expect(await screen.findByRole('switch', { name: 'Forward logs' })).toHaveAccessibleDescription(/queue of 10,000.*dropped and counted/)
+      await waitFor(() => expect(screen.getByLabelText('Host')).toHaveValue('10.0.0.5'))
+      expect(screen.getByLabelText('Port')).toHaveValue('514')
+      expect(within(screen.getByRole('group', { name: 'Protocol' })).getByRole('button', { name: 'UDP' })).toHaveAttribute('aria-pressed', 'true')
+      expect(within(screen.getByRole('group', { name: 'Format' })).getByRole('button', { name: 'Syslog' })).toHaveAttribute('aria-pressed', 'true')
+      expect(within(screen.getByRole('group', { name: 'Requests to send' })).getByRole('button', { name: 'Blocked' })).toHaveAttribute('aria-pressed', 'true')
+      expect(screen.getByRole('switch', { name: 'Admin audit events' })).toBeChecked()
+      expect(screen.getAllByText('Within 10 s').length).toBeGreaterThan(0)
+      headingsInOrder()
+      await expectNoAxeViolations(container)
+    })
+
+    it('sends a test event to the saved target and says what came back', async () => {
+      vi.mocked(api.post).mockImplementation((url: string) => url === 'log-forward/test'
+        ? Promise.resolve({ data: { status: 'success', data: { sent: true, target: '10.0.0.5:514', protocol: 'udp', note: 'The event left over UDP, which has no answer: check that it arrived on the target.' } } })
+        : Promise.resolve({ data: { status: 'success', data: { kept: [] } } }))
+      renderAt('/settings/logs')
+      fireEvent.click(await screen.findByRole('button', { name: 'Send a test event' }))
+      expect(await screen.findByText('Sent to 10.0.0.5:514')).toBeInTheDocument()
+      expect(screen.getByText(/check that it arrived on the target/)).toBeInTheDocument()
+      expect(api.post).toHaveBeenCalledWith('log-forward/test', {})
+    })
+
+    it('says why the test event did not go, and waits for unsaved changes', async () => {
+      vi.mocked(api.post).mockImplementation((url: string) => url === 'log-forward/test'
+        ? Promise.reject(new AxiosError('bad', 'ERR_BAD_RESPONSE', undefined, undefined, { status: 502, data: { detail: 'the test event did not reach 10.0.0.5:514 over tcp: connection refused' } } as never))
+        : Promise.resolve({ data: { status: 'success', data: { kept: [] } } }))
+      renderAt('/settings/logs')
+      fireEvent.click(await screen.findByRole('button', { name: 'Send a test event' }))
+      expect(await screen.findByText('The test event did not go')).toBeInTheDocument()
+      expect(screen.getByText(/did not reach 10\.0\.0\.5:514 over tcp: connection refused/)).toBeInTheDocument()
+      fireEvent.change(screen.getByLabelText('Host'), { target: { value: 'siem.example' } })
+      expect(screen.getByRole('button', { name: 'Send a test event' })).toBeDisabled()
+      expect(screen.getByText('Save or discard the changes first: the test uses the saved target.')).toBeInTheDocument()
     })
   })
 

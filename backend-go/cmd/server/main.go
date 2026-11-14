@@ -26,6 +26,7 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/handlers"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/logforward"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/metrics"
 	appMW "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/sources"
@@ -136,6 +137,12 @@ func run() error {
 	// same context and covered by the same drain, so shutdown does not silently
 	// discard queued security alerts (SECURE-CONC-01).
 	notify := handlers.NewNotifyQueue(workerCtx, db, cfg.EncryptionKey)
+	// Log forwarding to a syslog server or SIEM: fed by the log tailer and the
+	// audit log, configured in the settings and re-read every 10 seconds.
+	forwarder := logforward.New(func() logforward.Config { return handlers.LogForwardConfig(db) }, logforward.QueueCapacity)
+	logforward.SetDefault(forwarder)
+	database.SetAuditHook(logforward.Audit)
+	go forwarder.Run(workerCtx)
 	workers.StartLogTailer(workerCtx, db, cfg.LogPath, filepath.Dir(cfg.DatabasePath), hub)
 	workers.StartDNSTailer(workerCtx, db, cfg.DNSLogPath, filepath.Dir(cfg.DatabasePath), hub)
 	workers.StartLogRetention(workerCtx, db)
@@ -218,6 +225,7 @@ func run() error {
 	handlers.NewWAFPolicyHandlers(db, cfg).Register(r, authMW)
 	handlers.NewTrajectoryHandlers(db).Register(r, authMW)
 	handlers.NewTokenHandlers(db).Register(r, authMW)
+	handlers.NewLogForwardHandlers(db).Register(r, authMW)
 	handlers.RegisterAPIDocs(r, authMW)
 
 	// ── Prometheus metrics (internal network only; not proxied by nginx) ──────
