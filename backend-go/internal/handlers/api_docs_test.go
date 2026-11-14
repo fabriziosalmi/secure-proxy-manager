@@ -48,6 +48,7 @@ func buildFullRouterOn(db *sql.DB, svc *auth.Service, cfg *config.Config, authMW
 	NewTrajectoryHandlers(db).Register(r, authMW)
 	NewTokenHandlers(db).Register(r, authMW)
 	NewLogForwardHandlers(db).Register(r, authMW)
+	NewSnapshotHandlers(db, cfg).Register(r, authMW)
 	RegisterAPIDocs(r, authMW)
 	return r
 }

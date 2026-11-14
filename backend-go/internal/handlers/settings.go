@@ -273,7 +273,7 @@ func NewSettingsHandlers(db *sql.DB, cfg *config.Config) *SettingsHandlers {
 func (h *SettingsHandlers) Register(r chi.Router, authMW func(http.Handler) http.Handler) {
 	r.With(authMW).Get("/api/settings", h.GetAll)
 	r.With(authMW).Put("/api/settings/{name}", h.Update)
-	r.With(authMW).Post("/api/settings", h.BulkUpdate)
+	r.With(authMW, snapshotBefore("a settings save")).Post("/api/settings", h.BulkUpdate)
 	r.With(authMW).Get("/api/waf/heuristics", h.WAFHeuristics)
 }
 

@@ -240,6 +240,36 @@ connected then.
 `spm_log_forward_queue_length` and
 `spm_log_forward_last_sent_timestamp_seconds`.
 
+## Configuration history
+
+Settings > Admin and backup > Configuration history. A snapshot of the
+configuration an operator sets (the settings, the client groups, the WAF
+policy and the egress allowlist) is taken before every change to them made
+through the dashboard or the API: a settings save, a client group added,
+edited or removed, a WAF policy edit, exception or log-only rule, an egress
+allowlist addition or removal, and a restore from a file. *Take a snapshot
+now* takes one on demand, with an optional note.
+
+- A snapshot identical to the newest is not stored again, so a save that
+  changes nothing adds none. The newest 200 are kept.
+- *Compare with now* lists what restoring a snapshot would change: each
+  setting with its value now and in the snapshot (a secret is named, never
+  shown), the client groups that come back, go or change, the WAF policy's
+  mode and counts, and the egress allowlist entries that come back or go.
+- *Restore* makes the configuration the snapshot's exactly: its settings are
+  written (a setting a later version added is left as it is), client groups it
+  does not have are removed, the egress allowlist becomes its own, and the WAF
+  policy goes through the WAF's check. The proxy reloads. A snapshot of the
+  configuration in force is taken first, so a restore is undone by restoring
+  that one; the result names it.
+- A group whose list has been removed since comes back without it, and the
+  result says so.
+- **Not in a snapshot:** the blacklists and whitelists. They are data with
+  their own sources, refreshed from URLs, and are in the full backup
+  (Download a backup). API: `GET /api/config/snapshots`,
+  `POST /api/config/snapshots`, `GET /api/config/snapshots/{id}/diff`,
+  `POST /api/config/snapshots/{id}/restore`.
+
 ## Proxy login from an LDAP directory
 
 Settings > Clients and access > Login, with *Require proxy login* on and

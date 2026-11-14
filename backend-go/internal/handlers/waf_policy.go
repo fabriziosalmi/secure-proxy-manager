@@ -53,9 +53,9 @@ func NewWAFPolicyHandlers(db *sql.DB, cfg *config.Config) *WAFPolicyHandlers {
 func (h *WAFPolicyHandlers) Register(r chi.Router, authMW func(http.Handler) http.Handler) {
 	r.With(authMW).Get("/api/waf/events/{id}", h.Event)
 	r.With(authMW).Get("/api/waf/policy", h.Get)
-	r.With(authMW).Put("/api/waf/policy", h.Put)
-	r.With(authMW).Post("/api/waf/policy/exceptions", h.AddException)
-	r.With(authMW).Post("/api/waf/policy/observe-rules", h.ObserveRule)
+	r.With(authMW, snapshotBefore("a WAF policy edit")).Put("/api/waf/policy", h.Put)
+	r.With(authMW, snapshotBefore("a WAF exception")).Post("/api/waf/policy/exceptions", h.AddException)
+	r.With(authMW, snapshotBefore("a WAF rule set to log only")).Post("/api/waf/policy/observe-rules", h.ObserveRule)
 }
 
 // wafPolicyFile mirrors the WAF's policy.File (waf-go/internal/policy). The

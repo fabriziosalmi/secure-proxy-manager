@@ -221,6 +221,16 @@ var schemaStatements = []string{
 		UNIQUE (client_ip, start_ms)
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_waf_trajectories_closed ON waf_trajectories(closed_ms)`,
+	// Configuration history (handlers/config_snapshots.go): the settings,
+	// client groups, WAF policy and egress allowlist, before each change.
+	`CREATE TABLE IF NOT EXISTS config_snapshots (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		created_at INTEGER NOT NULL,
+		username TEXT NOT NULL DEFAULT '',
+		reason TEXT NOT NULL DEFAULT '',
+		sha256 TEXT NOT NULL,
+		data TEXT NOT NULL
+	)`,
 	// API tokens (APIToken): what a script or the MCP server authenticates
 	// with instead of the admin password. Only a hash of the secret is kept.
 	`CREATE TABLE IF NOT EXISTS api_tokens (

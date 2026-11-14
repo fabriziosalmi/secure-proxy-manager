@@ -33,6 +33,9 @@ func setupTestDB(t *testing.T) (*sql.DB, *auth.Service, *config.Config, func()) 
 	_, _ = db.Exec("INSERT OR REPLACE INTO settings (setting_name, setting_value) VALUES (?, ?)", "proxy_host", "localhost")
 
 	_ = os.MkdirAll(filepath.Join(tmpDir, "secrets"), 0o700)
+	// The snapshot middleware is off unless a test creates the snapshot
+	// handlers on its own database.
+	snapshotState.Store(nil)
 	cfg := &config.Config{
 		ConfigDir:         tmpDir, // Use temporary directory for testing
 		SecretsDir:        filepath.Join(tmpDir, "secrets"),

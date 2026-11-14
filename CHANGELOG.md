@@ -15,6 +15,16 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Added
+
+- **Configuration history** (Settings > Admin and backup): a snapshot of
+  the settings, client groups, WAF policy and egress allowlist is taken
+  before every change to them, and on demand. Any snapshot can be compared
+  with the configuration in force (a secret is named, never shown) and
+  restored exactly; a restore takes a snapshot first, so it can be undone.
+  The newest 200 are kept. The blacklists and whitelists are not in a
+  snapshot: the full backup has them.
+
 ## [3.34.0] - 2026-11-14
 
 Proxy login can check each user against an LDAP directory. Nothing is
