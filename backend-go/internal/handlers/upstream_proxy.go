@@ -16,18 +16,18 @@ import (
 
 // The upstream (parent) proxy: Squid forwards the clients' requests to
 // another proxy instead of the destinations, as in a network where a
-// corporate proxy is the only way out. Settings > Proxy engine.
+// corporate proxy is the only way out. Settings > Proxy engine. Every request
+// goes through it except those to the domains listed to go direct; while it
+// is down, requests fail. A mode that went direct when the parent was down
+// was tried and measured wrong (HTTPS went direct with the parent up, and the
+// parent was not used again after an outage), so there is none.
 const (
 	settingUpstreamEnabled  = "upstream_proxy_enabled"
 	settingUpstreamHost     = "upstream_proxy_host"
 	settingUpstreamPort     = "upstream_proxy_port"
-	settingUpstreamMode     = "upstream_proxy_mode"
 	settingUpstreamUsername = "upstream_proxy_username"
 	settingUpstreamPassword = "upstream_proxy_password"
 	settingUpstreamDirect   = "upstream_proxy_direct_domains"
-
-	upstreamModeAlways   = "always"
-	upstreamModeFallback = "fallback"
 
 	// upstreamConfName is in the proxy-secrets volume (cfg.SecretsDir): it
 	// holds the parent's password in clear, as Squid's cache_peer login=
@@ -48,7 +48,6 @@ var (
 func init() {
 	settingValidators[settingUpstreamHost] = validHostOrEmpty
 	settingValidators[settingUpstreamPort] = validPort
-	settingValidators[settingUpstreamMode] = validChoice(upstreamModeAlways, upstreamModeFallback)
 	settingValidators[settingUpstreamDirect] = validDomainList
 	settingValidators[settingUpstreamUsername] = func(v string) error {
 		if v == "" || upstreamUserRE.MatchString(v) {
@@ -77,14 +76,12 @@ func (h *SettingsHandlers) upstreamConf() []byte {
 	}
 	host := h.dbSetting(settingUpstreamHost, "")
 	port := h.dbSetting(settingUpstreamPort, "3128")
-	mode := h.dbSetting(settingUpstreamMode, upstreamModeAlways)
-	if host == "" || validHostOrEmpty(host) != nil || validPort(port) != nil ||
-		validChoice(upstreamModeAlways, upstreamModeFallback)(mode) != nil {
-		log.Warn().Msg("upstream proxy is on but its host, port or mode is missing or invalid: not written")
+	if host == "" || validHostOrEmpty(host) != nil || validPort(port) != nil {
+		log.Warn().Msg("upstream proxy is on but its host or port is missing or invalid: not written")
 		return nil
 	}
 	var b bytes.Buffer
-	b.WriteString("UPSTREAM_HOST=" + host + "\nUPSTREAM_PORT=" + port + "\nUPSTREAM_MODE=" + mode + "\n")
+	b.WriteString("UPSTREAM_HOST=" + host + "\nUPSTREAM_PORT=" + port + "\n")
 	user := h.dbSetting(settingUpstreamUsername, "")
 	if stored := h.dbSetting(settingUpstreamPassword, ""); stored != "" && user != "" {
 		password, err := appcrypto.Decrypt(stored, h.cfg.EncryptionKey)

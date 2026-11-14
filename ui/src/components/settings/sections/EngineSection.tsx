@@ -20,7 +20,7 @@ import { formatKilobytes, formatCount } from '../../../lib/format';
 import { Section } from '../../ui/Section';
 import { Notice } from '../../ui/Notice';
 import { Unavailable } from '../../ui/Unavailable';
-import { ChoiceRow, SecretRow, TextField, ToggleRow } from '../fields';
+import { SecretRow, TextField, ToggleRow } from '../fields';
 import type { SectionForm } from '../sectionForm';
 
 function Code({ children }: { children: string }) {
@@ -121,7 +121,7 @@ export function EngineSection({ form }: { form: SectionForm }) {
           form={form}
           setting="upstream_proxy_enabled"
           label="Forward through an upstream proxy"
-          help="Takes effect when the proxy reloads after the save. With the host empty, nothing is forwarded. HTTPS requests go to it as CONNECT tunnels."
+          help="Every request goes through it, HTTPS as CONNECT tunnels, except those to the domains listed below; while it is down, requests fail. Takes effect when the proxy reloads after the save. With the host empty, nothing is forwarded."
         />
         <div className="grid gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
           <TextField
@@ -133,13 +133,6 @@ export function EngineSection({ form }: { form: SectionForm }) {
           />
           <TextField form={form} setting="upstream_proxy_port" label="Upstream port" inputMode="numeric" />
         </div>
-        <ChoiceRow
-          form={form}
-          setting="upstream_proxy_mode"
-          label="When the upstream proxy is down"
-          help="Fail: every request goes through it, and none gets out while it is down. Go direct: requests go through it first, and straight to the destination when it does not answer."
-          options={[{ value: 'always', label: 'Fail' }, { value: 'fallback', label: 'Go direct' }]}
-        />
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField
             form={form}

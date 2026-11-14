@@ -39,15 +39,15 @@ func TestTheUpstreamFileFollowsTheSettings(t *testing.T) {
 	}
 	setSetting(t, sh, map[string]string{settingUpstreamHost: "proxy.corp.example", settingUpstreamPort: "8080"})
 	got, ok := readFile(t, conf)
-	if !ok || got != "UPSTREAM_HOST=proxy.corp.example\nUPSTREAM_PORT=8080\nUPSTREAM_MODE=always\n" {
+	if !ok || got != "UPSTREAM_HOST=proxy.corp.example\nUPSTREAM_PORT=8080\n" {
 		t.Errorf("conf = %q", got)
 	}
 	setSetting(t, sh, map[string]string{
 		settingUpstreamUsername: "spm-svc", settingUpstreamPassword: "s3cr(e)t:pa$$",
-		settingUpstreamMode: "fallback", settingUpstreamDirect: "corp.example, .Intranet.example, *.lab.example",
+		settingUpstreamDirect: "corp.example, .Intranet.example, *.lab.example",
 	})
 	got, _ = readFile(t, conf)
-	want := "UPSTREAM_HOST=proxy.corp.example\nUPSTREAM_PORT=8080\nUPSTREAM_MODE=fallback\nUPSTREAM_USER=spm-svc\nUPSTREAM_PASSWORD=s3cr(e)t:pa$$\n"
+	want := "UPSTREAM_HOST=proxy.corp.example\nUPSTREAM_PORT=8080\nUPSTREAM_USER=spm-svc\nUPSTREAM_PASSWORD=s3cr(e)t:pa$$\n"
 	if got != want {
 		t.Errorf("conf = %q\nwant %q", got, want)
 	}
@@ -99,7 +99,6 @@ func TestUpstreamSettingsAreValidated(t *testing.T) {
 	for k, v := range map[string]string{
 		settingUpstreamHost:     "http://proxy.corp.example",
 		settingUpstreamPort:     "0",
-		settingUpstreamMode:     "sometimes",
 		settingUpstreamUsername: "user name",
 	} {
 		if w, _ := bulkUpdate(t, sh, "", map[string]string{k: v}); w.Code == http.StatusOK {
@@ -129,7 +128,7 @@ func TestAnUndecryptableUpstreamPasswordDropsOnlyTheLogin(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ := readFile(t, filepath.Join(cfg.SecretsDir, upstreamConfName))
-	if got != "UPSTREAM_HOST=10.0.0.9\nUPSTREAM_PORT=3128\nUPSTREAM_MODE=always\n" {
+	if got != "UPSTREAM_HOST=10.0.0.9\nUPSTREAM_PORT=3128\n" {
 		t.Errorf("conf = %q", got)
 	}
 }

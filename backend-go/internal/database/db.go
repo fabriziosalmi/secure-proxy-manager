@@ -425,7 +425,6 @@ var DefaultSettings = [][]string{
 	{"upstream_proxy_enabled", "false"},
 	{"upstream_proxy_host", ""},
 	{"upstream_proxy_port", "3128"},
-	{"upstream_proxy_mode", "always"},
 	{"upstream_proxy_username", ""},
 	{"upstream_proxy_password", ""},
 	{"upstream_proxy_direct_domains", ""},

@@ -1035,17 +1035,15 @@ fi
 # is checked again here: the file is read as root and its values end up in
 # squid.conf, so a value that is not of its form is dropped with a warning,
 # and without a host nothing is written.
-#   always:   every request goes through the parent (never_direct); when the
-#             parent is down, requests fail.
-#   fallback: the parent first, direct when it does not answer.
-# Domains in upstream_direct_domains.txt always go direct.
+# Every request goes through the parent (never_direct), CONNECT included,
+# except those to the domains in upstream_direct_domains.txt; while the parent
+# is down, requests fail.
 UPSTREAM_CONF="${UPSTREAM_CONF:-/secrets/upstream_proxy.conf}"
-UPSTREAM_HOST="" UPSTREAM_PORT="" UPSTREAM_MODE="" UPSTREAM_USER="" UPSTREAM_PASSWORD=""
+UPSTREAM_HOST="" UPSTREAM_PORT="" UPSTREAM_USER="" UPSTREAM_PASSWORD=""
 if [ -f "$UPSTREAM_CONF" ]; then
     load_settings "$UPSTREAM_CONF" \
         'UPSTREAM_HOST=[A-Za-z0-9][A-Za-z0-9.:-]{0,252}' \
         'UPSTREAM_PORT=[0-9]{1,5}' \
-        'UPSTREAM_MODE=(always|fallback)' \
         'UPSTREAM_USER=[A-Za-z0-9._@-]{0,64}' \
         'UPSTREAM_PASSWORD=[A-Za-z0-9!$&()*+,./:;<=>?@^_{|}~-]{0,128}'
 fi
@@ -1054,34 +1052,20 @@ if [ -n "$UPSTREAM_HOST" ] && [ -n "$UPSTREAM_PORT" ] && [ "$UPSTREAM_PORT" -ge 
     if [ -n "$UPSTREAM_USER" ] && [ -n "$UPSTREAM_PASSWORD" ]; then
         UPSTREAM_LOGIN=" login=${UPSTREAM_USER}:${UPSTREAM_PASSWORD}"
     fi
-    # A "default" parent is Squid's last resort: used only when nothing else,
-    # direct included, can serve the request. That is right for always, where
-    # never_direct leaves nothing else; for fallback it meant always direct
-    # (measured: the parent up and never used), so there the parent is chosen
-    # by round-robin, which Squid tries before going direct.
-    UPSTREAM_SELECT="default"
-    [ "${UPSTREAM_MODE:-always}" = "fallback" ] && UPSTREAM_SELECT="round-robin"
     {
         echo ""
-        echo "# ── Upstream proxy (${UPSTREAM_MODE:-always}) ──"
-        echo "cache_peer ${UPSTREAM_HOST} parent ${UPSTREAM_PORT} 0 no-query no-digest ${UPSTREAM_SELECT} name=spm_upstream${UPSTREAM_LOGIN}"
+        echo "# ── Upstream proxy ──"
+        echo "cache_peer ${UPSTREAM_HOST} parent ${UPSTREAM_PORT} 0 no-query no-digest default name=spm_upstream${UPSTREAM_LOGIN}"
         if [ -s /config/upstream_direct_domains.txt ]; then
             echo "acl spm_upstream_direct dstdomain \"/config/upstream_direct_domains.txt\""
             echo "always_direct allow spm_upstream_direct"
         fi
-        if [ "${UPSTREAM_MODE:-always}" = "fallback" ]; then
-            # Squid prefers the parent for every request, CONNECT included,
-            # and goes direct only when the parent is down.
-            echo "nonhierarchical_direct off"
-            echo "prefer_direct off"
-        else
-            echo "never_direct allow all"
-        fi
+        echo "never_direct allow all"
     } >> "$SQUID_CONF"
     if [ -n "$UPSTREAM_LOGIN" ]; then
-        echo "Upstream proxy: ${UPSTREAM_HOST}:${UPSTREAM_PORT} (${UPSTREAM_MODE:-always}), with a login"
+        echo "Upstream proxy: ${UPSTREAM_HOST}:${UPSTREAM_PORT}, with a login"
     else
-        echo "Upstream proxy: ${UPSTREAM_HOST}:${UPSTREAM_PORT} (${UPSTREAM_MODE:-always})"
+        echo "Upstream proxy: ${UPSTREAM_HOST}:${UPSTREAM_PORT}"
     fi
 else
     echo "Upstream proxy: none"
