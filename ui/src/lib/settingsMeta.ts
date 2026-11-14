@@ -71,7 +71,11 @@ export const SECTION_KEYS: Record<SectionId, string[]> = {
     'telegram_bot_token', 'telegram_chat_id', 'gotify_url', 'gotify_token',
     'ntfy_url', 'ntfy_topic', 'teams_webhook_url',
   ],
-  logs: ['gdpr_mode', 'log_retention_days'],
+  logs: [
+    'gdpr_mode', 'log_retention_days',
+    'log_forward_enabled', 'log_forward_host', 'log_forward_port', 'log_forward_protocol',
+    'log_forward_format', 'log_forward_events', 'log_forward_audit', 'log_forward_hostname',
+  ],
   admin: [],
   // proxy_port is shown, not saved: docker-compose.yml publishes 3128 and
   // its health check looks for 3128, so it changes with compose and .env.
@@ -102,8 +106,9 @@ export function isSecretKey(key: string): boolean {
  * live: read from the database on every use.
  * daily: read by the daily log retention pass.
  * cycle: read by the blocklist refresh worker when its current wait ends.
+ * forward: read by the log forwarder every 10 seconds (internal/logforward).
  */
-export type ApplyMode = 'reload' | 'dns' | 'waf' | 'live' | 'daily' | 'cycle' | 'provider_cycle';
+export type ApplyMode = 'reload' | 'dns' | 'waf' | 'live' | 'daily' | 'cycle' | 'provider_cycle' | 'forward';
 
 export const APPLY_LABEL: Record<ApplyMode, string> = {
   reload: 'Proxy reload',
@@ -113,6 +118,7 @@ export const APPLY_LABEL: Record<ApplyMode, string> = {
   daily: 'Daily',
   cycle: 'Next cycle',
   provider_cycle: 'Next cycle',
+  forward: 'Within 10 s',
 };
 
 export const APPLY_HELP: Record<ApplyMode, string> = {
@@ -123,6 +129,7 @@ export const APPLY_HELP: Record<ApplyMode, string> = {
   daily: 'Applied by the daily log cleanup.',
   cycle: 'Read by the blocklist refresh worker when its current wait ends: within 30 minutes while refresh is off, otherwise after the running interval.',
   provider_cycle: 'Read by the egress provider refresh worker when its current wait ends: after the running interval, even when egress default-deny is off.',
+  forward: 'Read by the log forwarder every 10 seconds; a new target is connected then.',
 };
 
 export const APPLY_MODE: Record<string, ApplyMode> = {
@@ -170,6 +177,14 @@ export const APPLY_MODE: Record<string, ApplyMode> = {
   webhook_bearer_token: 'live',
   gdpr_mode: 'live',
   log_retention_days: 'daily',
+  log_forward_enabled: 'forward',
+  log_forward_host: 'forward',
+  log_forward_port: 'forward',
+  log_forward_protocol: 'forward',
+  log_forward_format: 'forward',
+  log_forward_events: 'forward',
+  log_forward_audit: 'forward',
+  log_forward_hostname: 'forward',
   cache_size: 'reload',
   memory_cache: 'reload',
   extra_ssl_ports: 'reload',
@@ -224,6 +239,14 @@ export const FIELD_LABELS: Record<string, string> = {
   teams_webhook_url: 'Teams webhook URL',
   gdpr_mode: 'Mask client IPs',
   log_retention_days: 'Keep logs for (days)',
+  log_forward_enabled: 'Forward logs',
+  log_forward_host: 'Host',
+  log_forward_port: 'Port',
+  log_forward_protocol: 'Protocol',
+  log_forward_format: 'Format',
+  log_forward_events: 'Requests to send',
+  log_forward_audit: 'Admin audit events',
+  log_forward_hostname: 'Host name in each event',
   proxy_port: 'Proxy port',
   cache_size: 'Disk cache (MB)',
   memory_cache: 'Memory cache (MB)',
