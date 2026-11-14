@@ -164,7 +164,12 @@ jobs:
           # while 1.26.10 was out).
           check-latest: true
           cache-dependency-path: backend-go/go.sum
-      - run: go test -v -race -count=1 -coverprofile=coverage.out ./...
+      # The race detector and coverage make internal/handlers the slowest
+      # package: 416 s on a main run and 525 s on a rerun (2026-11-14), and
+      # one slow runner went past go test's default 10-minute limit and
+      # failed the release PR with nothing wrong. 20 minutes keeps a real
+      # hang failing while a slow runner passes.
+      - run: go test -v -race -count=1 -timeout 20m -coverprofile=coverage.out ./...
         working-directory: backend-go
       - name: Check coverage threshold
         working-directory: backend-go
