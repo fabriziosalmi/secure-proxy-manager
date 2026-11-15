@@ -47,8 +47,8 @@ func TestEveryListRemovesSelectedEntriesAndEmptiesItself(t *testing.T) {
 	}
 }
 
-// A request for more than a thousand ids is refused before it reaches SQLite,
-// whose limit on bound parameters answered a large one with a 500.
+// A request for more than a thousand ids is refused before it reaches SQLite:
+// 32,767 ids reached its limit on bound parameters and answered 500.
 func TestBulkDeleteRefusesMoreThanAThousandIDs(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()

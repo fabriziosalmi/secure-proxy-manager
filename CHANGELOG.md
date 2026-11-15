@@ -47,8 +47,8 @@ for at least one minor release before disappearing.
 ### Changed
 
 - `POST /api/{list}/bulk-delete` accepts 1 to 1000 IDs and answers `400`
-  beyond; a large request used to reach SQLite's bound-parameter limit and
-  answer `500`. It answers `data.removed` as the other removals do (`deleted`
+  beyond; 32,767 IDs or more reached SQLite's limit on bound parameters and
+  answered `500`. It answers `data.removed` as the other removals do (`deleted`
   stays), and `DELETE /api/{list}/clear-all` answers `data.removed` too.
 - `GET /api/analytics/top-destinations` says for each host whether the proxy
   enforces its name from the domain blacklist now (`on_blocklist`), the one
