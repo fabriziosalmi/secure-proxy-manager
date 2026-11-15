@@ -13,7 +13,7 @@ self-signed one the `web` service makes.
   (inside the container the backend answers on plain HTTP, so there is no
   certificate to pin).
 - **A release binary**, for Linux, macOS and Windows on amd64 and arm64
-  (Windows amd64 only), attached to each release after 3.38.0 as
+  (Windows amd64 only), attached to each release from 3.39.0 as
   `spm_vX.Y.Z_<os>_<arch>`, with `SHA256SUMS` and its keyless signature. Verify
   them as [SECURITY.md](https://github.com/fabriziosalmi/secure-proxy-manager/blob/main/SECURITY.md#verifying-the-spm-binaries)
   shows, then make the binary executable.

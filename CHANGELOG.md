@@ -15,6 +15,16 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.39.0] - 2026-11-15
+
+`spm`, the API from a terminal: in the backend image and as signed release
+binaries, with commands under the dashboard's names. Nothing is
+**BREAKING** and `X-API-Version` stays 1.
+
+**Upgrade notes.** Nothing to do. `spm` is in the backend image
+(`docker compose exec backend spm`), and this release attaches the binaries
+with `SHA256SUMS` and its signature; verify them as SECURITY.md shows.
+
 ### Added
 
 - **`spm`, the API from a terminal** (`backend-go/cmd/spm`; see the Command
