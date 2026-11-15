@@ -15,6 +15,15 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.37.0] - 2026-11-15
+
+Every write operation in `GET /api/openapi.json` says what it reads, a body
+schema or `x-spm-body: none`, and a test holds each schema to its handler
+both ways, so a client can build its requests from the document. Nothing
+is **BREAKING** and `X-API-Version` stays 1.
+
+**Upgrade notes.** Nothing to do: no schema or configuration change.
+
 ### Added
 
 - **The lists' write operations describe their requests** in
