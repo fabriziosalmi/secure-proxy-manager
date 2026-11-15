@@ -485,15 +485,18 @@ function ListBody({ list, initialSearch = '', total, enforcement, confirm, onCha
             className="w-full sm:max-w-[360px]"
           />
         </div>
-        <SelectionBar
-          count={selected.size}
-          one={list.singular}
-          many={list.plural}
-          actionLabel={(n) => `Remove ${formatCount(n)}`}
-          onAction={() => { void removeSelected(); }}
-          onClear={() => setChecked({ page: '', ids: new Set() })}
-          busy={removing}
-        />
+        {(entries.data?.rows.length ?? 0) > 0 && (
+          <SelectionBar
+            count={selected.size}
+            one={list.singular}
+            many={list.plural}
+            actionLabel={(n) => `Remove ${formatCount(n)}`}
+            onAction={() => { void removeSelected(); }}
+            onClear={() => setChecked({ page: '', ids: new Set() })}
+            busy={removing}
+            hint={`Check ${list.plural} to remove several at once.`}
+          />
+        )}
         <DataTable<ListEntry>
           caption={`${list.label} entries`}
           // With one source or none, the source is the same on every row and

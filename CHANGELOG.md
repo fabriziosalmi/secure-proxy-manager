@@ -54,7 +54,9 @@ for at least one minor release before disappearing.
 ### Changed
 
 - The selection bar of a list sits between its search and the table, in view
-  while the top rows are checked; it was under the pagination.
+  while the top rows are checked; it was under the pagination. It keeps its
+  height before a row is checked, with a hint, so the table does not move
+  under the pointer.
 - The Default-deny allowlist page shows its destinations before the provider
   lists, which took twenty rows to scroll past.
 - The audit log says why a sign-in failed in words ("Wrong username or

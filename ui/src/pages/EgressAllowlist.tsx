@@ -393,15 +393,18 @@ export function EgressAllowlist() {
             className="w-full sm:max-w-[360px]"
           />
         </div>
-        <SelectionBar
-          count={selected.size}
-          one="destination"
-          many="destinations"
-          actionLabel={(n) => `Remove ${formatCount(n)}`}
-          onAction={() => { void removeSelected(); }}
-          onClear={() => setChecked({ page: '', ids: new Set() })}
-          busy={removing}
-        />
+        {(entries.data?.rows.length ?? 0) > 0 && (
+          <SelectionBar
+            count={selected.size}
+            one="destination"
+            many="destinations"
+            actionLabel={(n) => `Remove ${formatCount(n)}`}
+            onAction={() => { void removeSelected(); }}
+            onClear={() => setChecked({ page: '', ids: new Set() })}
+            busy={removing}
+            hint="Check destinations to remove several at once."
+          />
+        )}
         <DataTable<EgressEntry>
           caption="Allowed destinations"
           columns={columns}
