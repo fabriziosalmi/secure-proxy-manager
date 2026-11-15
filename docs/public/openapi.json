@@ -790,7 +790,7 @@
     }
   },
   "info": {
-    "description": "The management API of Secure Proxy Manager. x-spm-token-scope on an operation is the scope an API token needs to call it: read, write, or none when no token may.",
+    "description": "The management API of Secure Proxy Manager. x-spm-token-scope on an operation is the scope an API token needs to call it: read, write, or none when no token may. x-spm-surfaces names where the operation can be reached: api, and ui, cli and mcp when the dashboard, the spm command or the MCP server offer it; x-spm-api-only, when present, is why only the API offers it.",
     "license": {
       "identifier": "MIT",
       "name": "MIT"
@@ -832,6 +832,10 @@
         "tags": [
           "analytics"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "read"
       }
     },
@@ -866,6 +870,10 @@
         "summary": "What the cache did with the client requests of each calendar day, today and the 6 days before (?tz=Europe/Rome, default UTC): requests and bytes sent, by outcome (hit, revalidated, miss, tunnel, refused, other)",
         "tags": [
           "analytics"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       }
@@ -902,6 +910,10 @@
         "tags": [
           "analytics"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "read"
       }
     },
@@ -936,6 +948,10 @@
         "summary": "Client requests of the last 7 days whose URL path ends in a file extension, by extension and group (newest 10,000 URL rows)",
         "tags": [
           "analytics"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       }
@@ -972,6 +988,11 @@
         "tags": [
           "analytics"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui",
+          "mcp"
+        ],
         "x-spm-token-scope": "read"
       }
     },
@@ -1006,6 +1027,10 @@
         "summary": "The 20 hosts the clients asked for most in the last 7 days, internal sources left out: host, requests, blocked",
         "tags": [
           "analytics"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       }
@@ -1042,6 +1067,10 @@
         "tags": [
           "analytics"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "mcp"
+        ],
         "x-spm-token-scope": "read"
       }
     },
@@ -1076,6 +1105,11 @@
         "summary": "Client requests of the last 7 days by HTTP method and by kind of service (from the host)",
         "tags": [
           "analytics"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui",
+          "mcp"
         ],
         "x-spm-token-scope": "read"
       }
@@ -1112,6 +1146,10 @@
         "tags": [
           "audit-log"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "read"
       }
     },
@@ -1127,6 +1165,10 @@
         "summary": "Login: returns access_token and refresh_token; with X-SPM-Session: cookie (the UI) sets the HttpOnly session cookie and returns username and expires_at instead",
         "tags": [
           "auth"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ]
       }
     },
@@ -1142,6 +1184,10 @@
         "summary": "Whether sign-in with the OIDC provider is offered: data.enabled and, when it is, data.label for the button and data.password_login (false when the dashboard refuses the admin password, OIDC_PASSWORD_LOGIN=false)",
         "tags": [
           "auth"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ]
       }
     },
@@ -1157,6 +1203,10 @@
         "summary": "Where the provider sends the browser back: checks state, code, ID token and nonce, lets in a person OIDC_ALLOWED_EMAILS or OIDC_ALLOWED_GROUPS names, sets the session cookie (user oidc:\u003cemail\u003e) and redirects to /; on a failure redirects to /?oidc_error=\u003creason\u003e",
         "tags": [
           "auth"
+        ],
+        "x-spm-api-only": "the identity provider sends the browser back to it",
+        "x-spm-surfaces": [
+          "api"
         ]
       }
     },
@@ -1172,6 +1222,10 @@
         "summary": "Start an OIDC sign-in: redirects to the provider with a fresh state, nonce and PKCE challenge (404 when OIDC is not configured)",
         "tags": [
           "auth"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ]
       }
     },
@@ -1187,6 +1241,9 @@
         "summary": "",
         "tags": [
           "auth"
+        ],
+        "x-spm-surfaces": [
+          "api"
         ]
       }
     },
@@ -1221,6 +1278,10 @@
         "summary": "What enforces each list: the domain limit, the blocked domains the allowed list removes, and the proxy's records of what Squid holds (null when not written)",
         "tags": [
           "blacklists"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       }
@@ -1257,6 +1318,10 @@
         "tags": [
           "blacklists"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -1291,6 +1356,10 @@
         "summary": "Import geo-block by country codes ({countries: ['CN','RU']})",
         "tags": [
           "blacklists"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "write"
       }
@@ -1327,6 +1396,10 @@
         "tags": [
           "cache"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "read"
       }
     },
@@ -1361,6 +1434,10 @@
         "summary": "Change admin password (requires current_password + new_password)",
         "tags": [
           "change-password"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "none"
       }
@@ -1397,6 +1474,10 @@
         "tags": [
           "client-groups"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "read"
       },
       "post": {
@@ -1429,6 +1510,10 @@
         "summary": "Create a client group ({name, description, members, lists, schedule: {days, start, end} or null, allowlist_only})",
         "tags": [
           "client-groups"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "write"
       }
@@ -1475,6 +1560,10 @@
         "tags": [
           "client-groups"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       },
       "get": {
@@ -1517,6 +1606,9 @@
         "summary": "One client group",
         "tags": [
           "client-groups"
+        ],
+        "x-spm-surfaces": [
+          "api"
         ],
         "x-spm-token-scope": "read"
       },
@@ -1561,6 +1653,10 @@
         "tags": [
           "client-groups"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -1583,6 +1679,10 @@
         "summary": "What a device needs to use the proxy (the /setup page): proxy address, whether it asks for a login, inspection mode, CA fingerprint and expiry",
         "tags": [
           "client-setup"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ]
       }
     },
@@ -1598,6 +1698,10 @@
         "summary": "The SSL-bump CA certificate (PEM, .crt), for devices to install; 404 until the proxy has one",
         "tags": [
           "client-setup"
+        ],
+        "x-spm-api-only": "a device fetches it while it is set up",
+        "x-spm-surfaces": [
+          "api"
         ]
       }
     },
@@ -1632,6 +1736,10 @@
         "summary": "Top 50 client IPs by request count, then the internal sources (marked internal)",
         "tags": [
           "clients"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       }
@@ -1677,6 +1785,10 @@
         "summary": "",
         "tags": [
           "clients"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       }
@@ -1731,6 +1843,9 @@
         "tags": [
           "clients"
         ],
+        "x-spm-surfaces": [
+          "api"
+        ],
         "x-spm-token-scope": "read"
       }
     },
@@ -1766,6 +1881,10 @@
         "tags": [
           "config"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "read"
       },
       "post": {
@@ -1798,6 +1917,10 @@
         "summary": "Take a snapshot of the configuration now ({note} optional, one line): id, and created false when the newest snapshot already holds it",
         "tags": [
           "config"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "write"
       }
@@ -1844,6 +1967,10 @@
         "tags": [
           "config"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "read"
       }
     },
@@ -1889,6 +2016,10 @@
         "tags": [
           "config"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -1923,6 +2054,10 @@
         "summary": "Reset all counters (logs + WAF stats)",
         "tags": [
           "counters"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "write"
       }
@@ -1959,6 +2094,11 @@
         "tags": [
           "dashboard"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui",
+          "mcp"
+        ],
         "x-spm-token-scope": "read"
       }
     },
@@ -1993,6 +2133,10 @@
         "summary": "Export all data as JSON",
         "tags": [
           "database"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "none"
       }
@@ -2029,6 +2173,10 @@
         "tags": [
           "database"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -2063,6 +2211,9 @@
         "summary": "Reset database to defaults (destructive!)",
         "tags": [
           "database"
+        ],
+        "x-spm-surfaces": [
+          "api"
         ],
         "x-spm-token-scope": "none"
       }
@@ -2099,6 +2250,10 @@
         "tags": [
           "database"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "read"
       }
     },
@@ -2133,6 +2288,9 @@
         "summary": "Database table row counts",
         "tags": [
           "database"
+        ],
+        "x-spm-surfaces": [
+          "api"
         ],
         "x-spm-token-scope": "read"
       }
@@ -2169,6 +2327,10 @@
         "tags": [
           "dns"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -2203,6 +2365,10 @@
         "summary": "This endpoint: API documentation",
         "tags": [
           "docs"
+        ],
+        "x-spm-api-only": "the API describing itself to its clients",
+        "x-spm-surfaces": [
+          "api"
         ],
         "x-spm-token-scope": "read"
       }
@@ -2245,6 +2411,11 @@
         "summary": "List domain blacklist (?page=1\u0026page_size=50\u0026search=...)",
         "tags": [
           "domain-blacklist"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui",
+          "mcp"
         ],
         "x-spm-token-scope": "read"
       },
@@ -2296,6 +2467,11 @@
         "tags": [
           "domain-blacklist"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui",
+          "mcp"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -2330,6 +2506,9 @@
         "summary": "Bulk delete domains by ID array",
         "tags": [
           "domain-blacklist"
+        ],
+        "x-spm-surfaces": [
+          "api"
         ],
         "x-spm-token-scope": "write"
       }
@@ -2366,6 +2545,10 @@
         "tags": [
           "domain-blacklist"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -2400,6 +2583,10 @@
         "summary": "Download every domain blacklist entry, one per line",
         "tags": [
           "domain-blacklist"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       }
@@ -2436,6 +2623,10 @@
         "tags": [
           "domain-blacklist"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -2470,6 +2661,10 @@
         "summary": "The presets of the domain blacklist (DNS-over-HTTPS resolvers), each with its domains and the ones already listed",
         "tags": [
           "domain-blacklist"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       }
@@ -2516,6 +2711,10 @@
         "tags": [
           "domain-blacklist"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -2550,6 +2749,10 @@
         "summary": "Where the domain blacklist entries came from: one row per source with its entry count and date range; id null for entries whose source was not recorded",
         "tags": [
           "domain-blacklist"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       }
@@ -2596,6 +2799,10 @@
         "tags": [
           "domain-blacklist"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -2640,6 +2847,10 @@
         "summary": "Set whether a domain blacklist source applies to every client ({scope: 'global'}) or only to the client groups that use it ({scope: 'groups'}); a groups-only source is enforced by the proxy, not the DNS sinkhole",
         "tags": [
           "domain-blacklist"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "write"
       }
@@ -2693,6 +2904,11 @@
         "tags": [
           "domain-blacklist"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui",
+          "mcp"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -2734,6 +2950,10 @@
         "summary": "List domain whitelist",
         "tags": [
           "domain-whitelist"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       },
@@ -2785,6 +3005,10 @@
         "tags": [
           "domain-whitelist"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -2819,6 +3043,10 @@
         "summary": "Download every domain whitelist entry, one per line",
         "tags": [
           "domain-whitelist"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       }
@@ -2855,6 +3083,10 @@
         "tags": [
           "domain-whitelist"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -2889,6 +3121,10 @@
         "summary": "The common-services presets of the domain whitelist (GitHub, Docker, ...), each with its domains and the ones already listed",
         "tags": [
           "domain-whitelist"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       }
@@ -2935,6 +3171,10 @@
         "tags": [
           "domain-whitelist"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -2969,6 +3209,10 @@
         "summary": "Where the domain whitelist entries came from: one row per source with its entry count and date range; id null for entries whose source was not recorded",
         "tags": [
           "domain-whitelist"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       }
@@ -3014,6 +3258,10 @@
         "summary": "Remove a source of the domain whitelist ({id} or 'unrecorded'): the entries no other source lists go, the others stay under one of theirs; then re-export the lists",
         "tags": [
           "domain-whitelist"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "write"
       }
@@ -3067,6 +3315,10 @@
         "tags": [
           "domain-whitelist"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -3101,6 +3353,9 @@
         "summary": "Top 50 domains with blocked/allowed status",
         "tags": [
           "domains"
+        ],
+        "x-spm-surfaces": [
+          "api"
         ],
         "x-spm-token-scope": "read"
       }
@@ -3143,6 +3398,10 @@
         "summary": "",
         "tags": [
           "egress-allowlist"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       },
@@ -3194,6 +3453,11 @@
         "tags": [
           "egress-allowlist"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui",
+          "mcp"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -3229,6 +3493,9 @@
         "tags": [
           "egress-allowlist"
         ],
+        "x-spm-surfaces": [
+          "api"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -3263,6 +3530,9 @@
         "summary": "",
         "tags": [
           "egress-allowlist"
+        ],
+        "x-spm-surfaces": [
+          "api"
         ],
         "x-spm-token-scope": "write"
       }
@@ -3309,6 +3579,10 @@
         "tags": [
           "egress-allowlist"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -3344,6 +3618,10 @@
         "tags": [
           "egress-providers"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "read"
       }
     },
@@ -3378,6 +3656,10 @@
         "summary": "Add custom URL egress provider ({url, label})",
         "tags": [
           "egress-providers"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "write"
       }
@@ -3424,6 +3706,10 @@
         "tags": [
           "egress-providers"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -3468,6 +3754,10 @@
         "summary": "Enable or disable egress provider ({enabled, confirm_shared})",
         "tags": [
           "egress-providers"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "write"
       }
@@ -3514,6 +3804,10 @@
         "tags": [
           "egress-providers"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -3559,6 +3853,10 @@
         "tags": [
           "egress-providers"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -3574,6 +3872,10 @@
         "summary": "Health check: returns version, runtime, update/CVE info",
         "tags": [
           "health"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ]
       }
     },
@@ -3609,6 +3911,10 @@
         "tags": [
           "internal"
         ],
+        "x-spm-api-only": "the WAF calls it, nobody else",
+        "x-spm-surfaces": [
+          "api"
+        ],
         "x-spm-token-scope": "none"
       }
     },
@@ -3643,6 +3949,10 @@
         "summary": "Receive the WAF's client signals (stored for the trajectory correlator, never notified)",
         "tags": [
           "internal"
+        ],
+        "x-spm-api-only": "the WAF calls it, nobody else",
+        "x-spm-surfaces": [
+          "api"
         ],
         "x-spm-token-scope": "none"
       }
@@ -3685,6 +3995,10 @@
         "summary": "List IP blacklist (?page=1\u0026page_size=50\u0026search=...)",
         "tags": [
           "ip-blacklist"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       },
@@ -3736,6 +4050,10 @@
         "tags": [
           "ip-blacklist"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -3770,6 +4088,9 @@
         "summary": "Bulk delete IPs by ID array",
         "tags": [
           "ip-blacklist"
+        ],
+        "x-spm-surfaces": [
+          "api"
         ],
         "x-spm-token-scope": "write"
       }
@@ -3806,6 +4127,10 @@
         "tags": [
           "ip-blacklist"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -3840,6 +4165,10 @@
         "summary": "Download every IP blacklist entry, one per line",
         "tags": [
           "ip-blacklist"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       }
@@ -3876,6 +4205,10 @@
         "tags": [
           "ip-blacklist"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -3910,6 +4243,10 @@
         "summary": "Where the IP blacklist entries came from: one row per source with its entry count and date range; id null for entries whose source was not recorded",
         "tags": [
           "ip-blacklist"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       }
@@ -3956,6 +4293,10 @@
         "tags": [
           "ip-blacklist"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -4000,6 +4341,10 @@
         "summary": "Set whether an IP blacklist source applies to every client ({scope: 'global'}) or only to the client groups that use it ({scope: 'groups'})",
         "tags": [
           "ip-blacklist"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "write"
       }
@@ -4053,6 +4398,10 @@
         "tags": [
           "ip-blacklist"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -4094,6 +4443,10 @@
         "summary": "List IP whitelist",
         "tags": [
           "ip-whitelist"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       },
@@ -4145,6 +4498,10 @@
         "tags": [
           "ip-whitelist"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -4179,6 +4536,10 @@
         "summary": "Download every IP whitelist entry, one per line",
         "tags": [
           "ip-whitelist"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       }
@@ -4215,6 +4576,10 @@
         "tags": [
           "ip-whitelist"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -4249,6 +4614,10 @@
         "summary": "Where the IP whitelist entries came from: one row per source with its entry count and date range; id null for entries whose source was not recorded",
         "tags": [
           "ip-whitelist"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       }
@@ -4294,6 +4663,10 @@
         "summary": "Remove a source of the IP whitelist ({id} or 'unrecorded'): the entries no other source lists go, the others stay under one of theirs; then re-export the lists",
         "tags": [
           "ip-whitelist"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "write"
       }
@@ -4347,6 +4720,10 @@
         "tags": [
           "ip-whitelist"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -4382,6 +4759,10 @@
         "tags": [
           "log-forward"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -4416,6 +4797,10 @@
         "summary": "Invalidate current JWT token",
         "tags": [
           "logout"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "none"
       }
@@ -4459,6 +4844,11 @@
         "tags": [
           "logs"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui",
+          "mcp"
+        ],
         "x-spm-token-scope": "read"
       }
     },
@@ -4493,6 +4883,10 @@
         "summary": "Delete all proxy logs",
         "tags": [
           "logs"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "write"
       }
@@ -4529,6 +4923,9 @@
         "tags": [
           "logs"
         ],
+        "x-spm-surfaces": [
+          "api"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -4563,6 +4960,10 @@
         "summary": "The access log rows GET /api/logs selects for the same filters, all of them, as streamed CSV",
         "tags": [
           "logs"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       }
@@ -4606,6 +5007,10 @@
         "tags": [
           "logs"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "read"
       }
     },
@@ -4640,6 +5045,10 @@
         "summary": "Hourly traffic timeline (?hours=24) in the hours of ?tz= (IANA name, default UTC)",
         "tags": [
           "logs"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       }
@@ -4676,6 +5085,10 @@
         "tags": [
           "maintenance"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "none"
       }
     },
@@ -4710,6 +5123,9 @@
         "summary": "Check SSL certificate status and security",
         "tags": [
           "maintenance"
+        ],
+        "x-spm-surfaces": [
+          "api"
         ],
         "x-spm-token-scope": "read"
       }
@@ -4746,6 +5162,10 @@
         "tags": [
           "maintenance"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -4780,6 +5200,11 @@
         "summary": "Regenerate Squid ACL files and signal reload",
         "tags": [
           "maintenance"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui",
+          "mcp"
         ],
         "x-spm-token-scope": "write"
       }
@@ -4816,6 +5241,10 @@
         "tags": [
           "maintenance"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -4850,6 +5279,10 @@
         "summary": "Restore config from JSON backup",
         "tags": [
           "maintenance"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "none"
       }
@@ -4886,6 +5319,10 @@
         "tags": [
           "notifications"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "read"
       }
     },
@@ -4920,6 +5357,10 @@
         "summary": "Send a test alert to every configured channel; data.channels reports each delivery",
         "tags": [
           "notifications"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "write"
       }
@@ -4956,6 +5397,10 @@
         "tags": [
           "openapi.json"
         ],
+        "x-spm-api-only": "the API describing itself to its clients",
+        "x-spm-surfaces": [
+          "api"
+        ],
         "x-spm-token-scope": "read"
       }
     },
@@ -4971,6 +5416,10 @@
         "summary": "",
         "tags": [
           "ready"
+        ],
+        "x-spm-api-only": "a probe for the container runtime or a load balancer, not an action",
+        "x-spm-surfaces": [
+          "api"
         ]
       }
     },
@@ -5005,6 +5454,10 @@
         "summary": "Known CVEs for installed Squid version",
         "tags": [
           "security"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       }
@@ -5041,6 +5494,10 @@
         "tags": [
           "security"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "read"
       }
     },
@@ -5075,6 +5532,9 @@
         "summary": "View current rate limit state per IP",
         "tags": [
           "security"
+        ],
+        "x-spm-surfaces": [
+          "api"
         ],
         "x-spm-token-scope": "read"
       }
@@ -5121,6 +5581,9 @@
         "tags": [
           "security"
         ],
+        "x-spm-surfaces": [
+          "api"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -5156,6 +5619,9 @@
         "tags": [
           "security"
         ],
+        "x-spm-surfaces": [
+          "api"
+        ],
         "x-spm-token-scope": "read"
       }
     },
@@ -5190,6 +5656,10 @@
         "summary": "The signed-in session: username, how it authenticated (cookie, bearer, basic or token) and expires_at (Unix seconds, null for Basic and for a token without expiry); scope (read or write) for an API token",
         "tags": [
           "session"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       }
@@ -5232,6 +5702,10 @@
         "summary": "Get all settings as [{setting_name, setting_value}]",
         "tags": [
           "settings"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       },
@@ -5282,6 +5756,10 @@
         "summary": "Bulk update settings ({key: value, ...}); 400 lists every refused value in errors {key: message}",
         "tags": [
           "settings"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "write"
       }
@@ -5345,6 +5823,9 @@
         "tags": [
           "settings"
         ],
+        "x-spm-surfaces": [
+          "api"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -5379,6 +5860,11 @@
         "summary": "System status overview",
         "tags": [
           "status"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui",
+          "mcp"
         ],
         "x-spm-token-scope": "read"
       }
@@ -5415,6 +5901,10 @@
         "tags": [
           "tokens"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "none"
       },
       "post": {
@@ -5447,6 +5937,10 @@
         "summary": "Create an API token {name, scope: read|write, expires_in_days? (1 to 3650, default 90), no_expiry?}; data.token is its value, shown this once (send it as Authorization: Bearer). A read token may GET and HEAD; neither scope reaches the token, password, session, database export and reset, backup and restore, internal and profiling routes. Not reachable with a token",
         "tags": [
           "tokens"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "none"
       }
@@ -5493,6 +5987,10 @@
         "tags": [
           "tokens"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "none"
       }
     },
@@ -5527,6 +6025,9 @@
         "summary": "Traffic statistics by time period",
         "tags": [
           "traffic"
+        ],
+        "x-spm-surfaces": [
+          "api"
         ],
         "x-spm-token-scope": "read"
       }
@@ -5563,6 +6064,11 @@
         "tags": [
           "waf"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui",
+          "mcp"
+        ],
         "x-spm-token-scope": "read"
       }
     },
@@ -5597,6 +6103,10 @@
         "summary": "",
         "tags": [
           "waf"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "mcp"
         ],
         "x-spm-token-scope": "write"
       }
@@ -5643,6 +6153,10 @@
         "tags": [
           "waf"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "read"
       }
     },
@@ -5677,6 +6191,10 @@
         "summary": "The WAF heuristics the running WAF applies (data.available, data.running)",
         "tags": [
           "waf"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       }
@@ -5713,6 +6231,10 @@
         "tags": [
           "waf"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "read"
       },
       "put": {
@@ -5745,6 +6267,10 @@
         "summary": "Replace the WAF policy file with {policy, sha256}: sha256 is the digest GET returned (\"\" when there was no file), and a file changed since is refused with 409; validated and reloaded like an exception",
         "tags": [
           "waf"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "write"
       }
@@ -5781,6 +6307,10 @@
         "tags": [
           "waf"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -5815,6 +6345,10 @@
         "summary": "Leave one rule {rule} to log only in the WAF policy file, validated and reloaded like an exception; data.added is false when it is already there",
         "tags": [
           "waf"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "write"
       }
@@ -5851,6 +6385,10 @@
         "tags": [
           "waf"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "read"
       }
     },
@@ -5885,6 +6423,10 @@
         "summary": "What the WAF runs: status (ok, unreachable, auth_failed or error), rule and category counts with those only logged (categories_observed, rules_observed), and running from its /health: engine, threshold, regex_engine, regex_shadow, heuristics, policy_mode (block or observe), policy_exceptions, policy_reload_failed, policy_observe_rules (rules the policy makes log-only); null when /health did not answer",
         "tags": [
           "waf"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       }
@@ -5921,6 +6463,10 @@
         "tags": [
           "waf"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "write"
       }
     },
@@ -5955,6 +6501,10 @@
         "summary": "Trajectories the correlator read from the WAF's client signals, latest first (?days=1..90, default 7)",
         "tags": [
           "waf"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       }
@@ -6001,6 +6551,10 @@
         "tags": [
           "waf"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "read"
       }
     },
@@ -6036,6 +6590,10 @@
         "tags": [
           "ws-token"
         ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
         "x-spm-token-scope": "read"
       }
     },
@@ -6051,6 +6609,10 @@
         "summary": "WebSocket: real-time log stream (offer the subprotocols spm.v1 and spm-ws-token.\u003ctoken\u003e, token from /api/ws-token; the server selects spm.v1)",
         "tags": [
           "ws"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
         ]
       }
     },
@@ -6066,6 +6628,10 @@
         "summary": "Legacy health check (simple)",
         "tags": [
           "health"
+        ],
+        "x-spm-api-only": "a probe for the container runtime or a load balancer, not an action",
+        "x-spm-surfaces": [
+          "api"
         ]
       }
     },
@@ -6081,6 +6647,10 @@
         "summary": "",
         "tags": [
           "livez"
+        ],
+        "x-spm-api-only": "a probe for the container runtime or a load balancer, not an action",
+        "x-spm-surfaces": [
+          "api"
         ]
       }
     },
@@ -6096,6 +6666,10 @@
         "summary": "",
         "tags": [
           "metrics"
+        ],
+        "x-spm-api-only": "Prometheus scrapes it",
+        "x-spm-surfaces": [
+          "api"
         ]
       }
     },
@@ -6111,6 +6685,10 @@
         "summary": "",
         "tags": [
           "readyz"
+        ],
+        "x-spm-api-only": "a probe for the container runtime or a load balancer, not an action",
+        "x-spm-surfaces": [
+          "api"
         ]
       }
     }

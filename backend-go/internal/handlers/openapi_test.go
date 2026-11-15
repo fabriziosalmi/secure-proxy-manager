@@ -271,16 +271,22 @@ func TestOpenAPIIsServedBehindAuthentication(t *testing.T) {
 // publishedOpenAPI is the copy the documentation site serves.
 const publishedOpenAPI = "../../../docs/public/openapi.json"
 
+// publishedRouter is the full handler router plus the two routes cmd/server
+// mounts itself, as the published document describes it.
+func publishedRouter(t *testing.T) chi.Router {
+	r := buildFullRouter(t)
+	stub := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
+	r.Get("/api/ws/logs", stub)
+	r.Get("/metrics", stub)
+	return r
+}
+
 // The published copy is the document of the handler routes plus the two
 // routes cmd/server mounts itself (mountWebSocket, /metrics); the runtime
 // profiles (/debug/pprof) are left to the live document. UPDATE_OPENAPI=1
 // writes it.
 func TestThePublishedOpenAPIIsCurrent(t *testing.T) {
-	r := buildFullRouter(t)
-	stub := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
-	r.Get("/api/ws/logs", stub)
-	r.Get("/metrics", stub)
-	b, err := json.MarshalIndent(OpenAPIDocument(r), "", "  ")
+	b, err := json.MarshalIndent(OpenAPIDocument(publishedRouter(t)), "", "  ")
 	if err != nil {
 		t.Fatal(err)
 	}
