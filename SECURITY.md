@@ -108,11 +108,11 @@ any other workflow or on any other ref does not match:
 cosign verify \
   --certificate-identity-regexp '^https://github\.com/fabriziosalmi/secure-proxy-manager/\.github/workflows/multi-arch\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:v3.38.0
+  ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:v3.39.0
 
 # The SBOM and provenance are BuildKit attestations (not cosign artefacts):
-docker buildx imagetools inspect ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:v3.38.0 --format '{{ json .SBOM }}'
-docker buildx imagetools inspect ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:v3.38.0 --format '{{ json .Provenance }}'
+docker buildx imagetools inspect ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:v3.39.0 --format '{{ json .SBOM }}'
+docker buildx imagetools inspect ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:v3.39.0 --format '{{ json .Provenance }}'
 ```
 
 This needs cosign 3 or later; `deploy/install.sh` skips the check with a
@@ -122,7 +122,7 @@ fails.
 
 ### Verifying the spm binaries
 
-Releases after 3.38.0 attach the `spm` command for Linux, macOS and Windows,
+From 3.39.0, each release attaches the `spm` command for Linux, macOS and Windows,
 with `SHA256SUMS` and its keyless signature `SHA256SUMS.sigstore.json`, made by
 the same workflow identity as the images. Check the signature of the checksums,
 then the binary against them:
@@ -151,5 +151,5 @@ Component advisories and how SPM mitigates them, such as the Squid
 
 | Version | Status |
 |---------|--------|
-| 3.38.x | Current: security fixes are released here |
-| < 3.38 | Not supported: upgrade to the latest 3.38.x |
+| 3.39.x | Current: security fixes are released here |
+| < 3.39 | Not supported: upgrade to the latest 3.39.x |
