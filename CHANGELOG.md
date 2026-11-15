@@ -26,12 +26,20 @@ for at least one minor release before disappearing.
   (`url`, `label`), enabling a provider (`enabled`, and `confirm_shared` for a
   shared network), and the removal, refresh and apply-held, which read no
   body.
+- **The WAF policy, configuration history and client group writes describe
+  their requests.** The WAF policy and client group schemas are closed, as
+  their handlers refuse a field they do not know; the categories toggle,
+  which the WAF validates, is held to its schema by a test in the WAF.
 
 ### Changed
 
-- Request schemas no longer say `additionalProperties: false`: the handlers
-  ignore a field they do not know, and the schema said such a request was
-  refused.
+- Request schemas no longer say `additionalProperties: false` where the
+  handler ignores a field it does not know (the lists, and
+  `PUT /api/settings/{name}`): the schema said such a request was refused.
+- `POST /api/waf/policy/exceptions` refuses an exception without a rule, or
+  without a host, a path or a target, itself, with the `422` the WAF answers
+  for it. It sent one on to the WAF, and answered `503` while the WAF was
+  down.
 - `POST /api/ip-blacklist/import` and `POST /api/domain-blacklist/import`,
   retired with `410`, are marked api-only; the dashboard never called them.
 

@@ -28,8 +28,11 @@ A write operation either carries a request body schema or says
 `x-spm-body: none`, so a client can tell "takes nothing" from "not described";
 the request schemas are tested against the handlers both ways (a body valid
 by its schema is not refused as malformed, and one without a required field
-is). The writes of the lists and the egress provider lists are described
-so far; the others follow.
+is), and a field the schema does not know is refused exactly when the
+schema is closed (`additionalProperties: false`, where the handler decodes
+strictly). The writes of the lists, the egress provider lists, the WAF policy,
+the configuration history and the client groups are described so far; the
+others follow.
 
 `x-spm-surfaces` names where each operation can be reached: always `api`,
 and `ui`, `cli` and `mcp` when the dashboard, the `spm` command or the MCP

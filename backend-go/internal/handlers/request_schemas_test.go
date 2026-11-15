@@ -17,34 +17,24 @@ import (
 // yet. It may only shrink: an operation described since must leave it, and a
 // new write operation must be described, not added here.
 var requestPending = map[string]bool{
-	"POST /api/auth/login":                    true,
-	"POST /api/change-password":               true,
-	"POST /api/client-groups":                 true,
-	"DELETE /api/client-groups/{id}":          true,
-	"PUT /api/client-groups/{id}":             true,
-	"POST /api/config/snapshots":              true,
-	"POST /api/config/snapshots/{id}/restore": true,
-	"POST /api/counters/reset":                true,
-	"POST /api/database/optimize":             true,
-	"POST /api/database/reset":                true,
-	"POST /api/dns/detect":                    true,
-	"POST /api/log-forward/test":              true,
-	"POST /api/logout":                        true,
-	"POST /api/logs/clear":                    true,
-	"POST /api/logs/clear-old":                true,
-	"POST /api/maintenance/clear-cache":       true,
-	"POST /api/maintenance/reload-config":     true,
-	"POST /api/maintenance/reload-dns":        true,
-	"POST /api/maintenance/restore-config":    true,
-	"POST /api/notifications/test":            true,
-	"DELETE /api/security/rate-limits/{ip}":   true,
-	"POST /api/tokens":                        true,
-	"DELETE /api/tokens/{id}":                 true,
-	"POST /api/waf/categories/toggle":         true,
-	"PUT /api/waf/policy":                     true,
-	"POST /api/waf/policy/exceptions":         true,
-	"POST /api/waf/policy/observe-rules":      true,
-	"POST /api/waf/test-rule":                 true,
+	"POST /api/auth/login":                  true,
+	"POST /api/change-password":             true,
+	"POST /api/counters/reset":              true,
+	"POST /api/database/optimize":           true,
+	"POST /api/database/reset":              true,
+	"POST /api/dns/detect":                  true,
+	"POST /api/log-forward/test":            true,
+	"POST /api/logout":                      true,
+	"POST /api/logs/clear":                  true,
+	"POST /api/logs/clear-old":              true,
+	"POST /api/maintenance/clear-cache":     true,
+	"POST /api/maintenance/reload-config":   true,
+	"POST /api/maintenance/reload-dns":      true,
+	"POST /api/maintenance/restore-config":  true,
+	"POST /api/notifications/test":          true,
+	"DELETE /api/security/rate-limits/{ip}": true,
+	"POST /api/tokens":                      true,
+	"DELETE /api/tokens/{id}":               true,
 }
 
 // writeOperations is every operation of the published document that is not a
@@ -102,6 +92,29 @@ type requestCase struct {
 	setup func(t *testing.T, r http.Handler, feed *fakeProviderFeedServer)
 }
 
+// aGroup makes client group 1.
+func aGroup(t *testing.T, r http.Handler, _ *fakeProviderFeedServer) {
+	t.Helper()
+	if code, out := call(t, r, "POST", "/api/client-groups", `{"name":"g1","members":["10.0.1.0/24"]}`); code != http.StatusOK {
+		t.Fatalf("make group 1: %d %v", code, out)
+	}
+}
+
+// aSnapshot takes configuration snapshot 1.
+func aSnapshot(t *testing.T, r http.Handler, _ *fakeProviderFeedServer) {
+	t.Helper()
+	if code, out := call(t, r, "POST", "/api/config/snapshots", `{}`); code != http.StatusOK {
+		t.Fatalf("take snapshot 1: %d %v", code, out)
+	}
+}
+
+// checkedElsewhere names the operations whose request is validated by
+// another service: the backend passes the body on, so only that service can
+// say a field is missing. Each names the test that holds it to its schema.
+var checkedElsewhere = map[string]string{
+	"POST /api/waf/categories/toggle": "the WAF reads it: waf-go TestTheToggleRequestMatchesThePublishedSchema",
+}
+
 // heldUpdate leaves the facebook provider with a held update: enabled at
 // 1000 addresses, then a feed that grew by more than 25%.
 func heldUpdate(t *testing.T, r http.Handler, feed *fakeProviderFeedServer) {
@@ -120,6 +133,13 @@ func heldUpdate(t *testing.T, r http.Handler, feed *fakeProviderFeedServer) {
 	if code, out := call(t, r, "POST", "/api/egress-providers/facebook/refresh", ""); code != http.StatusOK {
 		t.Fatalf("refresh facebook: %d %v", code, out)
 	}
+}
+
+// refused is whether a status says the request itself was refused: 400 for
+// a malformed one, 422 for one the WAF (or the backend in its place) cannot
+// take.
+func refused(code int) bool {
+	return code == http.StatusBadRequest || code == http.StatusUnprocessableEntity
 }
 
 func seedSourceID(t *testing.T, db *sql.DB, list string) string {
@@ -174,6 +194,17 @@ var requestCases = map[string]requestCase{
 	"PUT /api/egress-providers/{name}":             {path: "/api/egress-providers/telegram", body: `{"enabled":true}`},
 	"POST /api/egress-providers/{name}/refresh":    {path: "/api/egress-providers/telegram/refresh"},
 	"POST /api/egress-providers/{name}/apply-held": {path: "/api/egress-providers/facebook/apply-held", setup: heldUpdate},
+
+	"PUT /api/waf/policy":                     {path: "/api/waf/policy", body: `{"policy":{"version":1,"mode":"observe"},"sha256":""}`},
+	"POST /api/waf/policy/exceptions":         {path: "/api/waf/policy/exceptions", body: `{"rule":"942100","host":"app.example.com","comment":"x"}`},
+	"POST /api/waf/policy/observe-rules":      {path: "/api/waf/policy/observe-rules", body: `{"rule":"942100"}`},
+	"POST /api/waf/categories/toggle":         {path: "/api/waf/categories/toggle", body: `{"category":"SQLI","enabled":false}`},
+	"POST /api/waf/test-rule":                 {path: "/api/waf/test-rule", body: `{"regex":"example","hours":24}`},
+	"POST /api/config/snapshots":              {path: "/api/config/snapshots", body: `{"note":"before the move"}`},
+	"POST /api/config/snapshots/{id}/restore": {path: "/api/config/snapshots/1/restore", setup: aSnapshot},
+	"POST /api/client-groups":                 {path: "/api/client-groups", body: `{"name":"office","members":["10.0.0.0/24"],"schedule":{"days":"MTWHF","start":"08:00","end":"18:00"}}`},
+	"PUT /api/client-groups/{id}":             {path: "/api/client-groups/1", body: `{"name":"office2","members":["10.0.0.0/24"],"schedule":null}`, setup: aGroup},
+	"DELETE /api/client-groups/{id}":          {path: "/api/client-groups/1", setup: aGroup},
 }
 
 // The request schemas say what the handlers accept, both ways: a body valid by
@@ -269,12 +300,38 @@ func TestRequestSchemasAgreeWithTheHandlers(t *testing.T) {
 			if err := sch.Validate(inst); err != nil {
 				t.Fatalf("the case body does not match %s: %v", name, err)
 			}
-			if code, out := call(t, c, method, c.path, c.body); code == http.StatusBadRequest {
-				t.Errorf("a body valid by %s is refused as malformed: %s", name, out)
+			if code, out := call(t, c, method, c.path, c.body); refused(code) {
+				t.Errorf("a body valid by %s is refused (%d): %s", name, code, out)
+			}
+			if why, ok := checkedElsewhere[key]; ok {
+				t.Logf("required fields not checked here: %s", why)
+				return
+			}
+			if rb := op["requestBody"].(map[string]any); rb["required"] == false {
+				if code, out := call(t, c, method, c.path, ""); code == http.StatusBadRequest {
+					t.Errorf("its body is optional, and sent none it answers 400: %s", out)
+				}
 			}
 			var body map[string]any
 			_ = json.Unmarshal([]byte(c.body), &body)
 			component, _ := openAPISchemas[name].(map[string]any)
+			// A field the schema does not know: refused (400) exactly when the
+			// schema is closed, so "additionalProperties" is as true as "required".
+			withExtra := map[string]any{"zz_not_a_field": 1}
+			for k, v := range body {
+				withExtra[k] = v
+			}
+			b, _ := json.Marshal(withExtra)
+			// A map (additionalProperties is a schema, as for the settings) takes
+			// keys by their own rules; the check is for objects with fields.
+			if _, isMap := component["additionalProperties"].(map[string]any); !isMap {
+				closed := component["additionalProperties"] == false
+				if code, out := call(t, c, method, c.path, string(b)); closed && !refused(code) {
+					t.Errorf("%s is closed, and a field it does not know is answered %d, want it refused: %s", name, code, out)
+				} else if !closed && refused(code) {
+					t.Errorf("%s is open, and a field it does not know is refused (%d): %s", name, code, out)
+				}
+			}
 			required, _ := component["required"].([]string)
 			for _, field := range required {
 				without := map[string]any{}
@@ -284,8 +341,8 @@ func TestRequestSchemasAgreeWithTheHandlers(t *testing.T) {
 					}
 				}
 				b, _ := json.Marshal(without)
-				if code, out := call(t, c, method, c.path, string(b)); code != http.StatusBadRequest {
-					t.Errorf("without %s, which %s requires, it answers %d, want 400: %s", field, name, code, out)
+				if code, out := call(t, c, method, c.path, string(b)); !refused(code) {
+					t.Errorf("without %s, which %s requires, it answers %d, want it refused (400 or 422): %s", field, name, code, out)
 				}
 			}
 			if anyOf, ok := component["anyOf"].([]any); ok {
@@ -302,8 +359,8 @@ func TestRequestSchemasAgreeWithTheHandlers(t *testing.T) {
 					}
 				}
 				b, _ := json.Marshal(without)
-				if code, out := call(t, c, method, c.path, string(b)); code != http.StatusBadRequest {
-					t.Errorf("with none of the fields %s needs one of, it answers %d, want 400: %s", name, code, out)
+				if code, out := call(t, c, method, c.path, string(b)); !refused(code) {
+					t.Errorf("with none of the fields %s needs one of, it answers %d, want it refused (400 or 422): %s", name, code, out)
 				}
 			}
 		})
