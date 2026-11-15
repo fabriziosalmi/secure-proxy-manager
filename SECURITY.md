@@ -30,7 +30,8 @@ No container mounts the Docker socket. `./data` (the database, `.jwt_secret`,
 - WebSocket: a single-use token offered as a subprotocol, and an `Origin`
   check against `CORS_ALLOWED_ORIGINS` and the page's own host.
 - HTTPS for the UI by default: a self-signed certificate valid for 365 days,
-  or one mounted at `/etc/nginx/ssl/`.
+  kept across restarts in the `web-tls` volume, or one mounted at
+  `/etc/nginx/ssl/`.
 
 ### Encryption
 

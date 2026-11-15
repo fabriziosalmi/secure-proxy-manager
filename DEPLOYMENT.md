@@ -195,7 +195,8 @@ There are two TLS surfaces.
 
 1. **The UI.** `web` serves HTTPS on 8443 (and 443) with a certificate mounted
    at `/etc/nginx/ssl/server.crt` and `/etc/nginx/ssl/server.key`, or with a
-   self-signed one it generates at start, valid for 365 days. The image has no
+   self-signed one it generates once and keeps in the `web-tls` volume, valid
+   for 365 days and made again within 30 days of its end. The image has no
    certbot, so `LETSENCRYPT_DOMAIN` alone does not produce a certificate.
    Alternatively terminate TLS on a reverse proxy in front (see
    [Security](docs/guide/security.md#https-for-the-web-ui)).
