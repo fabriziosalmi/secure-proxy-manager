@@ -15,6 +15,14 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Changed
+
+- The `Error` schema of `GET /api/openapi.json` lists every field an error
+  answer carries (`code`, `errors`, `data`, `waf_status`, and `message`,
+  deprecated, which repeats `detail` on a reload trigger failure) and is
+  closed. The request agreement test checks every error answer its cases
+  provoke against it (51 today).
+
 ## [3.39.0] - 2026-11-15
 
 `spm`, the API from a terminal: in the backend image and as signed release

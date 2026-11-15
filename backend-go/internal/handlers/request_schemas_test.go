@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -235,6 +236,13 @@ var requestCases = map[string]requestCase{
 func TestRequestSchemasAgreeWithTheHandlers(t *testing.T) {
 	ops := writeOperations(t)
 	comp := compileComponents(t, OpenAPIDocument(publishedRouter(t)))
+	errSchema, err := comp("Error")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Every 4xx and 5xx the cases provoke is checked against Error, so a
+	// client (the command, the MCP server) can read any refusal one way.
+	var errorsChecked atomic.Int32
 
 	var keys []string
 	for key, op := range ops {
@@ -304,6 +312,15 @@ func TestRequestSchemasAgreeWithTheHandlers(t *testing.T) {
 		}
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)
+		if w.Code >= 400 {
+			errorsChecked.Add(1)
+			inst, err := jsonschema.UnmarshalJSON(bytes.NewReader(w.Body.Bytes()))
+			if err != nil {
+				t.Errorf("%s %s answered %d with a body that is not JSON: %q", method, path, w.Code, w.Body.String())
+			} else if err := errSchema.Validate(inst); err != nil {
+				t.Errorf("%s %s answered %d with a body that is not an Error: %v\n%s", method, path, w.Code, err, w.Body.String())
+			}
+		}
 		return w.Code, w.Body.String()
 	}
 
@@ -399,5 +416,10 @@ func TestRequestSchemasAgreeWithTheHandlers(t *testing.T) {
 				}
 			}
 		})
+	}
+	if n := errorsChecked.Load(); n < 50 {
+		t.Errorf("only %d error answers were checked against Error: the cases provoke too few", n)
+	} else {
+		t.Logf("%d error answers checked against Error", n)
 	}
 }
