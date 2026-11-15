@@ -16,12 +16,16 @@
  *   through formatCount;
  * - an optional selected row (isRowSelected), drawn in the accent tint, for
  *   a list whose selection is shown next to it. The control that selects a
- *   row lives in a cell and says its state itself (aria-pressed).
+ *   row lives in a cell and says its state itself (aria-pressed);
+ * - optional checkboxes (selection) for acting on several rows of the page at
+ *   once: one per row, named after it, and one in the header for every row on
+ *   the page, mixed when some are checked. Rows that are checked take the
+ *   accent tint too.
  *
  * Numbers go in right-aligned columns (align: 'right'), drawn in tabular
  * figures so they line up.
  */
-import { useId, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { formatRange } from '../../lib/format';
@@ -68,6 +72,35 @@ export interface TablePagination {
   nextLabel?: string;
 }
 
+export interface TableSelection<T> {
+  /** The keys (rowKey) of the rows checked. */
+  selected: ReadonlySet<string>;
+  onChange: (next: Set<string>) => void;
+  /** What a row's checkbox is called: "Select 203.0.113.7". */
+  rowLabel: (row: T) => string;
+  /** What the header checkbox is called. */
+  pageLabel: string;
+}
+
+const CHECKBOX = 'h-4 w-4 cursor-pointer accent-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent';
+
+function PageCheckbox({ state, label, onChange }: { state: 'all' | 'some' | 'none'; label: string; onChange: (all: boolean) => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = state === 'some';
+  }, [state]);
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      aria-label={label}
+      checked={state === 'all'}
+      onChange={(e) => onChange(e.target.checked)}
+      className={CHECKBOX}
+    />
+  );
+}
+
 export interface DataTableProps<T> {
   caption: string;
   /** Show the caption above the table instead of keeping it for screen readers. */
@@ -89,6 +122,8 @@ export interface DataTableProps<T> {
   pagination?: TablePagination;
   /** The row shown as selected, if any. */
   isRowSelected?: (row: T) => boolean;
+  /** Checkboxes to act on several rows at once. */
+  selection?: TableSelection<T>;
   className?: string;
 }
 
@@ -109,10 +144,32 @@ export function DataTable<T>({
   empty,
   pagination,
   isRowSelected,
+  selection,
   className,
 }: DataTableProps<T>) {
   const captionId = useId();
-  const cellPad = (i: number) => (i === 0 ? 'pl-5 pr-3' : i === columns.length - 1 ? 'pl-3 pr-5' : 'px-3');
+  // The checkbox column is the first cell and takes the left padding.
+  const cellPad = (i: number) => (i === 0 && !selection ? 'pl-5 pr-3' : i === columns.length - 1 ? 'pl-3 pr-5' : 'px-3');
+  const span = columns.length + (selection ? 1 : 0);
+  const pageKeys = rows.map(rowKey);
+  const checkedOnPage = selection ? pageKeys.filter((k) => selection.selected.has(k)).length : 0;
+  const pageState: 'all' | 'some' | 'none' = checkedOnPage === 0 ? 'none' : checkedOnPage === pageKeys.length ? 'all' : 'some';
+  const setPage = (all: boolean) => {
+    if (!selection) return;
+    const next = new Set(selection.selected);
+    for (const k of pageKeys) {
+      if (all) next.add(k);
+      else next.delete(k);
+    }
+    selection.onChange(next);
+  };
+  const toggleRow = (key: string, on: boolean) => {
+    if (!selection) return;
+    const next = new Set(selection.selected);
+    if (on) next.add(key);
+    else next.delete(key);
+    selection.onChange(next);
+  };
 
   const toggleSort = (col: Column<T>) => {
     if (!onSortChange) return;
@@ -127,6 +184,7 @@ export function DataTable<T>({
   if (loading) {
     body = Array.from({ length: skeletonRows }, (_, r) => (
       <tr key={`skeleton-${r}`} aria-hidden="true" className="border-t border-line-subtle">
+        {selection && <td className="w-10 py-3 pl-5 pr-1" />}
         {columns.map((c, i) => (
           <td key={c.id} className={cn('py-3', cellPad(i), c.hideOnPhone && PHONE_HIDDEN)}>
             <span className={cn('block h-3.5 rounded bg-line-subtle animate-pulse', c.align === 'right' ? 'ml-auto w-12' : 'w-3/4')} />
@@ -137,7 +195,7 @@ export function DataTable<T>({
   } else if (error) {
     body = (
       <tr className="border-t border-line-subtle">
-        <td colSpan={columns.length} className="px-5 py-8">
+        <td colSpan={span} className="px-5 py-8">
           <div role="alert" className="flex flex-col items-center gap-2 text-center">
             <p className="text-sm font-semibold text-danger">Could not load {caption.toLowerCase()}</p>
             <p className="max-w-md text-sm text-ink-muted">{error}</p>
@@ -149,20 +207,27 @@ export function DataTable<T>({
   } else if (rows.length === 0) {
     body = (
       <tr className="border-t border-line-subtle">
-        <td colSpan={columns.length}>
+        <td colSpan={span}>
           <EmptyState title={empty.title} description={empty.description} action={empty.action} />
         </td>
       </tr>
     );
   } else {
     body = rows.map((row) => {
-      const selected = isRowSelected?.(row) ?? false;
+      const key = rowKey(row);
+      const checked = selection?.selected.has(key) ?? false;
+      const selected = (isRowSelected?.(row) ?? false) || checked;
       return (
         <tr
-          key={rowKey(row)}
+          key={key}
           data-selected={selected || undefined}
           className={cn('border-t border-line-subtle transition-colors', selected ? 'bg-accent-subtle' : 'hover:bg-surface-muted')}
         >
+          {selection && (
+            <td className="w-10 py-2.5 pl-5 pr-1 align-middle">
+              <input type="checkbox" aria-label={selection.rowLabel(row)} checked={checked} onChange={(e) => toggleRow(key, e.target.checked)} className={CHECKBOX} />
+            </td>
+          )}
           {columns.map((c, i) => (
             <td key={c.id} className={cn('py-2.5 align-middle', cellPad(i), c.align === 'right' && 'text-right tabular-nums', c.className, c.hideOnPhone && PHONE_HIDDEN)}>
               {c.cell(row)}
@@ -200,6 +265,11 @@ export function DataTable<T>({
           </caption>
           <thead>
             <tr className="text-left text-xs text-ink-muted">
+              {selection && (
+                <th scope="col" className={cn('w-10 bg-surface-muted py-2.5 pl-5 pr-1', stickyHeader && 'sticky top-0 z-10')}>
+                  {rows.length > 0 && !loading && !error && <PageCheckbox state={pageState} label={selection.pageLabel} onChange={setPage} />}
+                </th>
+              )}
               {columns.map((c, i) => {
                 const active = sort?.columnId === c.id;
                 const Icon = active ? (sort.direction === 'ascending' ? ArrowUp : ArrowDown) : ArrowUpDown;

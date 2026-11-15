@@ -30,6 +30,7 @@ import type { Enforcement, ListEntry, ListSource } from '../types';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Section } from '../components/ui/Section';
 import { DataTable, type Column } from '../components/ui/DataTable';
+import { SelectionBar } from '../components/ui/SelectionBar';
 import { SearchInput } from '../components/ui/SearchInput';
 import { Button, IconButton } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -44,6 +45,7 @@ import {
 } from '../components/blacklists/lists';
 
 const PAGE_SIZE = 50;
+const NO_ROWS: ReadonlySet<string> = new Set();
 
 const entriesWord = (n: number) => `${formatCount(n)} ${n === 1 ? 'entry' : 'entries'}`;
 
@@ -255,6 +257,13 @@ function ListBody({ list, initialSearch = '', total, enforcement, confirm, onCha
     setOffset(0);
   };
 
+  // The checks belong to the page on screen: another page or search starts
+  // with none, so "Remove 3" never removes a row the reader cannot see.
+  const pageKey = `${list.path}|${offset}|${query}`;
+  const [checked, setChecked] = useState<{ page: string; ids: Set<string> }>({ page: '', ids: new Set() });
+  const selected = checked.page === pageKey ? checked.ids : NO_ROWS;
+  const [removing, setRemoving] = useState(false);
+
   const entries = useQuery<EntryPage>({
     queryKey: ['lists', list.path, 'entries', offset, query],
     queryFn: () =>
@@ -341,6 +350,30 @@ function ListBody({ list, initialSearch = '', total, enforcement, confirm, onCha
     }
   };
 
+  const removeSelected = async () => {
+    const n = selected.size;
+    if (n === 0) return;
+    const ok = await confirm({
+      title: `Remove ${formatCount(n)} ${n === 1 ? list.singular : list.plural}?`,
+      body: `${n === 1 ? 'It leaves' : 'They leave'} ${list.label}. ${list.consequence(n === 1 ? 'it' : 'them')}`,
+      confirmLabel: `Remove ${formatCount(n)}`,
+      destructive: true,
+    });
+    if (!ok) return;
+    setRemoving(true);
+    try {
+      const r = await api.post(`${list.path}/bulk-delete`, { ids: [...selected].map(Number) });
+      const removed: number = r.data?.data?.removed ?? 0;
+      toast.success(`Removed ${formatCount(removed)} ${removed === 1 ? list.singular : list.plural} from ${list.label}`);
+      setChecked({ page: '', ids: new Set() });
+    } catch (err) {
+      toast.error(getErrorMessage(err, `Could not remove the selected ${list.plural}`));
+    } finally {
+      setRemoving(false);
+      onChanged();
+    }
+  };
+
   const removeAll = async () => {
     if (typeof total !== 'number') return;
     const ok = await confirm({
@@ -351,8 +384,9 @@ function ListBody({ list, initialSearch = '', total, enforcement, confirm, onCha
     });
     if (!ok) return;
     try {
-      await api.delete(`${list.path}/clear-all`);
-      toast.success(`Removed every entry from ${list.label}`);
+      const r = await api.delete(`${list.path}/clear-all`);
+      const removed = r.data?.data?.removed;
+      toast.success(typeof removed === 'number' ? `Removed all ${formatCount(removed)} ${list.plural}` : `Removed every entry from ${list.label}`);
     } catch (err) {
       toast.error(getErrorMessage(err, `Could not empty ${list.label}`));
     } finally {
@@ -464,20 +498,33 @@ function ListBody({ list, initialSearch = '', total, enforcement, confirm, onCha
           onRetry={() => { void entries.refetch(); }}
           empty={empty}
           pagination={{ offset, limit: PAGE_SIZE, total: entries.data?.total ?? 0, onChange: setOffset }}
+          selection={{
+            selected,
+            onChange: (ids) => setChecked({ page: pageKey, ids }),
+            rowLabel: (e) => `Select ${e[list.field] ?? `entry ${e.id}`}`,
+            pageLabel: `Select every ${list.singular} on this page`,
+          }}
+        />
+        <SelectionBar
+          count={selected.size}
+          one={list.singular}
+          many={list.plural}
+          actionLabel={(n) => `Remove ${formatCount(n)}`}
+          onAction={() => { void removeSelected(); }}
+          onClear={() => setChecked({ page: '', ids: new Set() })}
+          busy={removing}
         />
       </Section>
 
-      {!list.allowed && (
-        <Section
-          title="Remove every entry on this list"
-          tone="danger"
-          description={typeof total === 'number'
-            ? (total > 0 ? `${formatCount(total)} ${list.plural}. ${list.consequence('them')}` : 'This list is empty.')
-            : 'The count of this list is not reported.'}
-        >
-          <Button variant="danger-outline" disabled={!total} onClick={() => { void removeAll(); }}>Remove all</Button>
-        </Section>
-      )}
+      <Section
+        title="Remove every entry on this list"
+        tone="danger"
+        description={typeof total === 'number'
+          ? (total > 0 ? `${formatCount(total)} ${list.plural}. ${list.consequence('them')}` : 'This list is empty.')
+          : 'The count of this list is not reported.'}
+      >
+        <Button variant="danger-outline" disabled={!total} onClick={() => { void removeAll(); }}>Remove all</Button>
+      </Section>
     </>
   );
 }

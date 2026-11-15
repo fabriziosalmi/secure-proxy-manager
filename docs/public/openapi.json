@@ -2509,12 +2509,13 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "Bulk delete domains by ID array",
+        "summary": "Remove the entries with these ids ({ids}, 1 to 1000): data.removed is how many went; one audit event with the count",
         "tags": [
           "domain-blacklist"
         ],
         "x-spm-surfaces": [
-          "api"
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "write"
       }
@@ -2547,7 +2548,7 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "Delete ALL domains from blacklist",
+        "summary": "Remove every entry of the list: data.removed is how many went; one audit event with the count",
         "tags": [
           "domain-blacklist"
         ],
@@ -3008,6 +3009,84 @@
           }
         },
         "summary": "Add domain to whitelist ({domain, description})",
+        "tags": [
+          "domain-whitelist"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/domain-whitelist/bulk-delete": {
+      "post": {
+        "operationId": "post_api_domain_whitelist_bulk_delete",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Remove the entries with these ids ({ids}, 1 to 1000): data.removed is how many went; one audit event with the count",
+        "tags": [
+          "domain-whitelist"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/domain-whitelist/clear-all": {
+      "delete": {
+        "operationId": "delete_api_domain_whitelist_clear_all",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Remove every entry of the list: data.removed is how many went; one audit event with the count",
         "tags": [
           "domain-whitelist"
         ],
@@ -3496,12 +3575,13 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "",
+        "summary": "Remove the entries with these ids ({ids}, 1 to 1000): data.removed is how many went; one audit event with the count, after a configuration snapshot",
         "tags": [
           "egress-allowlist"
         ],
         "x-spm-surfaces": [
-          "api"
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "write"
       }
@@ -3534,12 +3614,13 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "",
+        "summary": "Remove every entry of the list: data.removed is how many went; one audit event with the count, after a configuration snapshot",
         "tags": [
           "egress-allowlist"
         ],
         "x-spm-surfaces": [
-          "api"
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "write"
       }
@@ -4092,12 +4173,13 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "Bulk delete IPs by ID array",
+        "summary": "Remove the entries with these ids ({ids}, 1 to 1000): data.removed is how many went; one audit event with the count",
         "tags": [
           "ip-blacklist"
         ],
         "x-spm-surfaces": [
-          "api"
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "write"
       }
@@ -4130,7 +4212,7 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "Delete ALL IPs from blacklist",
+        "summary": "Remove every entry of the list: data.removed is how many went; one audit event with the count",
         "tags": [
           "ip-blacklist"
         ],
@@ -4502,6 +4584,84 @@
           }
         },
         "summary": "Add IP to whitelist ({ip, description})",
+        "tags": [
+          "ip-whitelist"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/ip-whitelist/bulk-delete": {
+      "post": {
+        "operationId": "post_api_ip_whitelist_bulk_delete",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Remove the entries with these ids ({ids}, 1 to 1000): data.removed is how many went; one audit event with the count",
+        "tags": [
+          "ip-whitelist"
+        ],
+        "x-spm-surfaces": [
+          "api",
+          "ui"
+        ],
+        "x-spm-token-scope": "write"
+      }
+    },
+    "/api/ip-whitelist/clear-all": {
+      "delete": {
+        "operationId": "delete_api_ip_whitelist_clear_all",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No valid credential"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "An API token whose scope does not allow this call"
+          }
+        },
+        "summary": "Remove every entry of the list: data.removed is how many went; one audit event with the count",
         "tags": [
           "ip-whitelist"
         ],

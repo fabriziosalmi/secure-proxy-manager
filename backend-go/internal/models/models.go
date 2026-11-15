@@ -65,5 +65,7 @@ type ImportGeoBlacklistRequest struct {
 }
 
 type BulkDeleteRequest struct {
-	IDs []int64 `json:"ids" validate:"required,min=1"`
+	// One page of a list is 50 rows; 1000 keeps a request well under SQLite's
+	// bound-parameter limit, which used to answer a large one with a 500.
+	IDs []int64 `json:"ids" validate:"required,min=1,max=1000"`
 }

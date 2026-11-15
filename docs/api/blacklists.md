@@ -63,7 +63,7 @@ DELETE /api/ip-blacklist/{id}
 
 `404` when no entry has that ID. The same route exists on every list.
 
-### Bulk delete and clear (blocked lists and default-deny allowlist)
+### Bulk delete and clear (every list)
 
 ```
 POST /api/ip-blacklist/bulk-delete
@@ -73,15 +73,19 @@ POST /api/ip-blacklist/bulk-delete
 { "ids": [1, 2, 3] }
 ```
 
-At least one ID. The answer is `{"status": "success", "data": {"deleted": 3}}`.
+From 1 to 1000 IDs; more answer `400`. The answer is
+`{"status": "success", "data": {"removed": 3, "deleted": 3}}`: `removed`, as
+the other removals say it, and `deleted`, kept for the callers that read it.
 
 ```
 DELETE /api/ip-blacklist/clear-all
 ```
 
-Deletes every entry and answers `Cleared N entries`. Both routes exist on
-`ip-blacklist`, `domain-blacklist` and `egress-allowlist`; the two allowed
-lists have neither.
+Deletes every entry and answers `{"status": "success", "message": "Cleared N
+entries", "data": {"removed": N}}`. Both routes exist on every list:
+`ip-blacklist`, `domain-blacklist`, `ip-whitelist`, `domain-whitelist` and
+`egress-allowlist`. Each is one audit event with the count. On
+`egress-allowlist` a configuration snapshot is taken first.
 
 ---
 
