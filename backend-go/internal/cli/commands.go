@@ -232,7 +232,7 @@ func (s *session) findEntry(l listDef, v string) (string, int) {
 	want := strings.TrimPrefix(strings.ToLower(v), "*.")
 	for _, it := range items {
 		have := strings.TrimPrefix(strings.ToLower(str(it[l.field])), ".")
-		if have == want || strings.ToLower(str(it[l.field])) == strings.ToLower(v) {
+		if have == want || strings.EqualFold(str(it[l.field]), v) {
 			return str(it["id"]), exitOK
 		}
 	}
