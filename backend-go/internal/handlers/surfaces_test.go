@@ -21,8 +21,17 @@ func TestEveryOperationSaysWhereItIsReached(t *testing.T) {
 				t.Errorf("%s has no entry in routeSurfaces (surfaces.go): say where it is reached, or why only the API offers it", key)
 				continue
 			}
-			if s.apiOnly != "" && (s.ui || s.cli || s.mcp) {
-				t.Errorf("%s is api-only (%s) and also on %v", key, s.apiOnly, s.names())
+			if s.apiOnly != "" && (s.ui || s.cli || s.mcp || s.notInUI != "" || s.uiPlanned) {
+				t.Errorf("%s is api-only (%s) and also says more: %+v", key, s.apiOnly, s)
+			}
+			if s.ui && (s.notInUI != "" || s.uiPlanned) {
+				t.Errorf("%s is on the UI and still marked notInUI or uiPlanned", key)
+			}
+			if s.notInUI != "" && s.uiPlanned {
+				t.Errorf("%s is both notInUI and uiPlanned", key)
+			}
+			if !s.ui && s.apiOnly == "" && s.notInUI == "" && !s.uiPlanned {
+				t.Errorf("%s carries no decision: mark it ui, apiOnly, notInUI or uiPlanned (surfaces.go)", key)
 			}
 		}
 	}

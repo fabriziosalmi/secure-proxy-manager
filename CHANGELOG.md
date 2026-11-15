@@ -20,8 +20,10 @@ for at least one minor release before disappearing.
 - **Where each operation is reached** (`GET /api/openapi.json`): every
   operation carries `x-spm-surfaces` (`api`, and `ui`, `cli`, `mcp` when the
   dashboard, the `spm` command or the MCP server offer it) and, when only the
-  API is meant to offer it, `x-spm-api-only` with the reason. Tests keep the
-  list true for the dashboard and the MCP server.
+  API is meant to offer it, `x-spm-api-only` with the reason;
+  `x-spm-not-in-ui` says why the dashboard leaves an operation to the command
+  and the MCP server. Tests keep the list true for the dashboard and the MCP
+  server, and fail on an operation that carries no decision.
 
 ### Changed
 
