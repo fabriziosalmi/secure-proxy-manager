@@ -15,6 +15,14 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Added
+
+- **Where each operation is reached** (`GET /api/openapi.json`): every
+  operation carries `x-spm-surfaces` (`api`, and `ui`, `cli`, `mcp` when the
+  dashboard, the `spm` command or the MCP server offer it) and, when only the
+  API is meant to offer it, `x-spm-api-only` with the reason. Tests keep the
+  list true for the dashboard and the MCP server.
+
 ## [3.35.0] - 2026-11-14
 
 Every change to the configuration can be compared and undone. Nothing is

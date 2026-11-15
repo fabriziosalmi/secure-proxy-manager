@@ -24,6 +24,13 @@ or `none` when no token may call it). The lists, settings and access-log
 routes carry request and response schemas; the others are described without
 schemas for now.
 
+`x-spm-surfaces` names where each operation can be reached: always `api`,
+and `ui`, `cli` and `mcp` when the dashboard, the `spm` command or the MCP
+server offer it. `x-spm-api-only`, when present, says why only the API offers
+an operation (a health probe, a call the WAF makes). Tests hold the dashboard
+and the MCP server to the list: an operation marked `ui` that the dashboard
+does not call, or one it calls that is not marked, fails the build.
+
 The same document is published with this site at
 [openapi.json](https://fabriziosalmi.github.io/secure-proxy-manager/openapi.json),
 for client generators and API explorers. It leaves out the runtime profiles

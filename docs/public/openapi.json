@@ -1242,6 +1242,7 @@
         "tags": [
           "auth"
         ],
+        "x-spm-api-only": "a client signed in with the password renews its token here; the UI signs in with a cookie, the command and the MCP server with an API token",
         "x-spm-surfaces": [
           "api"
         ]
@@ -5619,6 +5620,7 @@
         "tags": [
           "security"
         ],
+        "x-spm-api-only": "retired: it answers 410 Gone",
         "x-spm-surfaces": [
           "api"
         ],
