@@ -98,11 +98,11 @@ func TestEveryWriteSaysWhatItReads(t *testing.T) {
 }
 
 // requestCase is how to call one write operation: the path with its
-// parameters, a body valid by its schema, and what to set up first.
+// parameters ({source} is a source the seed made) and a body valid by its
+// schema. Each call runs on a fresh database with entries on every list.
 type requestCase struct {
-	path  string
-	body  string
-	setup func(t *testing.T, db *sql.DB) // may rewrite nothing; runs on a fresh database
+	path string
+	body string
 }
 
 func seedSourceID(t *testing.T, db *sql.DB, list string) string {
