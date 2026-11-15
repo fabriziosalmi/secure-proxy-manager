@@ -22,6 +22,7 @@ import { applyToProxy, describeApply, type ApplyOutcome } from '../../lib/reload
 import { backupFileName, downloadJson, parseBackupFile, type BackupSummary, type RestoreResponse } from '../../lib/backup';
 import { formatClock, formatCount, formatDateTime, formatKilobytes } from '../../lib/format';
 import { describeListResend, RESEND_UNCONFIRMED } from '../../lib/listResend';
+import { oldLogDays } from '../../lib/validation';
 import { cn } from '../../lib/utils';
 import { Section } from '../ui/Section';
 import { Button } from '../ui/Button';
@@ -137,8 +138,8 @@ function RestoreResult({ outcome }: { outcome: RestoreOutcome }) {
 /** One line of result under an action: what the endpoint answered. */
 type Outcome = { tone: Tone; text: string } | null;
 
-function ActionRow({ title, help, button, outcome, busy, onRun, danger }: {
-  title: string; help: ReactNode; button: string; outcome: Outcome; busy: boolean; onRun: () => void; danger?: boolean;
+function ActionRow({ title, help, button, outcome, busy, onRun, danger, disabled }: {
+  title: string; help: ReactNode; button: string; outcome: Outcome; busy: boolean; onRun: () => void; danger?: boolean; disabled?: boolean;
 }) {
   return (
     <li className="flex flex-col gap-2 border-t border-line-subtle py-4 first:border-t-0 first:pt-0 last:pb-0">
@@ -147,7 +148,7 @@ function ActionRow({ title, help, button, outcome, busy, onRun, danger }: {
           <h4 className="text-sm font-semibold text-ink">{title}</h4>
           <p className="text-sm leading-5 text-ink-muted">{help}</p>
         </div>
-        <Button variant={danger ? 'danger-outline' : 'secondary'} onClick={onRun} disabled={busy}>
+        <Button variant={danger ? 'danger-outline' : 'secondary'} onClick={onRun} disabled={busy || disabled}>
           {busy ? 'Working...' : button}
         </Button>
       </div>
@@ -279,7 +280,7 @@ export function BackupRestore() {
   );
 }
 
-type ActionId = 'reload' | 'dns' | 'cache' | 'clear' | 'reset' | 'optimize';
+type ActionId = 'reload' | 'dns' | 'cache' | 'old' | 'clear' | 'reset' | 'optimize';
 
 const sizeOf = async (): Promise<number | null> => {
   try {
@@ -295,6 +296,7 @@ export function MaintenanceActions() {
   const queryClient = useQueryClient();
   const { confirm, dialog } = useConfirm();
   const [busy, setBusy] = useState<ActionId | null>(null);
+  const [oldDays, setOldDays] = useState('30');
   const [out, setOut] = useState<Partial<Record<ActionId, Outcome>>>({});
 
   const run = async (id: ActionId, fn: () => Promise<Outcome>) => {
@@ -355,6 +357,29 @@ export function MaintenanceActions() {
     });
   };
 
+  const days = oldLogDays(oldDays);
+  const clearOld = async () => {
+    if (days === null) return;
+    const span = `${formatCount(days)} ${days === 1 ? 'day' : 'days'}`;
+    if (!(await confirm({
+      title: `Delete the logged requests older than ${span}?`,
+      body: 'They leave the Logs, Clients and Overview figures, and so do the WAF records of that age. The audit log is kept. This cannot be undone.',
+      confirmLabel: `Delete older than ${span}`,
+      destructive: true,
+    }))) return;
+    void run('old', async () => {
+      const res = await api.post('logs/clear-old', null, { params: { days } });
+      const removed: unknown = res.data?.data?.removed;
+      void queryClient.invalidateQueries({ queryKey: ['logs'] });
+      return {
+        tone: 'success',
+        text: typeof removed === 'number'
+          ? `Deleted ${formatCount(removed)} logged ${removed === 1 ? 'request' : 'requests'} older than ${span}.`
+          : `Deleted the logged requests older than ${span}.`,
+      };
+    });
+  };
+
   const resetStats = async () => {
     if (!(await confirm({
       title: 'Delete every logged request?',
@@ -388,6 +413,33 @@ export function MaintenanceActions() {
         <ActionRow title="Reload the proxy" help="Regenerates the proxy configuration from the stored settings and lists, and reports whether the proxy took it. Saving a section already does this." button="Reload the proxy" outcome={out.reload ?? null} busy={busy === 'reload'} onRun={() => void reload()} />
         <ActionRow title="Send the lists again" help="Sends every list to the DNS sinkhole and the proxy again. Use it when a change has not taken effect." button="Send the lists again" outcome={out.dns ?? null} busy={busy === 'dns'} onRun={() => void reloadDns()} />
         <ActionRow title="Empty the cache" help="Stops the proxy, deletes its disk cache and starts it again, which also empties the memory cache. Clients lose their connections for a few seconds." button="Empty disk and memory cache" outcome={out.cache ?? null} busy={busy === 'cache'} onRun={() => void clearCache()} danger />
+        <ActionRow
+          title="Delete older logs"
+          help={(
+            <span className="flex flex-col gap-2">
+              <span>Deletes the logged requests and WAF records older than the days below, now. The retention in Logs and privacy does the same every day on its own.</span>
+              <label className="flex items-center gap-2 text-ink">
+                <span>Older than</span>
+                <input
+                  value={oldDays}
+                  onChange={(e) => setOldDays(e.target.value)}
+                  inputMode="numeric"
+                  aria-invalid={days === null || undefined}
+                  aria-describedby={days === null ? 'old-logs-days-error' : undefined}
+                  className="h-8 w-20 rounded-control border border-line-strong bg-surface px-2 text-sm tabular-nums text-ink"
+                />
+                <span>days</span>
+              </label>
+              {days === null && <span id="old-logs-days-error" className="text-danger">A whole number of days from 1 to 3650.</span>}
+            </span>
+          )}
+          button={days === null ? 'Delete older logs' : `Delete older than ${formatCount(days)} ${days === 1 ? 'day' : 'days'}`}
+          outcome={out.old ?? null}
+          busy={busy === 'old'}
+          disabled={days === null}
+          onRun={() => void clearOld()}
+          danger
+        />
         <ActionRow title="Clear the access log" help="Deletes every logged request. The WAF keeps its counters." button="Clear the log" outcome={out.clear ?? null} busy={busy === 'clear'} onRun={() => void clearLog()} danger />
         <ActionRow title="Reset statistics" help="Deletes every logged request, as Clear the access log does, and resets the WAF's counters." button="Reset statistics" outcome={out.reset ?? null} busy={busy === 'reset'} onRun={() => void resetStats()} danger />
         <ActionRow title="Optimize the database" help="Compacts the database file and rebuilds its indexes. The backend waits for it, which can take a while on a large log." button="Optimize" outcome={out.optimize ?? null} busy={busy === 'optimize'} onRun={() => void optimize()} />

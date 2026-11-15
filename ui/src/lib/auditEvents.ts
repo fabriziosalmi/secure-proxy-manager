@@ -371,6 +371,16 @@ export function describeAudit(e: AuditEntry): AuditDescription {
     return { event: 'Sign-in failed', details: join([e.target ? `From ${e.target}` : null, e.details]), kind: 'signin-failed' };
   }
   if (PLAIN[action]) return { event: PLAIN[action], details: e.details || null, kind: 'change' };
+  if (action === 'clear_old_logs') {
+    const f = fields(e.details);
+    const days = num(f, 'days');
+    const removed = num(f, 'removed');
+    return {
+      event: days !== null ? `Deleted the logs older than ${formatCount(days)} ${days === 1 ? 'day' : 'days'}` : 'Deleted the older logs',
+      details: removed !== null ? `${count(removed, 'logged request', 'logged requests')} deleted` : null,
+      kind: 'change',
+    };
+  }
   if (action === 'clear_sign_in_limit') {
     return { event: e.target ? `Let ${e.target} sign in again` : 'Let an address sign in again', details: 'Its failed sign-ins were cleared', kind: 'change' };
   }

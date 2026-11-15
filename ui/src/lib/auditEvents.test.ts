@@ -7,6 +7,11 @@ const row = (action: string, target: string | null = null, details: string | nul
 })
 
 describe('describeAudit', () => {
+  it('says how old the deleted logs were and how many went', () => {
+    expect(describeAudit(row('clear_old_logs', 'proxy_logs', '{"days":30,"removed":1234}')))
+      .toEqual({ event: 'Deleted the logs older than 30 days', details: '1,234 logged requests deleted', kind: 'change' })
+  })
+
   it('says which address an admin let sign in again', () => {
     expect(describeAudit(row('clear_sign_in_limit', '192.0.2.7')))
       .toEqual({ event: 'Let 192.0.2.7 sign in again', details: 'Its failed sign-ins were cleared', kind: 'change' });

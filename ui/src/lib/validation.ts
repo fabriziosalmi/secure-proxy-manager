@@ -43,3 +43,10 @@ export function parseGeoCountries(input: string): string[] {
     .map(c => c.trim().toUpperCase())
     .filter(c => c.length === 2 && /^[A-Z]{2}$/.test(c));
 }
+
+/** 1 to 3650 whole days, as POST /api/logs/clear-old takes them; null otherwise. */
+export function oldLogDays(text: string): number | null {
+  if (!/^\d+$/.test(text.trim())) return null;
+  const n = Number(text.trim());
+  return n >= 1 && n <= 3650 ? n : null;
+}

@@ -183,6 +183,24 @@ describe('Settings sections, part B', () => {
       expect(screen.getByText('Android')).toBeInTheDocument()
     })
 
+    it('checks the CA setup and lists what the backend found wrong, or says it is in place', async () => {
+      let issues = ['The CA private key is in /config, where other services can read it: mount ./ssl:/ssl on the proxy']
+      vi.mocked(api.get).mockImplementation((url: string) => {
+        if (url === 'maintenance/check-cert-security') {
+          return Promise.resolve({ data: { status: issues.length ? 'error' : 'success', data: { issues, cert_found: true, db_found: true, key_isolated: issues.length === 0 } } })
+        }
+        if (url === 'settings') return Promise.resolve({ data: { status: 'success', data: rows } })
+        return Promise.resolve({ data: { status: 'success', data: null } })
+      })
+      renderAt('/settings/inspection')
+      fireEvent.click(await screen.findByRole('button', { name: 'Check the CA setup' }))
+      expect(await screen.findByText('One problem:')).toBeInTheDocument()
+      expect(screen.getByText(/mount \.\/ssl:\/ssl on the proxy/)).toBeInTheDocument()
+      issues = []
+      fireEvent.click(screen.getByRole('button', { name: 'Check the CA setup' }))
+      expect(await screen.findByText(/The certificate and its database are in place/)).toBeInTheDocument()
+    })
+
     it('warns before inspection is turned on', async () => {
       renderAt('/settings/inspection')
       fireEvent.click(await screen.findByRole('switch', { name: 'Inspect HTTPS traffic' }))

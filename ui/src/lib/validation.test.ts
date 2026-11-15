@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isValidIP, isValidDomain, validatePassword, parseGeoCountries } from './validation'
+import { isValidIP, isValidDomain, validatePassword, parseGeoCountries, oldLogDays } from './validation'
 
 describe('isValidIP', () => {
   // Valid IPs
@@ -162,5 +162,12 @@ describe('parseGeoCountries', () => {
 
   it('handles mixed separators', () => {
     expect(parseGeoCountries('US,CN  RU, DE')).toEqual(['US', 'CN', 'RU', 'DE'])
+  })
+})
+
+describe('oldLogDays', () => {
+  it('takes whole days from 1 to 3650, as the backend does', () => {
+    expect(['1', '30', ' 365 ', '3650'].map(oldLogDays)).toEqual([1, 30, 365, 3650])
+    expect(['0', '-1', '3651', '1.5', 'abc', ''].map(oldLogDays)).toEqual([null, null, null, null, null, null])
   })
 })
