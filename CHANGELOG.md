@@ -15,6 +15,12 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.38.0] - 2026-11-15
+
+The database reset asks for a confirmation, and the egress provider routes
+answer each failure with its own status. Both are **BREAKING** for a caller
+that relied on the old answers; `X-API-Version` stays 1.
+
 **Upgrade notes.** A script that calls `POST /api/database/reset` must send
 `{"confirm": "RESET"}`. A client that reads the status of the egress provider
 routes sees `404` for an unknown provider and `409` for an apply-held with
