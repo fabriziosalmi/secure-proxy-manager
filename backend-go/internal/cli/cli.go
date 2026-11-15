@@ -51,7 +51,7 @@ Exit status: 0 done, 1 refused (4xx) or declined, 2 usage or config error
 // Run is the spm command. It returns the exit status.
 func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
-		fmt.Fprintf(stdout, usage)
+		_, _ = fmt.Fprint(stdout, usage)
 		if len(args) == 0 {
 			return exitUsage
 		}
@@ -305,7 +305,11 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 }
 
 // peerCertificate connects to the server and returns the certificate it
-// shows, and whether the system's authorities trust it for that host.
+// shows, and whether the system's authorities trust it for that host. It
+// never turns the check off: a handshake that verifies is a trusted
+// certificate, and one that fails verification hands back the certificate it
+// could not verify (tls.CertificateVerificationError), which is what spm
+// login shows before it pins anything.
 func peerCertificate(rawURL string) (*x509.Certificate, bool, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil || u.Scheme != "https" || u.Host == "" {
@@ -316,21 +320,16 @@ func peerCertificate(rawURL string) (*x509.Certificate, bool, error) {
 		host = net.JoinHostPort(u.Hostname(), "443")
 	}
 	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}, "tcp", host,
-		&tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12}) // #nosec G402 -- read to show it, verified below
-	if err != nil {
-		return nil, false, err
+		&tls.Config{ServerName: u.Hostname(), MinVersion: tls.VersionTLS12})
+	if err == nil {
+		defer func() { _ = conn.Close() }()
+		return conn.ConnectionState().PeerCertificates[0], true, nil
 	}
-	defer func() { _ = conn.Close() }()
-	certs := conn.ConnectionState().PeerCertificates
-	if len(certs) == 0 {
-		return nil, false, errors.New("the server showed no certificate")
+	var unverified *tls.CertificateVerificationError
+	if errors.As(err, &unverified) && len(unverified.UnverifiedCertificates) > 0 {
+		return unverified.UnverifiedCertificates[0], false, nil
 	}
-	inter := x509.NewCertPool()
-	for _, c := range certs[1:] {
-		inter.AddCert(c)
-	}
-	_, verr := certs[0].Verify(x509.VerifyOptions{DNSName: u.Hostname(), Intermediates: inter})
-	return certs[0], verr == nil, nil
+	return nil, false, err
 }
 
 func colonHex(hex string) string {
