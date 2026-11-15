@@ -120,6 +120,21 @@ warning when an older cosign is installed. With cosign 3 or later installed,
 the installer runs the same `cosign verify` on every image and stops if one
 fails.
 
+### Verifying the spm binaries
+
+Releases after 3.38.0 attach the `spm` command for Linux, macOS and Windows,
+with `SHA256SUMS` and its keyless signature `SHA256SUMS.sigstore.json`, made by
+the same workflow identity as the images. Check the signature of the checksums,
+then the binary against them:
+
+```bash
+cosign verify-blob --bundle SHA256SUMS.sigstore.json \
+  --certificate-identity-regexp '^https://github\.com/fabriziosalmi/secure-proxy-manager/\.github/workflows/multi-arch\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  SHA256SUMS
+sha256sum --ignore-missing -c SHA256SUMS
+```
+
 ## Security Advisories
 
 Component advisories and how SPM mitigates them, such as the Squid

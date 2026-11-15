@@ -353,6 +353,28 @@ case "$ac_lan" in
   *)           bad "allowlisted destination unreachable for a LAN client (example.com → $ac_lan)" ;;
 esac
 
+# spm ships in the backend image (backend-go/Dockerfile): it runs there, says
+# its version, and reads the API with a read token.
+echo "── spm in the backend image ──"
+want_version=$(sed -nE 's/.*AppVersion = "([^"]+)".*/\1/p' backend-go/internal/config/version.go | head -1)
+spm_v=$(docker compose exec -T backend spm version 2>&1 || true)
+case "$spm_v" in
+  "spm ${want_version} "*) ok "spm runs in the backend image ($spm_v)" ;;
+  *)                       bad "spm in the backend image: '$spm_v', want spm ${want_version}" ;;
+esac
+spm_token=$(curl -s -m 10 -u admin:CiE2ePass2026xyz -H 'Content-Type: application/json' -H 'X-Requested-With: spm' \
+  -d '{"name":"ci-spm","scope":"read","expires_in_days":1}' "$API/api/tokens" | sed -nE 's/.*"token":"([^"]+)".*/\1/p')
+if [ -n "$spm_token" ]; then
+  spm_status=$(docker compose exec -T backend spm status --url http://127.0.0.1:5000 --token "$spm_token" --json 2>&1 || true)
+  echo "$spm_status" | grep -q "\"version\": \"${want_version}\"" \
+    && ok "spm status reads the API with a read token" \
+    || bad "spm status with a read token: $spm_status"
+  docker compose exec -T backend spm api POST /api/ip-blacklist -d '{"ip":"203.0.113.77"}' --url http://127.0.0.1:5000 --token "$spm_token" >/dev/null 2>&1 && rc=0 || rc=$?
+  [ "$rc" = 1 ] && ok "spm with a read token is refused a write (exit 1)" || bad "spm write with a read token exited $rc, want 1"
+else
+  bad "could not make a read token for spm"
+fi
+
 echo
 echo "── result: ${PASS} passed, ${FAIL} failed ──"
 if [ "${FAIL}" -gt 0 ]; then

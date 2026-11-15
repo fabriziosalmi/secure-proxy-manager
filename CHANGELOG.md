@@ -28,6 +28,10 @@ for at least one minor release before disappearing.
   certificate mismatch or server error). A test runs it against the backend
   binary the release ships, behind a TLS server whose certificate no
   authority signed.
+- **`spm` ships**: in the backend image (`docker compose exec backend spm`),
+  and as release binaries for Linux, macOS and Windows built in the pinned
+  golang image, with `SHA256SUMS` signed keyless by the release workflow (see
+  SECURITY.md for `cosign verify-blob`). `spm version` names its commit.
 
 ## [3.38.0] - 2026-11-15
 
