@@ -68,6 +68,53 @@ const OS_STEPS: { os: string; steps: string[] }[] = [
 
 type CaState = { kind: 'idle' | 'busy' } | { kind: 'done' } | { kind: 'failed'; message: string };
 
+/** GET /api/maintenance/check-cert-security: what is wrong with the CA setup, if anything. */
+interface CaCheck {
+  issues: string[];
+  cert_found: boolean;
+  db_found: boolean;
+  key_isolated: boolean;
+}
+
+type CheckState = { kind: 'idle' | 'busy' } | { kind: 'done'; check: CaCheck } | { kind: 'failed'; message: string };
+
+function CaSetupCheck() {
+  const [state, setState] = useState<CheckState>({ kind: 'idle' });
+  const check = async () => {
+    setState({ kind: 'busy' });
+    try {
+      const d = (await api.get('maintenance/check-cert-security')).data?.data ?? {};
+      setState({
+        kind: 'done',
+        check: { issues: Array.isArray(d.issues) ? d.issues : [], cert_found: d.cert_found === true, db_found: d.db_found === true, key_isolated: d.key_isolated === true },
+      });
+    } catch (err) {
+      setState({ kind: 'failed', message: `The check did not run: ${getErrorMessage(err, 'the backend did not answer')}.` });
+    }
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <div>
+        <Button onClick={() => void check()} disabled={state.kind === 'busy'}>
+          {state.kind === 'busy' ? 'Checking...' : 'Check the CA setup'}
+        </Button>
+      </div>
+      <div role="status" className="text-sm">
+        {state.kind === 'done' && state.check.issues.length === 0 && (
+          <p className="text-success">The certificate and its database are in place, and the CA private key is only where the proxy reads it.</p>
+        )}
+        {state.kind === 'done' && state.check.issues.length > 0 && (
+          <div className="text-danger">
+            <p>{state.check.issues.length === 1 ? 'One problem:' : `${state.check.issues.length} problems:`}</p>
+            <ul className="mt-0.5 list-disc pl-4">{state.check.issues.map((i) => <li key={i}>{i}</li>)}</ul>
+          </div>
+        )}
+        {state.kind === 'failed' && <p className="text-danger">{state.message}</p>}
+      </div>
+    </div>
+  );
+}
+
 function CertificateAuthority() {
   const [state, setState] = useState<CaState>({ kind: 'idle' });
   const download = async () => {
@@ -110,6 +157,7 @@ function CertificateAuthority() {
         {state.kind === 'done' && <p className="text-success">Downloaded secure-proxy-ca.pem.</p>}
         {state.kind === 'failed' && <p className="text-danger">{state.message}</p>}
       </div>
+      <CaSetupCheck />
       <div className="flex flex-col gap-2">
         {OS_STEPS.map((o) => (
           <details key={o.os} className="rounded-control border border-line px-3 py-2">

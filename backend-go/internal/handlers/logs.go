@@ -2,15 +2,16 @@ package handlers
 
 import (
 	"database/sql"
-	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/privacy"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog/log"
 )
 
 type LogHandlers struct {
@@ -269,19 +270,35 @@ func (h *LogHandlers) Clear(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "All logs cleared"})
 }
 
+// ClearOld answers POST /api/logs/clear-old?days=N: it deletes the logged
+// requests and WAF records older than N days (1 to 3650, default 30). A days
+// that is not a whole number in range is refused: it used to fall back to 30
+// in silence, so ?days=0 or ?days=abc deleted a month of history. A database
+// failure is an error, not "Cleared old logs" with nothing deleted, and the
+// deletion is an audit event with the days and the count.
 func (h *LogHandlers) ClearOld(w http.ResponseWriter, r *http.Request) {
-	days := queryInt(r, "days", 30)
-	if days < 1 {
-		days = 30
+	days := 30
+	if v := r.URL.Query().Get("days"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 3650 {
+			writeError(w, http.StatusBadRequest, "days must be a whole number from 1 to 3650")
+			return
+		}
+		days = n
 	}
 	res, err := h.db.Exec("DELETE FROM proxy_logs WHERE timestamp < datetime('now', ?)", "-"+strconv.Itoa(days)+" days") // slopless-disable-line VBC-004 -- the concatenation builds a bound argument, not the statement
-	database.PruneWAFRecords(h.db, days)                                                                                 //nolint:errcheck
-	var deleted int64
-	if err == nil && res != nil {
-		deleted, _ = res.RowsAffected()
+	if err != nil {
+		writeInternalError(w, "clear_old_logs", err)
+		return
 	}
+	removed, _ := res.RowsAffected()
+	if err := database.PruneWAFRecords(h.db, days); err != nil {
+		log.Warn().Err(err).Int("days", days).Msg("clear old logs: WAF records not pruned")
+	}
+	auditChange(h.db, r, "clear_old_logs", "proxy_logs", map[string]any{"days": days, "removed": removed})
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status": "success", "message": "Cleared old logs", "deleted": deleted,
+		"status": "success", "message": "Cleared old logs", "deleted": removed,
+		"data": map[string]any{"removed": removed, "days": days},
 	})
 }
 

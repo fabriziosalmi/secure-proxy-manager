@@ -241,6 +241,21 @@ describe('Maintenance', () => {
     expect(api.post).toHaveBeenCalledWith('logs/clear')
   })
 
+  it('deletes the logs older than the days set, after a confirmation naming them, and says how many went', async () => {
+    vi.mocked(api.post).mockResolvedValue({ data: { status: 'success', data: { removed: 1234, days: 90 } } } as never)
+    renderWithProviders(<Maintenance />)
+    const days = screen.getByRole('textbox', { name: /Older than/ })
+    fireEvent.change(days, { target: { value: '0' } })
+    expect(screen.getByText('A whole number of days from 1 to 3650.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete older logs' })).toBeDisabled()
+    fireEvent.change(days, { target: { value: '90' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Delete older than 90 days' }))
+    const ask = await screen.findByRole('alertdialog', { name: 'Delete the logged requests older than 90 days?' })
+    fireEvent.click(within(ask).getByRole('button', { name: 'Delete older than 90 days' }))
+    expect(await screen.findByText('Deleted 1,234 logged requests older than 90 days.')).toBeInTheDocument()
+    expect(api.post).toHaveBeenCalledWith('logs/clear-old', null, { params: { days: 90 } })
+  })
+
   it('does nothing destructive when the confirmation is cancelled', async () => {
     renderWithProviders(<Maintenance />)
     fireEvent.click(screen.getByRole('button', { name: 'Reset statistics' }))

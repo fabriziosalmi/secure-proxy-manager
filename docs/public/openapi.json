@@ -5086,12 +5086,13 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "Delete logs older than N days (?days=30)",
+        "summary": "Delete the logged requests and WAF records older than ?days= (1 to 3650, default 30; anything else answers 400): data.removed and data.days, one audit event (clear_old_logs)",
         "tags": [
           "logs"
         ],
         "x-spm-surfaces": [
-          "api"
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "write"
       }
@@ -5287,12 +5288,13 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "Check SSL certificate status and security",
+        "summary": "What is wrong with the HTTPS inspection CA, if anything: data.issues in words, and cert_found, db_found, key_isolated; status is error when an issue was found",
         "tags": [
           "maintenance"
         ],
         "x-spm-surfaces": [
-          "api"
+          "api",
+          "ui"
         ],
         "x-spm-token-scope": "read"
       }

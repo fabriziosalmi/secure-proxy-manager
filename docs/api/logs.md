@@ -234,12 +234,16 @@ WAF reset (`waf_reset`).
 POST /api/logs/clear-old?days=30
 ```
 
-Deletes rows older than `days` days (default `30`; a value below 1 is `30`).
-It does not read the `log_retention_days` setting, which drives the daily
-automatic pruning.
+Deletes the logged requests and WAF records older than `days` days, a whole
+number from 1 to 3650 (default `30`); any other value answers `400` and
+deletes nothing. It does not read the `log_retention_days` setting, which
+drives the daily automatic pruning. The deletion is one audit event
+(`clear_old_logs`) with the days and the count; a database failure answers
+`500`. In the dashboard: Settings > Admin and backup > Maintenance > Delete
+older logs.
 
 ```json
-{ "status": "success", "message": "Cleared old logs", "deleted": 1234 }
+{ "status": "success", "message": "Cleared old logs", "deleted": 1234, "data": { "removed": 1234, "days": 30 } }
 ```
 
 ---

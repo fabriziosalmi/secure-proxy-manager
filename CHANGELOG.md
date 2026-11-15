@@ -17,6 +17,13 @@ for at least one minor release before disappearing.
 
 ### Added
 
+- **Delete older logs** (Settings > Admin and backup > Maintenance): delete
+  the logged requests and WAF records older than a number of days now, after
+  a confirmation naming the days; the result says how many went.
+- **Check the CA setup** (Settings > HTTPS inspection): lists what is wrong
+  with the inspection CA (no certificate, no certificate database, the private
+  key where other services can read it), or says it is in place.
+
 - **Remove several entries at once** on the Blacklists page (every list) and
   on the Default-deny allowlist: check rows, or every row of the page from
   the header, and remove them in one request after a confirmation naming the
@@ -46,6 +53,11 @@ for at least one minor release before disappearing.
 
 ### Changed
 
+- `POST /api/logs/clear-old` answers `400` for a `days` that is not a whole
+  number from 1 to 3650; it fell back to 30 in silence, so `?days=0` or
+  `?days=abc` deleted a month of history. A database failure answers `500`
+  instead of "Cleared old logs" with nothing deleted, the deletion is an audit
+  event, and the answer adds `data.removed` and `data.days`.
 - `POST /api/{list}/bulk-delete` accepts 1 to 1000 IDs and answers `400`
   beyond; 32,767 IDs or more reached SQLite's limit on bound parameters and
   answered `500`. It answers `data.removed` as the other removals do (`deleted`
