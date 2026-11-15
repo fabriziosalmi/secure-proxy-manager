@@ -101,20 +101,47 @@ NGINX
     fi
 fi
 
-if [ "$LE_ACTIVE" = 1 ]; then
-    :
-elif [ -f "$CERT_FILE" ] && [ -f "$KEY_FILE" ]; then
-    echo "[entrypoint] Using mounted TLS certificate"
-else
-    echo "[entrypoint] Generating self-signed TLS certificate..."
+# The certificate this install generates for itself. /etc/nginx/ssl is a
+# volume (web-tls), so the same certificate serves across restarts and
+# upgrades: it used to be a tmpfs, and every start made a new one, so every
+# browser warned again and a device that had trusted it no longer did. It is
+# made again only when it is missing or within 30 days of expiry; a
+# certificate an operator mounted there is never replaced.
+SELF_SIGNED_SUBJECT="/C=US/ST=Local/L=Local/O=SecureProxyManager/CN=proxy-manager"
+
+is_self_signed() {
+    openssl x509 -in "$CERT_FILE" -noout -subject -nameopt compat 2>/dev/null \
+        | grep -q "O=SecureProxyManager/CN=proxy-manager"
+}
+
+generate_self_signed() {
     # openssl is installed at build time (ui/Dockerfile); the root filesystem
     # is read-only, so nothing can be installed here.
     openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
         -keyout "$KEY_FILE" -out "$CERT_FILE" \
-        -subj "/C=US/ST=Local/L=Local/O=SecureProxyManager/CN=proxy-manager" \
+        -subj "$SELF_SIGNED_SUBJECT" \
         -addext "subjectAltName=DNS:localhost,DNS:proxy-manager,IP:127.0.0.1" \
         2>/dev/null
-    echo "[entrypoint] Self-signed certificate generated (valid 1 year)"
+    chmod 600 "$KEY_FILE"
+    echo "[entrypoint] Self-signed certificate generated, valid until $(openssl x509 -in "$CERT_FILE" -noout -enddate | cut -d= -f2)"
+}
+
+if [ "$LE_ACTIVE" = 1 ]; then
+    :
+elif [ -f "$CERT_FILE" ] && [ -f "$KEY_FILE" ]; then
+    if is_self_signed; then
+        if openssl x509 -in "$CERT_FILE" -noout -checkend 2592000 >/dev/null 2>&1; then
+            echo "[entrypoint] Using this install's self-signed certificate, valid until $(openssl x509 -in "$CERT_FILE" -noout -enddate | cut -d= -f2)"
+        else
+            echo "[entrypoint] This install's self-signed certificate expires within 30 days: making a new one"
+            generate_self_signed
+        fi
+    else
+        echo "[entrypoint] Using the mounted TLS certificate"
+    fi
+else
+    echo "[entrypoint] Generating self-signed TLS certificate..."
+    generate_self_signed
 fi
 
 # What the PAC file tells a browser to do when the proxy does not answer. It

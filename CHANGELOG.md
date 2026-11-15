@@ -15,6 +15,14 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+**Upgrade notes.** `/etc/nginx/ssl` in the `web` service is now the `web-tls`
+volume instead of a tmpfs, in both compose files. Without a mounted
+certificate, the first start after the upgrade makes one more self-signed
+certificate; from then on it stays the same across restarts and upgrades, so
+browsers warn once more and then no longer. A certificate mounted at
+`/etc/nginx/ssl/server.crt` and `server.key` is used as before. An override
+that mounts its own directory at `/etc/nginx/ssl` replaces the volume.
+
 ### Added
 
 - **Delete older logs** (Settings > Admin and backup > Maintenance): delete
@@ -53,6 +61,11 @@ for at least one minor release before disappearing.
 
 ### Changed
 
+- The web UI's self-signed certificate is kept across restarts and upgrades
+  (the `web-tls` volume) and made again only within 30 days of its end. It
+  was made anew at every start, so every browser warned again and a device
+  that had trusted it stopped. A certificate an operator put there is never
+  replaced.
 - The selection bar of a list sits between its search and the table, in view
   while the top rows are checked; it was under the pagination. It keeps its
   height before a row is checked, with a hint, so the table does not move

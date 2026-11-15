@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The web container must start with a certificate in every TLS mode, under the
-# runtime constraints of the shipped compose (read-only root, tmpfs for the
-# cert dir). With LETSENCRYPT_DOMAIN set it used to exit 1 on every start:
+# runtime constraints of the shipped compose (read-only root, the web-tls
+# volume for the cert dir). With LETSENCRYPT_DOMAIN set it used to exit 1 on every start:
 # certbot is not in the image, and the self-signed fallback was an `else` of
 # the same chain, so nginx started without a certificate.
 #
@@ -11,8 +11,8 @@ IMAGE="${1:-spm-web-tls-test}"
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); printf "  ✓ %s\n" "$1"; }
 bad() { FAIL=$((FAIL+1)); printf "  ✗ %s\n     %s\n" "$1" "${2:-}"; }
-NAME="spm-tls-$$"; VOL="spm-tls-$$"
-trap 'docker rm -f "$NAME" >/dev/null 2>&1; docker volume rm "$VOL" >/dev/null 2>&1' EXIT
+NAME="spm-tls-$$"; VOL="spm-tls-$$"; SSLVOL="spm-tls-ssl-$$"
+trap 'docker rm -f "$NAME" >/dev/null 2>&1; docker volume rm "$VOL" "$SSLVOL" >/dev/null 2>&1' EXIT
 
 if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
   docker build -q -f ui/Dockerfile -t "$IMAGE" . >/dev/null || { echo "build failed"; exit 1; }
@@ -21,7 +21,7 @@ fi
 start() { # mode, extra docker args...
   docker rm -f "$NAME" >/dev/null 2>&1
   docker run -d --name "$NAME" --read-only \
-    --tmpfs /tmp --tmpfs /var/run --tmpfs /var/cache/nginx --tmpfs /etc/nginx/ssl \
+    --tmpfs /tmp --tmpfs /var/run --tmpfs /var/cache/nginx -v "$SSLVOL:/etc/nginx/ssl" \
     --tmpfs /etc/nginx/conf.d --tmpfs /var/www/certbot -v "$VOL:/etc/letsencrypt" \
     --add-host backend:127.0.0.1 "$@" "$IMAGE" >/dev/null
   for _ in $(seq 1 20); do
@@ -103,6 +103,48 @@ else
     && ok "PAC_FALLBACK_DIRECT=maybe: refuses to start and says why" \
     || bad "PAC_FALLBACK_DIRECT=maybe says why" "$(docker logs "$NAME" 2>&1 | tail -3)"
 fi
+
+echo "── both compose files keep the certificate directory ──"
+for f in docker-compose.yml deploy/docker-compose.prod.yml; do
+  web=$(awk '/^  web:$/{f=1;next} f&&/^  [a-z][a-z0-9_-]*:$/{exit} f' "$f")
+  if printf '%s\n' "$web" | grep -q -- '- web-tls:/etc/nginx/ssl' && ! printf '%s\n' "$web" | grep -qE -- '^\s+- /etc/nginx/ssl$'; then
+    ok "$f mounts the web-tls volume at /etc/nginx/ssl, not a tmpfs"
+  else
+    bad "$f mounts the web-tls volume at /etc/nginx/ssl, not a tmpfs" "$(printf '%s\n' "$web" | grep -n 'nginx/ssl')"
+  fi
+done
+
+echo "── the self-signed certificate is kept ──"
+# /etc/nginx/ssl used to be a tmpfs: every start made a new certificate, so
+# every browser warned again after a restart or an upgrade.
+fingerprint() { docker exec "$NAME" openssl x509 -in /etc/nginx/ssl/server.crt -noout -fingerprint -sha256 2>/dev/null; }
+docker volume rm "$SSLVOL" >/dev/null 2>&1
+start || bad "starts on an empty certificate volume" "$(docker logs "$NAME" 2>&1 | tail -3)"
+first=$(fingerprint)
+[ -n "$first" ] && ok "makes a certificate on the first start" || bad "makes a certificate on the first start" "no certificate"
+docker restart "$NAME" >/dev/null && sleep 2
+[ "$(fingerprint)" = "$first" ] && ok "the same certificate after a restart" || bad "the same certificate after a restart" "$(fingerprint)"
+start || bad "starts again with the same volume" "$(docker logs "$NAME" 2>&1 | tail -3)"
+[ "$(fingerprint)" = "$first" ] && ok "the same certificate in a new container (an upgrade)" || bad "the same certificate in a new container" "$(fingerprint)"
+logs_contain "Using this install's self-signed certificate, valid until" \
+  && ok "says it reuses its certificate and until when" || bad "says it reuses its certificate" "$(docker logs "$NAME" 2>&1 | grep entrypoint | tail -3)"
+
+echo "── a self-signed certificate near its end is made again ──"
+docker exec "$NAME" sh -c 'openssl req -x509 -nodes -days 10 -newkey rsa:2048 -keyout /etc/nginx/ssl/server.key -out /etc/nginx/ssl/server.crt -subj "/C=US/ST=Local/L=Local/O=SecureProxyManager/CN=proxy-manager" 2>/dev/null'
+near=$(fingerprint)
+start || bad "starts with a certificate 10 days from its end" "$(docker logs "$NAME" 2>&1 | tail -3)"
+now=$(fingerprint)
+[ -n "$now" ] && [ "$now" != "$near" ] && ok "replaces it with a new one" || bad "replaces it with a new one" "still $now"
+docker exec "$NAME" openssl x509 -in /etc/nginx/ssl/server.crt -noout -checkend 25920000 >/dev/null 2>&1 \
+  && ok "the new one is valid for about a year (more than 300 days)" || bad "the new one is valid for about a year" "$(docker exec "$NAME" openssl x509 -in /etc/nginx/ssl/server.crt -noout -enddate)"
+logs_contain "expires within 30 days: making a new one" && ok "says why it made a new one" || bad "says why it made a new one" "$(docker logs "$NAME" 2>&1 | grep entrypoint | tail -3)"
+
+echo "── a certificate the operator put there is never replaced ──"
+docker exec "$NAME" sh -c 'openssl req -x509 -nodes -days 10 -newkey rsa:2048 -keyout /etc/nginx/ssl/server.key -out /etc/nginx/ssl/server.crt -subj "/O=Example Corp/CN=spm.example.org" 2>/dev/null'
+mine=$(fingerprint)
+start || bad "starts with the operator's certificate" "$(docker logs "$NAME" 2>&1 | tail -3)"
+[ "$(fingerprint)" = "$mine" ] && ok "keeps it, even 10 days from its end" || bad "keeps the operator's certificate" "$(fingerprint)"
+logs_contain "Using the mounted TLS certificate" && ok "says it uses the mounted certificate" || bad "says it uses the mounted certificate" "$(docker logs "$NAME" 2>&1 | grep entrypoint | tail -3)"
 
 printf "\n  %d passed, %d failed\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

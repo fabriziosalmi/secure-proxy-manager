@@ -44,7 +44,8 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
   `/ca.crt` and `/.well-known/acme-challenge/`; port 8443 serves the UI with TLS 1.2 and
   1.3 and HSTS.
 - At start it uses a certificate mounted at `/etc/nginx/ssl/server.crt` and
-  `server.key`, or generates a self-signed one valid for 365 days. The image
+  `server.key`, or a self-signed one valid for 365 days, kept in the `web-tls`
+  volume and made again only within 30 days of its end. The image
   has no certbot, so `LETSENCRYPT_DOMAIN` does not obtain a certificate; the
   entrypoint logs that and falls back.
 - nginx limits `/api/` to 20 requests per second per client address, with a

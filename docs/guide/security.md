@@ -199,8 +199,12 @@ through the `web` service on ports 443 and 8443.
 
 The `web` service serves a certificate you mount at
 `/etc/nginx/ssl/server.crt` and `/etc/nginx/ssl/server.key`, or generates a
-self-signed one at start. The image has no certbot, so it does not obtain Let's
-Encrypt certificates itself.
+self-signed one, valid for 365 days. `/etc/nginx/ssl` is the `web-tls` volume,
+so the self-signed certificate stays the same across restarts and upgrades: a
+browser or device that trusted it keeps trusting it. The `web` service makes a
+new one only when it is missing or within 30 days of its end, and never
+replaces a certificate you mounted. The image has no certbot, so it does not
+obtain Let's Encrypt certificates itself.
 
 To terminate TLS on your own reverse proxy (Caddy, Traefik, nginx), point it at
 port 8443. Port 8011 redirects everything except `/health`, `/wpad.dat`,
