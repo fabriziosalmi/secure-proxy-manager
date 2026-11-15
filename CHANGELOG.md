@@ -15,13 +15,26 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
-**Upgrade notes.** `/etc/nginx/ssl` in the `web` service is now the `web-tls`
-volume instead of a tmpfs, in both compose files. Without a mounted
+## [3.36.0] - 2026-11-15
+
+Every API operation says whether the dashboard and the MCP server reach it,
+and the dashboard now reaches every one it is meant to. Three
+duplicate statistics routes answer `410 Gone`: that is **BREAKING** for a
+caller that used them, and `X-API-Version` stays 1.
+
+**Upgrade notes.** No schema change. Callers of `GET /api/traffic/statistics`,
+`GET /api/domains/statistics` or `GET /api/analytics/top-domains` move to the
+route the `410` names. `/etc/nginx/ssl` in the `web` service is now the
+`web-tls` volume instead of a tmpfs, in both compose files: the change takes
+effect with the compose file of this release. Without a mounted
 certificate, the first start after the upgrade makes one more self-signed
 certificate; from then on it stays the same across restarts and upgrades, so
 browsers warn once more and then no longer. A certificate mounted at
 `/etc/nginx/ssl/server.crt` and `server.key` is used as before. An override
-that mounts its own directory at `/etc/nginx/ssl` replaces the volume.
+that mounts its own directory at `/etc/nginx/ssl` replaces the volume. An
+override that lists `/etc/nginx/ssl` under the `web` service's `tmpfs` must
+drop that line: compose refuses to start with `target /etc/nginx/ssl already
+mounted` (measured with a copy of the old tmpfs list).
 
 ### Added
 
