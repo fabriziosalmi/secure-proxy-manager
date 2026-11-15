@@ -125,8 +125,13 @@ def spm_dashboard() -> Any:
 
 @mcp.tool(annotations=READ)
 def spm_top_domains(limit: int = 20) -> Any:
-    """Most-requested destination domains through the proxy."""
-    return _untrusted(_req("GET", "/api/analytics/top-domains", params={"limit": limit}))
+    """The hosts the clients asked for most in the last 7 days (at most 20):
+    host, requests, blocked, and on_blocklist when the proxy enforces the name
+    from the domain blacklist."""
+    result = _req("GET", "/api/analytics/top-destinations")
+    if isinstance(result, dict) and isinstance(result.get("data"), list):
+        result["data"] = result["data"][:max(1, min(limit, 20))]
+    return _untrusted(result)
 
 
 @mcp.tool(annotations=READ)

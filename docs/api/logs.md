@@ -305,14 +305,12 @@ These return JSON in the standard envelope, in the shape the UI renders:
 | `GET /api/status` | Proxy reachability (`proxy_status`, `proxy_host`, `proxy_port`), version, commit, today's client request count (`requests_count`), `proxy_auth` state when recorded, update availability (`update_available`, `update_url`), and Squid CVE state (`squid_version`, `squid_cves`, `cves_checked`: `false` when the major version has no table in `cve_checker.go`, such as Squid 7.x) |
 | `GET /api/security/cve` | The Squid version (`version`), whether its major version has an advisory table (`cves_checked`), and the matched advisories (`cves`) |
 | `GET /api/dashboard/summary` | The dashboard's data in one call (with `gdpr_mode` on, `top_clients` are aggregated by `/24` or `/64` network and `recent_blocks[].source_ip` is masked) |
-| `GET /api/traffic/statistics?period=day` | Requests and blocks per bucket (`hour`, `day`, `week`, `month`) |
 | `GET /api/clients/statistics` | Top 50 clients (or `/24` and `/64` networks with `gdpr_mode` on, including `network` CIDR and distinct `addresses` count), then the internal sources |
 | `GET /api/clients/{ip}/details?window=7d` | One client's or network CIDR's totals, top domains, recent requests and blocks by rule. `window=7d` counts the last 7 days, as `GET /api/clients/statistics` does; `window=all`, the default, counts every request logged; any other value answers `400`. The answer says which in `window`. With `gdpr_mode` on, only `/24` or `/64` CIDRs are accepted and a single address answers `400` |
-| `GET /api/domains/statistics` | Top 50 domains |
 | `GET /api/analytics/shadow-it` | Requests of the last 7 days to known services, by host |
 | `GET /api/analytics/user-agents` | Requests of the last 7 days by method and kind of service |
 | `GET /api/analytics/file-extensions` | Requests of the last 7 days by file extension |
-| `GET /api/analytics/top-domains` | Top 50 domains |
+| `GET /api/analytics/top-destinations` | The 20 hosts asked for most in the last 7 days: `requests`, `blocked`, and `on_blocklist` when the proxy enforces the name from the domain blacklist now |
 | `GET /api/analytics/blocked-by-day` | Blocked requests per day by rule for 7 days (`tz`, default UTC) |
 | `GET /api/analytics/cache-by-day` | Requests and bytes per day by what the cache did, for 7 days (`tz`, default UTC) |
 | `GET /api/analytics/coverage` | What protection is on now |

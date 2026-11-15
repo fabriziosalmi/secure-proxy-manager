@@ -23,6 +23,28 @@ for at least one minor release before disappearing.
   API is meant to offer it, `x-spm-api-only` with the reason. Tests keep the
   list true for the dashboard and the MCP server.
 
+### Changed
+
+- `GET /api/analytics/top-destinations` says for each host whether the proxy
+  enforces its name from the domain blacklist now (`on_blocklist`), the one
+  thing `GET /api/domains/statistics` had that it did not.
+- The MCP tool `spm_top_domains` reads `GET /api/analytics/top-destinations`
+  and keeps the first `limit` hosts (at most 20). The route it called ignored
+  `limit`.
+
+### Removed
+
+- **BREAKING** (`X-API-Version: 1`): three statistics routes answer
+  `410 Gone` naming their replacement. Nothing in the dashboard called them.
+  - `GET /api/traffic/statistics`: use `GET /api/logs/timeline` (`?hours=` up
+    to 720) for requests and blocks per hour, or
+    `GET /api/analytics/blocked-by-day` for blocks per day and rule.
+  - `GET /api/domains/statistics`: use `GET /api/analytics/top-destinations`.
+  - `GET /api/analytics/top-domains`: use `GET /api/analytics/top-destinations`.
+    It folded every name into its last two labels (`a.co.uk` and `b.co.uk`
+    were one `co.uk`), ignored `limit`, and, like `domains/statistics`,
+    answered an empty list when its query failed.
+
 ## [3.35.0] - 2026-11-14
 
 Every change to the configuration can be compared and undone. Nothing is

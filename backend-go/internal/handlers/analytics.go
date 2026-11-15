@@ -12,7 +12,6 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -370,11 +369,11 @@ func (h *AnalyticsHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 	// repeated dashboard polls return 304 when the data is unchanged.
 	etag := appMW.ETag
 	r.With(authMW).Get("/api/status", h.Status)
-	r.With(authMW, etag).Get("/api/traffic/statistics", h.TrafficStats)
+	r.With(authMW).Get("/api/traffic/statistics", h.TrafficStatsGone)
 	r.With(authMW, etag).Get("/api/clients/statistics", h.ClientStats)
 	r.With(authMW).Get("/api/clients/{ip}/details", h.ClientDetails)
 	r.With(authMW).Get("/api/clients/{ip}/{prefix}/details", h.ClientDetails)
-	r.With(authMW, etag).Get("/api/domains/statistics", h.DomainStats)
+	r.With(authMW).Get("/api/domains/statistics", h.DomainStatsGone)
 	r.With(authMW).Get("/api/cache/statistics", h.CacheStats)
 	r.With(authMW).Get("/api/waf/stats", h.WAFStats)
 	r.With(authMW).Get("/api/waf/status", h.WAFStatus)
@@ -385,7 +384,7 @@ func (h *AnalyticsHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 	r.With(authMW, etag).Get("/api/analytics/shadow-it", h.ShadowIT)
 	r.With(authMW, etag).Get("/api/analytics/user-agents", h.UserAgents)
 	r.With(authMW, etag).Get("/api/analytics/file-extensions", h.FileExtensions)
-	r.With(authMW, etag).Get("/api/analytics/top-domains", h.TopDomains)
+	r.With(authMW).Get("/api/analytics/top-domains", h.TopDomainsGone)
 	r.With(authMW, etag).Get("/api/analytics/top-destinations", h.TopDestinations)
 	r.With(authMW, etag).Get("/api/analytics/blocked-by-day", h.BlockedByDay)
 	r.With(authMW, etag).Get("/api/analytics/cache-by-day", h.CacheByDay)
@@ -445,125 +444,6 @@ func (h *AnalyticsHandlers) Status(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeOK(w, out)
-}
-
-func (h *AnalyticsHandlers) TrafficStats(w http.ResponseWriter, r *http.Request) {
-	period := r.URL.Query().Get("period")
-	if period == "" {
-		period = "day"
-	}
-
-	var interval database.SQLText
-	var intervalFormat string
-	var startDuration string
-	switch period {
-	case "hour":
-		// Bucket into 5-minute slots (rounded down via epoch) so the keys line up
-		// with the 5-minute label grid below. A per-minute %H:%M key never matched
-		// the 5-min-stepped labels, dropping ~all points.
-		interval = `strftime('%Y-%m-%d %H:%M', datetime((unix_timestamp / 300) * 300, 'unixepoch'))`
-		intervalFormat = "2006-01-02 15:04"
-		startDuration = "-1 hours"
-	case "week":
-		interval = `strftime('%Y-%m-%d', timestamp)`
-		intervalFormat = "2006-01-02"
-		startDuration = "-7 days"
-	case "month":
-		interval = `strftime('%Y-%m-%d', timestamp)`
-		intervalFormat = "2006-01-02"
-		startDuration = "-30 days"
-	default: // "day"
-		period = "day"
-		interval = `strftime('%Y-%m-%d %H', timestamp)`
-		intervalFormat = "2006-01-02 15"
-		startDuration = "-1 days"
-	}
-
-	// #nosec G202
-	rows, err := h.db.Query(string(`
-		SELECT `+interval+` AS bucket, COUNT(*) AS total,
-		       SUM(blocked) AS blocked
-		FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows+` GROUP BY bucket`),
-		sinceUnix(parseDuration(startDuration)),
-	)
-	bucketMap := map[string]map[string]int{}
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var bucket string
-			var total, blocked int
-			rows.Scan(&bucket, &total, &blocked) //nolint:errcheck
-			bucketMap[bucket] = map[string]int{"total": total, "blocked": blocked}
-		}
-	}
-
-	// Build labels array from now back. Use UTC to match the UTC timestamps that
-	// the log tailer writes (and that strftime buckets above).
-	var labels []string
-	var inbound, outbound, blocked []int
-	now := time.Now().UTC()
-	var step time.Duration
-	var labelFmt string
-	switch period {
-	case "hour":
-		step = 5 * time.Minute
-		labelFmt = intervalFormat
-	case "week":
-		step = 24 * time.Hour
-		labelFmt = intervalFormat
-	case "month":
-		step = 24 * time.Hour
-		labelFmt = intervalFormat
-	default:
-		step = time.Hour
-		labelFmt = intervalFormat
-	}
-	startT := now.Add(-parseDuration(startDuration))
-	// Align the hour grid to 5-minute boundaries (:00,:05,…) so labels match the
-	// 5-minute SQL buckets.
-	if period == "hour" {
-		startT = startT.Truncate(step)
-	}
-	for t := startT; t.Before(now) || t.Equal(now); t = t.Add(step) {
-		lbl := t.Format(labelFmt)
-		labels = append(labels, lbl)
-		if m, ok := bucketMap[lbl]; ok {
-			inbound = append(inbound, m["total"])
-			blocked = append(blocked, m["blocked"])
-		} else {
-			inbound = append(inbound, 0)
-			blocked = append(blocked, 0)
-		}
-		outbound = append(outbound, 0)
-	}
-	writeOK(w, map[string]any{
-		"labels": labels, "inbound": inbound, "outbound": outbound, "blocked": blocked,
-	})
-}
-
-func parseDuration(s string) time.Duration {
-	// Parse "-N hours" or "-N days" into Go duration.
-	s = strings.TrimSpace(s)
-	s = strings.TrimPrefix(s, "-")
-	parts := strings.Fields(s)
-	if len(parts) != 2 {
-		return 24 * time.Hour
-	}
-	n := 1
-	if v, err := strconv.Atoi(parts[0]); err == nil {
-		n = v
-	}
-	if n < 1 {
-		n = 1
-	}
-	switch {
-	case strings.HasPrefix(parts[1], "hour"):
-		return time.Duration(n) * time.Hour
-	case strings.HasPrefix(parts[1], "day"):
-		return time.Duration(n) * 24 * time.Hour
-	default:
-		return 24 * time.Hour
-	}
 }
 
 // analyticsWindow is the rolling window for the "top N over recent activity"
@@ -1066,47 +946,6 @@ func (h *AnalyticsHandlers) clientDetailsByNetwork(w http.ResponseWriter, rawCID
 		"recent":            recent,
 		"blocked_by_reason": h.blockedByReason(cond, args...),
 	})
-}
-
-func (h *AnalyticsHandlers) DomainStats(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.db.Query(string(`
-		SELECT destination, COUNT(*) AS requests,
-		       SUM(blocked) AS blocked_requests, `+database.HostKey("destination")+` AS host
-		FROM proxy_logs WHERE destination IS NOT NULL AND destination != '' AND unix_timestamp >= ? AND `+clientRows+`
-		GROUP BY destination ORDER BY requests DESC LIMIT 50`), sinceUnix(analyticsWindow))
-	if err != nil {
-		writeOK(w, []any{})
-		return
-	}
-
-	type logEntry struct {
-		dest    string
-		reqs    int
-		blkReqs int
-		host    string
-	}
-	var entries []logEntry
-	for rows.Next() {
-		var dest, host string
-		var reqs, blkReqs int
-		rows.Scan(&dest, &reqs, &blkReqs, &host) //nolint:errcheck
-		entries = append(entries, logEntry{dest, reqs, blkReqs, host})
-	}
-	rows.Close()
-
-	var domains []map[string]any
-	for _, e := range entries {
-		isBlocked := e.blkReqs > 0 || h.enforcedOnBlocklist(enforcedHost(e.host))
-		status := "Allowed"
-		if isBlocked {
-			status = "Blocked"
-		}
-		domains = append(domains, map[string]any{"domain_name": e.dest, "requests": e.reqs, "status": status})
-	}
-	if domains == nil {
-		domains = []map[string]any{}
-	}
-	writeOK(w, domains)
 }
 
 // writeWAFStatsError answers a WAF statistics failure with waf_status, the
@@ -1712,43 +1551,31 @@ func (h *AnalyticsHandlers) FileExtensions(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-func (h *AnalyticsHandlers) TopDomains(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.db.Query(string(`
-		SELECT destination, COUNT(*) AS cnt FROM proxy_logs
-		WHERE destination IS NOT NULL AND destination != ''
-		AND unix_timestamp >= ? AND `+clientRows+`
-		GROUP BY destination ORDER BY cnt DESC LIMIT 200`), sinceUnix(analyticsWindow))
-	domainCounts := map[string]int{}
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var dest string
-			var cnt int
-			rows.Scan(&dest, &cnt) //nolint:errcheck
-			dom := extractDomain(dest)
-			parts := strings.Split(dom, ".")
-			var root string
-			if len(parts) >= 2 {
-				root = strings.Join(parts[len(parts)-2:], ".")
-			} else {
-				root = dom
-			}
-			domainCounts[root] += cnt
-		}
-	}
-	if log.Trace().Enabled() {
-		log.Trace().Int("domains", len(domainCounts)).Msg("top-domains computed")
-	}
-	var result []map[string]any
-	for d, c := range domainCounts {
-		result = append(result, map[string]any{"domain": d, "count": c})
-	}
-	writeOK(w, result)
+// Retired routes answer 410 naming what to use instead (CHANGELOG).
+// GET /api/traffic/statistics bucketed by hour, day, week or month what
+// GET /api/logs/timeline counts per hour (up to 720 hours) and
+// GET /api/analytics/blocked-by-day per day and rule; GET /api/domains/statistics
+// and GET /api/analytics/top-domains listed the destinations
+// GET /api/analytics/top-destinations lists, top-domains folded every name
+// into its last two labels (a.co.uk and b.co.uk were one "co.uk"), and both
+// answered an empty list when the query failed.
+
+func (h *AnalyticsHandlers) TrafficStatsGone(w http.ResponseWriter, _ *http.Request) {
+	writeError(w, http.StatusGone, "removed: use GET /api/logs/timeline (?hours= up to 720) for requests and blocks per hour, or GET /api/analytics/blocked-by-day for blocks per day and rule")
+}
+
+func (h *AnalyticsHandlers) DomainStatsGone(w http.ResponseWriter, _ *http.Request) {
+	writeError(w, http.StatusGone, "removed: use GET /api/analytics/top-destinations, which says on_blocklist for each host")
+}
+
+func (h *AnalyticsHandlers) TopDomainsGone(w http.ResponseWriter, _ *http.Request) {
+	writeError(w, http.StatusGone, "removed: use GET /api/analytics/top-destinations")
 }
 
 // TopDestinations answers GET /api/analytics/top-destinations: the 20 hosts
 // the clients asked for most in the analytics window, each with how many of
-// those requests were blocked. The stack's own traffic is left out, as in
+// those requests were blocked and whether the proxy enforces the name from
+// the domain blacklist now (on_blocklist: exact name, not on the allowed list). The stack's own traffic is left out, as in
 // every analytics count. A host is one row whatever its ports and paths:
 // destinationKey keeps a port other than 80 and 443 (another service, for the
 // other top lists), so the ports are merged here. A database failure is an
@@ -1806,7 +1633,10 @@ func (h *AnalyticsHandlers) TopDestinations(w http.ResponseWriter, r *http.Reque
 	}
 	out := make([]map[string]any, 0, len(list))
 	for _, d := range list {
-		out = append(out, map[string]any{"host": d.host, "requests": d.requests, "blocked": d.blk})
+		out = append(out, map[string]any{
+			"host": d.host, "requests": d.requests, "blocked": d.blk,
+			"on_blocklist": h.enforcedOnBlocklist(enforcedHost(d.host)),
+		})
 	}
 	writeOK(w, out)
 }

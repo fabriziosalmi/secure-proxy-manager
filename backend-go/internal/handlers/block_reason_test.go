@@ -260,26 +260,9 @@ func TestClientStatsAttributeRequestsToTheClient(t *testing.T) {
 }
 
 func TestTimelinesCountClientRequests(t *testing.T) {
-	db, _, cfg, cleanup := setupTestDB(t)
+	db, _, _, cleanup := setupTestDB(t)
 	defer cleanup()
 	seedBlockReasonFixture(t, db)
-
-	var traffic struct {
-		Data struct {
-			Inbound []int `json:"inbound"`
-			Blocked []int `json:"blocked"`
-		} `json:"data"`
-	}
-	getJSON(t, NewAnalyticsHandlers(db, cfg).TrafficStats, "/api/traffic/statistics?period=day", &traffic)
-	sum := func(xs []int) (n int) {
-		for _, x := range xs {
-			n += x
-		}
-		return
-	}
-	if sum(traffic.Data.Inbound) != 18 || sum(traffic.Data.Blocked) != 13 {
-		t.Errorf("traffic: %d requests, %d blocked; want 18, 13", sum(traffic.Data.Inbound), sum(traffic.Data.Blocked))
-	}
 
 	lh := NewLogHandlers(db)
 	var tl struct {
@@ -335,15 +318,20 @@ func TestOtherStatisticsLeaveOutTheDNSRows(t *testing.T) {
 
 	var dom struct {
 		Data []struct {
-			Name     string `json:"domain_name"`
+			Host     string `json:"host"`
 			Requests int    `json:"requests"`
 		} `json:"data"`
 	}
-	getJSON(t, h.DomainStats, "/api/domains/statistics", &dom)
+	getJSON(t, h.TopDestinations, "/api/analytics/top-destinations", &dom)
+	sink := -1
 	for _, d := range dom.Data {
-		if d.Name == "sink.test" {
-			t.Errorf("domain statistics count the DNS rows as requests to sink.test (%d)", d.Requests)
+		if d.Host == "sink.test" {
+			sink = d.Requests
 		}
+	}
+	// The 9 client CONNECTs to sink.test:443, not the 18 sinkhole answers too.
+	if sink != 9 {
+		t.Errorf("top destinations: sink.test has %d requests, want the 9 client requests without the 18 DNS rows", sink)
 	}
 
 	var st struct {

@@ -152,15 +152,12 @@ Details: [Logs and Analytics API](./logs.md).
 | `POST` | `/api/counters/reset` | Delete every log row and reset the WAF's counters |
 | `GET`  | `/api/status` | Proxy reachability, version, today's request count, Squid version, CVE count (`squid_cves`) and whether that major version has an advisory table (`cves_checked`), update availability |
 | `GET`  | `/api/dashboard/summary` | The dashboard's data in one call (`top_clients` aggregated by network and `recent_blocks` masked when `gdpr_mode` is on) |
-| `GET`  | `/api/traffic/statistics` | Requests and blocks per bucket (`period` = `hour`, `day`, `week`, `month`) |
 | `GET`  | `/api/clients/statistics` | Top 50 clients (or `/24` and `/64` networks when `gdpr_mode` is on), then the internal sources |
 | `GET`  | `/api/clients/{ip}/details` | One client's or `/24` / `/64` network CIDR's totals, top domains and recent requests; `?window=7d` for the last 7 days, `all` (default) for every request |
-| `GET`  | `/api/domains/statistics` | Top 50 destinations of the last 7 days with their requests and a `status`: `Blocked` when a request to it was blocked or the proxy enforces the name from the blocklist (exact name, not on the allowed list), `Allowed` otherwise |
 | `GET`  | `/api/analytics/shadow-it` | Requests of the last 7 days to known services (file sharing, messaging, AI, social) |
 | `GET`  | `/api/analytics/user-agents` | Requests of the last 7 days by method and kind of service |
 | `GET`  | `/api/analytics/file-extensions` | Requests of the last 7 days by file extension |
-| `GET`  | `/api/analytics/top-domains` | Top 50 domains |
-| `GET`  | `/api/analytics/top-destinations` | The 20 hosts the clients asked for most in the last 7 days, internal sources left out, each with `requests` and `blocked` |
+| `GET`  | `/api/analytics/top-destinations` | The 20 hosts the clients asked for most in the last 7 days, internal sources left out, each with `requests`, `blocked`, and `on_blocklist` when the proxy enforces the name from the domain blacklist now (exact name, not on the allowed list) |
 | `GET`  | `/api/analytics/blocked-by-day` | Blocked requests per day by rule, today and the 6 days before (`tz`, default UTC) |
 | `GET`  | `/api/analytics/cache-by-day` | What the cache did with the client requests of each day, today and the 6 days before (`tz`, default UTC): `requests` and `bytes` sent per outcome (`hit`, `revalidated`, `miss`, `tunnel`, `refused`, `other`), every outcome present, and the 7 days' `totals` |
 | `GET`  | `/api/analytics/coverage` | Which protections are switched on now: list sizes, WAF rules, HTTPS inspection, alerts and the other access settings |
