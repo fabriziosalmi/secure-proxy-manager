@@ -1260,10 +1260,10 @@ test.describe('UI — Blacklists (exceptions)', () => {
     await expect(page.getByRole('button', { name: '+ GitHub' })).toBeVisible();
   });
 
-  test('an exceptions list offers no URL import, Popular lists, Geo-block or Remove all', async ({ page }) => {
+  test('an exceptions list offers no URL import, Popular lists or Geo-block, and empties like the other lists', async ({ page }) => {
     await page.getByRole('tab', { name: /^Domain exceptions/ }).click();
     await expect(page.getByRole('button', { name: 'Popular lists' })).not.toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Remove every entry on this list' })).not.toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Remove every entry on this list' })).toBeVisible();
     await openAdd(page);
     await expect(page.getByRole('group', { name: 'How to add' }).getByRole('button')).toHaveText(['Single entry', 'Paste a list']);
   });
