@@ -409,6 +409,8 @@ export function describeAudit(e: AuditEntry): AuditDescription {
   }
   if (action === 'update_settings' || action === 'update_setting') {
     const keys = (e.target ?? '').split(',').filter(Boolean);
+    // The dashboard's own state, saved when the setup wizard closes: not a setting a person changed.
+    if (keys.length === 1 && keys[0] === 'wizard_completed') return { event: 'Closed the setup wizard', details: null, kind: 'change' };
     // A row with values names each change; an older row only the keys.
     const details = settingChanges(fields(e.details)) ?? (keys.length ? keys.map(settingName).join(', ') : null);
     const event = keys.length === 1 ? `Changed ${settingName(keys[0])}` : keys.length ? `Changed ${count(keys.length, 'setting', 'settings')}` : 'Changed settings';

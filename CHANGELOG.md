@@ -61,8 +61,9 @@ for at least one minor release before disappearing.
   lists, which took twenty rows to scroll past.
 - The audit log says why a sign-in failed in words ("Wrong username or
   password", not `bad_credentials`), names a default-deny domain as the page
-  does ("debian.org and its subdomains", not ".debian.org"), and says how many
-  requests clearing the access log deleted.
+  does ("debian.org and its subdomains", not ".debian.org"), says how many
+  requests clearing the access log deleted, and shows closing the setup
+  wizard as that, not as a changed setting.
 - Configuration snapshots no longer hold `wizard_completed`, so closing the
   setup wizard is not a configuration change, and their reasons use the
   Default-deny allowlist's name.

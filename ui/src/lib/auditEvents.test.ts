@@ -18,6 +18,10 @@ describe('describeAudit', () => {
     expect(describeAudit(row('remove_egress_allowlist', 'api.example.com')).event).toBe('Removed api.example.com from the default-deny allowlist')
   })
 
+  it('says the setup wizard was closed, not that a setting changed', () => {
+    expect(describeAudit(row('update_settings', 'wizard_completed', '{"changes":{"wizard_completed":{"to":"true"}}}'))).toEqual({ event: 'Closed the setup wizard', details: null, kind: 'change' })
+  })
+
   it('says how many requests clearing the access log deleted', () => {
     expect(describeAudit(row('clear_logs', 'proxy_logs', '{"removed":42}'))).toEqual({ event: 'Cleared the access logs', details: '42 logged requests deleted', kind: 'change' })
     expect(describeAudit(row('clear_logs', 'proxy_logs', '')).details).toBeNull()
