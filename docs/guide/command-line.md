@@ -51,7 +51,34 @@ the token and the fingerprint to `spm/config.json` in your config directory
 (`SPM_CONFIG` to choose another file), with mode 0600 in a directory of mode
 0700. `spm` refuses to read a config file that other users can read.
 
-## Use it
+## The dashboard's lists and pages
+
+The commands carry the names the dashboard shows:
+
+| Command | Page | Verbs |
+|---|---|---|
+| `spm blocked-ips`, `spm blocked-domains` | Blacklists | `list [--search] [--limit]`, `add VALUE [--note]`, `remove VALUE`, `clear --yes`, `import FILE`, `export`, `sources` |
+| `spm ip-exceptions`, `spm domain-exceptions` | Blacklists | the same |
+| `spm allowlist` | Default-deny allowlist | `list`, `add VALUE [--subdomains] [--note]`, `remove VALUE`, `clear --yes` |
+| `spm history` | Configuration history | `list`, `take [--note]`, `diff ID`, `restore ID --yes` |
+| `spm sign-in-limits` | Admin and backup | `list`, `clear IP` |
+| `spm settings` | Settings | `get [NAME]`, `set NAME VALUE` |
+| `spm logs` | Access logs | `[--blocked] [--search TEXT] [--limit N]` |
+
+```bash
+spm blocked-ips add 203.0.113.7 --note "scanner"
+spm blocked-domains import blocklist.txt
+spm allowlist add debian.org --subdomains
+spm history diff 12 && spm history restore 12 --yes
+spm logs --blocked --limit 50
+```
+
+`remove` takes the entry itself, not its id. `clear` and `history restore` do
+nothing without `--yes`. Every command prints a table, or the API's data with
+`--json`. In `GET /api/openapi.json`, `x-spm-surfaces` marks `cli` the
+operations these commands call; a test holds the two to each other.
+
+## Any operation
 
 ```bash
 spm status                    # the server's version and state
