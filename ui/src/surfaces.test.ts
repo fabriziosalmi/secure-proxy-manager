@@ -33,6 +33,12 @@ const presetType = /type PresetList = ([^;]+);/.exec(sources['./components/black
 const PRESET_LISTS = [...(presetType?.[1].matchAll(/'([a-z-]+)'/g) ?? [])].map((m) => m[1])
 const PREFIXES = { 'list.path': LIST_PATHS, 'l.path': LIST_PATHS, list: PRESET_LISTS }
 
+// Calls the extractor finds through a list variable that the code reaches
+// only for other lists: AddEntries posts ${list.path}/import only when
+// list.allowed (the exception lists); the blocked lists import through
+// blacklists/import, and their own /import routes are retired (410).
+const GATED_AWAY = new Set(['POST /api/ip-blacklist/import', 'POST /api/domain-blacklist/import'])
+
 function called() {
   const { calls, unresolved } = extractApiCalls(sources, PREFIXES, ['lib/api.ts: path'])
   const hit = new Map<string, string>()
@@ -64,7 +70,9 @@ describe('UI surface', () => {
 
   it('calls exactly the operations the registry marks ui', () => {
     const { hit } = called()
-    const unclaimed = [...hit.entries()].filter(([k]) => !operations.find((o) => o.key === k)?.ui).map(([k, w]) => `${k} (${w})`)
+    const unclaimed = [...hit.entries()].filter(([k]) => !GATED_AWAY.has(k) && !operations.find((o) => o.key === k)?.ui).map(([k, w]) => `${k} (${w})`)
+    // A gated-away call stays one the registry does not claim for the UI.
+    expect([...GATED_AWAY].filter((k) => operations.find((o) => o.key === k)?.ui)).toEqual([])
     const unbacked = operations.filter((o) => o.ui && !hit.has(o.key)).map((o) => o.key)
     expect(operations.length).toBeGreaterThan(100)
     expect(unclaimed, 'called by the UI, not marked ui in surfaces.go').toEqual([])

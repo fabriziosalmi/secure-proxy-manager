@@ -46,6 +46,20 @@ func oaObject(props map[string]any, required ...string) map[string]any {
 	return o
 }
 
+// oaRequest is a request body: the properties a handler reads, the required
+// ones always present. Not closed, because the handlers decode with
+// encoding/json, which ignores a field it does not know; a closed request
+// schema would tell a client that a request is refused when it is not.
+func oaRequest(props map[string]any, required ...string) map[string]any {
+	o := map[string]any{"type": "object", "properties": props}
+	if len(required) > 0 {
+		o["required"] = required
+	}
+	return o
+}
+
+func oaStrMax(n int) map[string]any { return map[string]any{"type": "string", "maxLength": n} }
+
 func oaList(item string) map[string]any {
 	return oaObject(map[string]any{
 		"status": map[string]any{"const": "success"},
@@ -117,9 +131,32 @@ var openAPISchemas = map[string]any{
 	"DomainEntryList":     oaList("DomainEntry"),
 	"DomainExceptionList": oaList("DomainException"),
 	"EgressEntryList":     oaList("EgressEntry"),
-	"NewIPEntry":          oaObject(map[string]any{"ip": oaStr, "description": oaStr}, "ip"),
-	"NewDomainEntry":      oaObject(map[string]any{"domain": oaStr, "description": oaStr}, "domain"),
-	"NewEgressEntry":      oaObject(map[string]any{"entry": oaStr, "description": oaStr}, "entry"),
+	"NewIPEntry":          oaRequest(map[string]any{"ip": oaStrMax(50), "description": oaStrMax(500)}, "ip"),
+	"NewDomainEntry":      oaRequest(map[string]any{"domain": oaStrMax(253), "description": oaStrMax(500)}, "domain"),
+	"NewEgressEntry": oaRequest(map[string]any{
+		"entry": oaStrMax(253), "description": oaStrMax(500),
+		"include_subdomains": map[string]any{"type": "boolean", "description": "a domain and every name under it"},
+	}, "entry"),
+	"BulkDelete": oaRequest(map[string]any{
+		"ids": map[string]any{"type": "array", "items": oaInt, "minItems": 1, "maxItems": 1000},
+	}, "ids"),
+	"SourceScope": oaRequest(map[string]any{
+		"scope": map[string]any{"enum": []string{"global", "groups"}, "description": "global: every client; groups: only the client groups that use it"},
+	}, "scope"),
+	"ImportAllowed": oaRequest(map[string]any{"content": map[string]any{"type": "string", "maxLength": 1048576, "description": "one entry per line"}}, "content"),
+	"ImportBlacklist": func() map[string]any {
+		o := oaRequest(map[string]any{
+			"type":    map[string]any{"enum": []string{"ip", "domain"}},
+			"url":     map[string]any{"type": "string", "maxLength": 2048, "description": "a list to download"},
+			"content": map[string]any{"type": "string", "maxLength": 52428800, "description": "a pasted list, one entry per line"},
+			"name":    map[string]any{"type": "string", "maxLength": 100, "description": "what the source is called"},
+		}, "type")
+		o["anyOf"] = []any{map[string]any{"required": []string{"url"}}, map[string]any{"required": []string{"content"}}}
+		return o
+	}(),
+	"ImportGeo": oaRequest(map[string]any{
+		"countries": map[string]any{"type": "array", "items": oaStr, "minItems": 1, "maxItems": 50, "description": "ISO 3166-1 alpha-2 codes"},
+	}, "countries"),
 
 	// A secret is write-only: its row says whether a value is stored, never
 	// the value.
@@ -152,22 +189,37 @@ var openAPISchemas = map[string]any{
 }
 
 // routeSchema is what a route takes and gives: the component of its request
-// body ("" for none) and of its 200 answer.
-type routeSchema struct{ request, response string }
+// body, or noBody when it reads none, the query parameters it reads, and the
+// component of its 200 answer. Every write operation says one or the other
+// (TestEveryWriteSaysWhatItReads): a client, the command first, builds its
+// arguments from this, and "not described" must not read as "takes nothing".
+type routeSchema struct {
+	request, response string
+	noBody            bool
+	query             []oaParam
+}
+
+// oaParam is a query parameter an operation reads.
+type oaParam struct {
+	name     string
+	schema   map[string]any
+	required bool
+	desc     string
+}
 
 var routeSchemas = map[string]routeSchema{
 	"GET /api/ip-blacklist":             {response: "IPEntryList"},
 	"POST /api/ip-blacklist":            {request: "NewIPEntry", response: "Message"},
-	"DELETE /api/ip-blacklist/{id}":     {response: "Message"},
+	"DELETE /api/ip-blacklist/{id}":     {response: "Message", noBody: true},
 	"GET /api/ip-whitelist":             {response: "IPEntryList"},
 	"POST /api/ip-whitelist":            {request: "NewIPEntry", response: "Message"},
-	"DELETE /api/ip-whitelist/{id}":     {response: "Message"},
+	"DELETE /api/ip-whitelist/{id}":     {response: "Message", noBody: true},
 	"GET /api/domain-blacklist":         {response: "DomainEntryList"},
 	"POST /api/domain-blacklist":        {request: "NewDomainEntry", response: "Message"},
-	"DELETE /api/domain-blacklist/{id}": {response: "Message"},
+	"DELETE /api/domain-blacklist/{id}": {response: "Message", noBody: true},
 	"GET /api/domain-whitelist":         {response: "DomainExceptionList"},
 	"POST /api/domain-whitelist":        {request: "NewDomainEntry", response: "Message"},
-	"DELETE /api/domain-whitelist/{id}": {response: "Message"},
+	"DELETE /api/domain-whitelist/{id}": {response: "Message", noBody: true},
 	"GET /api/egress-allowlist":         {response: "EgressEntryList"},
 	"POST /api/egress-allowlist":        {request: "NewEgressEntry", response: "Message"},
 	"GET /api/settings":                 {response: "SettingList"},
@@ -176,6 +228,31 @@ var routeSchemas = map[string]routeSchema{
 	"PUT /api/settings/{name}":          {request: "SettingValue", response: "Message"},
 	"GET /api/logs":                     {response: "LogList"},
 	"GET /api/logs/stats":               {response: "LogStats"},
+
+	// The lists: what each write reads.
+	"POST /api/ip-blacklist/bulk-delete":           {request: "BulkDelete"},
+	"POST /api/ip-whitelist/bulk-delete":           {request: "BulkDelete"},
+	"POST /api/domain-blacklist/bulk-delete":       {request: "BulkDelete"},
+	"POST /api/domain-whitelist/bulk-delete":       {request: "BulkDelete"},
+	"POST /api/egress-allowlist/bulk-delete":       {request: "BulkDelete"},
+	"DELETE /api/ip-blacklist/clear-all":           {noBody: true},
+	"DELETE /api/ip-whitelist/clear-all":           {noBody: true},
+	"DELETE /api/domain-blacklist/clear-all":       {noBody: true},
+	"DELETE /api/domain-whitelist/clear-all":       {noBody: true},
+	"DELETE /api/egress-allowlist/clear-all":       {noBody: true},
+	"DELETE /api/egress-allowlist/{id}":            {noBody: true},
+	"DELETE /api/ip-blacklist/sources/{id}":        {noBody: true},
+	"DELETE /api/ip-whitelist/sources/{id}":        {noBody: true},
+	"DELETE /api/domain-blacklist/sources/{id}":    {noBody: true},
+	"DELETE /api/domain-whitelist/sources/{id}":    {noBody: true},
+	"PUT /api/ip-blacklist/sources/{id}/scope":     {request: "SourceScope"},
+	"PUT /api/domain-blacklist/sources/{id}/scope": {request: "SourceScope"},
+	"POST /api/domain-blacklist/presets/{preset}":  {noBody: true},
+	"POST /api/domain-whitelist/presets/{preset}":  {noBody: true},
+	"POST /api/ip-whitelist/import":                {request: "ImportAllowed"},
+	"POST /api/domain-whitelist/import":            {request: "ImportAllowed"},
+	"POST /api/blacklists/import":                  {request: "ImportBlacklist"},
+	"POST /api/blacklists/import-geo":              {request: "ImportGeo"},
 }
 
 // chiParam matches a path parameter, with chi's optional regexp ({id:[0-9]+}).
@@ -222,9 +299,6 @@ func OpenAPIDocument(r chi.Router) map[string]any {
 		for _, m := range chiParam.FindAllStringSubmatch(d.Path, -1) {
 			params = append(params, map[string]any{"name": m[1], "in": "path", "required": true, "schema": oaStr})
 		}
-		if params != nil {
-			op["parameters"] = params
-		}
 		ok := map[string]any{"description": "Success"}
 		s := routeSchemas[key]
 		if s.response != "" {
@@ -235,6 +309,20 @@ func OpenAPIDocument(r chi.Router) map[string]any {
 				"required": true,
 				"content":  map[string]any{"application/json": map[string]any{"schema": oaRef(s.request)}},
 			}
+		}
+		if s.noBody {
+			// Said, not left out: a client can tell "takes nothing" from "not described".
+			op["x-spm-body"] = "none"
+		}
+		for _, q := range s.query {
+			p := map[string]any{"name": q.name, "in": "query", "required": q.required, "schema": q.schema}
+			if q.desc != "" {
+				p["description"] = q.desc
+			}
+			params = append(params, p)
+		}
+		if params != nil {
+			op["parameters"] = params
 		}
 		errResp := func(desc string) map[string]any {
 			return map[string]any{"description": desc, "content": map[string]any{"application/json": map[string]any{"schema": oaRef("Error")}}}

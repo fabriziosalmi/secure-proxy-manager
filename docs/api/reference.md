@@ -24,6 +24,12 @@ or `none` when no token may call it). The lists, settings and access-log
 routes carry request and response schemas; the others are described without
 schemas for now.
 
+A write operation either carries a request body schema or says
+`x-spm-body: none`, so a client can tell "takes nothing" from "not described";
+the request schemas are tested against the handlers both ways (a body valid
+by its schema is not refused as malformed, and one without a required field
+is). The lists' writes are described so far; the others follow.
+
 `x-spm-surfaces` names where each operation can be reached: always `api`,
 and `ui`, `cli` and `mcp` when the dashboard, the `spm` command or the MCP
 server offer it. `x-spm-api-only`, when present, says why only the API offers

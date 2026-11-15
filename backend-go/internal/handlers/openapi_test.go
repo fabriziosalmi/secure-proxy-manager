@@ -210,8 +210,14 @@ func TestOpenAPISchemasMatchRealResponses(t *testing.T) {
 		"DELETE /api/domain-whitelist/{id}", "GET /api/client-setup",
 	}
 	writeTestCA(t, cfg.ConfigDir) // so the CA object, not only null, is checked
-	if len(order) != len(routeSchemas) {
-		t.Fatalf("the test calls %d routes, routeSchemas has %d: every route given a schema is checked", len(order), len(routeSchemas))
+	withResponse := 0
+	for _, s := range routeSchemas {
+		if s.response != "" {
+			withResponse++
+		}
+	}
+	if len(order) != withResponse {
+		t.Fatalf("the test calls %d routes, routeSchemas gives %d a response schema: every one is checked", len(order), withResponse)
 	}
 	seen := map[string]string{}
 	for _, key := range order {

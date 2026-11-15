@@ -1,6 +1,22 @@
 {
   "components": {
     "schemas": {
+      "BulkDelete": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
       "ClientSetup": {
         "additionalProperties": false,
         "properties": {
@@ -443,6 +459,77 @@
         ],
         "type": "object"
       },
+      "ImportAllowed": {
+        "properties": {
+          "content": {
+            "description": "one entry per line",
+            "maxLength": 1048576,
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "type": "object"
+      },
+      "ImportBlacklist": {
+        "anyOf": [
+          {
+            "required": [
+              "url"
+            ]
+          },
+          {
+            "required": [
+              "content"
+            ]
+          }
+        ],
+        "properties": {
+          "content": {
+            "description": "a pasted list, one entry per line",
+            "maxLength": 52428800,
+            "type": "string"
+          },
+          "name": {
+            "description": "what the source is called",
+            "maxLength": 100,
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "ip",
+              "domain"
+            ]
+          },
+          "url": {
+            "description": "a list to download",
+            "maxLength": 2048,
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "type": "object"
+      },
+      "ImportGeo": {
+        "properties": {
+          "countries": {
+            "description": "ISO 3166-1 alpha-2 codes",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "countries"
+        ],
+        "type": "object"
+      },
       "ListMeta": {
         "additionalProperties": false,
         "properties": {
@@ -631,12 +718,13 @@
         "type": "object"
       },
       "NewDomainEntry": {
-        "additionalProperties": false,
         "properties": {
           "description": {
+            "maxLength": 500,
             "type": "string"
           },
           "domain": {
+            "maxLength": 253,
             "type": "string"
           }
         },
@@ -646,13 +734,18 @@
         "type": "object"
       },
       "NewEgressEntry": {
-        "additionalProperties": false,
         "properties": {
           "description": {
+            "maxLength": 500,
             "type": "string"
           },
           "entry": {
+            "maxLength": 253,
             "type": "string"
+          },
+          "include_subdomains": {
+            "description": "a domain and every name under it",
+            "type": "boolean"
           }
         },
         "required": [
@@ -661,12 +754,13 @@
         "type": "object"
       },
       "NewIPEntry": {
-        "additionalProperties": false,
         "properties": {
           "description": {
+            "maxLength": 500,
             "type": "string"
           },
           "ip": {
+            "maxLength": 50,
             "type": "string"
           }
         },
@@ -766,6 +860,21 @@
           "status",
           "message",
           "data"
+        ],
+        "type": "object"
+      },
+      "SourceScope": {
+        "properties": {
+          "scope": {
+            "description": "global: every client; groups: only the client groups that use it",
+            "enum": [
+              "global",
+              "groups"
+            ]
+          }
+        },
+        "required": [
+          "scope"
         ],
         "type": "object"
       }
@@ -1291,6 +1400,16 @@
     "/api/blacklists/import": {
       "post": {
         "operationId": "post_api_blacklists_import",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportBlacklist"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Success"
@@ -1330,6 +1449,16 @@
     "/api/blacklists/import-geo": {
       "post": {
         "operationId": "post_api_blacklists_import_geo",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportGeo"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Success"
@@ -2484,6 +2613,16 @@
     "/api/domain-blacklist/bulk-delete": {
       "post": {
         "operationId": "post_api_domain_blacklist_bulk_delete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkDelete"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Success"
@@ -2552,6 +2691,7 @@
         "tags": [
           "domain-blacklist"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -2630,9 +2770,9 @@
         "tags": [
           "domain-blacklist"
         ],
+        "x-spm-api-only": "retired: it answers 410 Gone",
         "x-spm-surfaces": [
-          "api",
-          "ui"
+          "api"
         ],
         "x-spm-token-scope": "write"
       }
@@ -2718,6 +2858,7 @@
         "tags": [
           "domain-blacklist"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -2806,6 +2947,7 @@
         "tags": [
           "domain-blacklist"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -2826,6 +2968,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceScope"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Success"
@@ -2911,6 +3063,7 @@
         "tags": [
           "domain-blacklist"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui",
@@ -3022,6 +3175,16 @@
     "/api/domain-whitelist/bulk-delete": {
       "post": {
         "operationId": "post_api_domain_whitelist_bulk_delete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkDelete"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Success"
@@ -3090,6 +3253,7 @@
         "tags": [
           "domain-whitelist"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -3139,6 +3303,16 @@
     "/api/domain-whitelist/import": {
       "post": {
         "operationId": "post_api_domain_whitelist_import",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportAllowed"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Success"
@@ -3256,6 +3430,7 @@
         "tags": [
           "domain-whitelist"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -3344,6 +3519,7 @@
         "tags": [
           "domain-whitelist"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -3400,6 +3576,7 @@
         "tags": [
           "domain-whitelist"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -3550,6 +3727,16 @@
     "/api/egress-allowlist/bulk-delete": {
       "post": {
         "operationId": "post_api_egress_allowlist_bulk_delete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkDelete"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Success"
@@ -3618,6 +3805,7 @@
         "tags": [
           "egress-allowlist"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -3667,6 +3855,7 @@
         "tags": [
           "egress-allowlist"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -4148,6 +4337,16 @@
     "/api/ip-blacklist/bulk-delete": {
       "post": {
         "operationId": "post_api_ip_blacklist_bulk_delete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkDelete"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Success"
@@ -4216,6 +4415,7 @@
         "tags": [
           "ip-blacklist"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -4294,9 +4494,9 @@
         "tags": [
           "ip-blacklist"
         ],
+        "x-spm-api-only": "retired: it answers 410 Gone",
         "x-spm-surfaces": [
-          "api",
-          "ui"
+          "api"
         ],
         "x-spm-token-scope": "write"
       }
@@ -4382,6 +4582,7 @@
         "tags": [
           "ip-blacklist"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -4402,6 +4603,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceScope"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Success"
@@ -4487,6 +4698,7 @@
         "tags": [
           "ip-blacklist"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -4597,6 +4809,16 @@
     "/api/ip-whitelist/bulk-delete": {
       "post": {
         "operationId": "post_api_ip_whitelist_bulk_delete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkDelete"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Success"
@@ -4665,6 +4887,7 @@
         "tags": [
           "ip-whitelist"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -4714,6 +4937,16 @@
     "/api/ip-whitelist/import": {
       "post": {
         "operationId": "post_api_ip_whitelist_import",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportAllowed"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Success"
@@ -4831,6 +5064,7 @@
         "tags": [
           "ip-whitelist"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -4887,6 +5121,7 @@
         "tags": [
           "ip-whitelist"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
