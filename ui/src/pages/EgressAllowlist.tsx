@@ -35,12 +35,14 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { Notice } from '../components/ui/Notice';
 import { Section } from '../components/ui/Section';
 import { DataTable, type Column } from '../components/ui/DataTable';
+import { SelectionBar } from '../components/ui/SelectionBar';
 import { SearchInput } from '../components/ui/SearchInput';
 import { Button, IconButton } from '../components/ui/Button';
 import { ProviderListsSection } from '../components/egress/ProviderListsSection';
 import { DomainScopeHelp } from '../components/ui/DomainScopeHelp';
 
 const PAGE_SIZE = 50;
+const NO_ROWS: ReadonlySet<string> = new Set();
 
 /** The destinations local_dst lets through before the egress deny. */
 // One source with Settings: what proxy/generate_squid_conf.sh's local_dst holds.
@@ -230,6 +232,12 @@ export function EgressAllowlist() {
   const query = useDebounced(search.trim(), 300);
   const [offset, setOffset] = useState(0);
 
+  // The checks belong to the page on screen, as on the Blacklists page.
+  const pageKey = `${offset}|${query}`;
+  const [checked, setChecked] = useState<{ page: string; ids: Set<string> }>({ page: '', ids: new Set() });
+  const selected = checked.page === pageKey ? checked.ids : NO_ROWS;
+  const [removing, setRemoving] = useState(false);
+
   const settings = useQuery(settingsQuery);
   const entries = useQuery({
     queryKey: ['egress-allowlist', 'entries', offset, query],
@@ -274,6 +282,55 @@ export function EgressAllowlist() {
       toast.success(`Removed ${describeEntry(e)} from the default-deny allowlist`);
     } catch (err) {
       toast.error(getErrorMessage(err, `Could not remove ${e.entry}`));
+    } finally {
+      refresh();
+    }
+  };
+
+  const lose = (what: string) => denyOn
+    ? `Default deny is on: clients can no longer reach ${what} once the proxy has the new list.`
+    : 'Default deny is off, so nothing changes for clients until it is turned on.';
+
+  const removeSelected = async () => {
+    const n = selected.size;
+    if (n === 0) return;
+    const ok = await confirm({
+      title: `Remove ${formatCount(n)} ${n === 1 ? 'destination' : 'destinations'}?`,
+      body: `${lose(n === 1 ? 'it' : 'them')} A configuration snapshot is taken first, so this can be undone (Settings > Admin and backup).`,
+      confirmLabel: `Remove ${formatCount(n)}`,
+      destructive: true,
+    });
+    if (!ok) return;
+    setRemoving(true);
+    try {
+      const r = await api.post('egress-allowlist/bulk-delete', { ids: [...selected].map(Number) });
+      const removed: number = r.data?.data?.removed ?? 0;
+      toast.success(`Removed ${formatCount(removed)} ${removed === 1 ? 'destination' : 'destinations'} from the default-deny allowlist`);
+      setChecked({ page: '', ids: new Set() });
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Could not remove the selected destinations'));
+    } finally {
+      setRemoving(false);
+      refresh();
+    }
+  };
+
+  const manualTotal = summary.manual;
+  const removeAll = async () => {
+    if (typeof manualTotal !== 'number' || manualTotal === 0) return;
+    const ok = await confirm({
+      title: `Remove all ${formatCount(manualTotal)} ${manualTotal === 1 ? 'destination' : 'destinations'}?`,
+      body: `${lose('them')} The provider lists stay. A configuration snapshot is taken first, so this can be undone (Settings > Admin and backup).`,
+      confirmLabel: `Remove all ${formatCount(manualTotal)}`,
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      const r = await api.delete('egress-allowlist/clear-all');
+      const removed = r.data?.data?.removed;
+      toast.success(typeof removed === 'number' ? `Removed all ${formatCount(removed)} destinations` : 'Removed every destination');
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Could not empty the default-deny allowlist'));
     } finally {
       refresh();
     }
@@ -348,7 +405,32 @@ export function EgressAllowlist() {
           onRetry={() => { void entries.refetch(); }}
           empty={empty}
           pagination={{ offset, limit: PAGE_SIZE, total: entries.data?.total ?? 0, onChange: setOffset }}
+          selection={{
+            selected,
+            onChange: (ids) => setChecked({ page: pageKey, ids }),
+            rowLabel: (e) => `Select ${shownEntry(e)}`,
+            pageLabel: 'Select every destination on this page',
+          }}
         />
+        <SelectionBar
+          count={selected.size}
+          one="destination"
+          many="destinations"
+          actionLabel={(n) => `Remove ${formatCount(n)}`}
+          onAction={() => { void removeSelected(); }}
+          onClear={() => setChecked({ page: '', ids: new Set() })}
+          busy={removing}
+        />
+      </Section>
+
+      <Section
+        title="Remove every destination on this list"
+        tone="danger"
+        description={typeof manualTotal === 'number'
+          ? (manualTotal > 0 ? `${formatCount(manualTotal)} ${manualTotal === 1 ? 'destination' : 'destinations'} added here. The provider lists stay.` : 'No destination was added here.')
+          : 'The count of this list is not reported.'}
+      >
+        <Button variant="danger-outline" disabled={!manualTotal} onClick={() => { void removeAll(); }}>Remove all</Button>
       </Section>
       {dialog}
     </div>

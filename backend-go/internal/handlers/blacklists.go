@@ -51,6 +51,8 @@ func (h *BlacklistHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 	// every other list change. They used to pass no config here and the add
 	// handlers requested nothing: an allowed entry took effect only at the
 	// next blacklist change.
+	r.With(authMW).Delete("/api/ip-whitelist/clear-all", clearAllHandler(h.db, "ip_whitelist", h.cfg, "ip"))
+	r.With(authMW).Post("/api/ip-whitelist/bulk-delete", bulkDeleteHandler(h.db, "ip_whitelist", h.cfg))
 	r.With(authMW).Delete("/api/ip-whitelist/{id}", deleteByIDHandler(h.db, "ip_whitelist", h.cfg))
 
 	// Domain blacklist
@@ -64,6 +66,8 @@ func (h *BlacklistHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 	r.With(authMW).Get("/api/domain-whitelist", listHandler(h.db, "domain_whitelist", "domain"))
 	r.With(authMW).Post("/api/domain-whitelist", h.AddDomainWhitelist)
 	r.With(authMW).Post("/api/domain-whitelist/import", h.ImportAllowed("domain_whitelist", "domain", allowedDomainValue))
+	r.With(authMW).Delete("/api/domain-whitelist/clear-all", clearAllHandler(h.db, "domain_whitelist", h.cfg, "domain"))
+	r.With(authMW).Post("/api/domain-whitelist/bulk-delete", bulkDeleteHandler(h.db, "domain_whitelist", h.cfg))
 	r.With(authMW).Delete("/api/domain-whitelist/{id}", deleteByIDHandler(h.db, "domain_whitelist", h.cfg))
 
 	// Egress destination allowlist (default-deny egress). Single table, entries
@@ -199,7 +203,9 @@ func bulkDeleteHandler(db *sql.DB, table string, cfg *config.Config) http.Handle
 		if deleted > 0 {
 			auditChange(db, r, "bulk_remove_"+auditListName(table), "", map[string]any{"removed": deleted})
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"status": "success", "data": map[string]any{"deleted": deleted}})
+		// removed is the word the other list removals answer with; deleted
+		// stays for the callers that read it.
+		writeJSON(w, http.StatusOK, map[string]any{"status": "success", "data": map[string]any{"removed": deleted, "deleted": deleted}})
 	}
 }
 
@@ -218,7 +224,7 @@ func clearAllHandler(db *sql.DB, table string, cfg *config.Config, col string) h
 			requestExport()
 		}
 		auditChange(db, r, "clear_"+auditListName(table), "", map[string]any{"removed": removed})
-		writeJSON(w, http.StatusOK, map[string]any{"status": "success", "message": fmt.Sprintf("Cleared %d entries", count)})
+		writeJSON(w, http.StatusOK, map[string]any{"status": "success", "message": fmt.Sprintf("Cleared %d entries", count), "data": map[string]any{"removed": removed}})
 	}
 }
 

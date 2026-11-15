@@ -107,8 +107,8 @@ depends on changes, unlike `version` in `/api/health`, which is the release.
 | `GET`    | `/api/{list}` | List entries (`limit` 1 to 1000, default 100; `offset`; `search`) |
 | `POST`   | `/api/{list}` | Add an entry |
 | `DELETE` | `/api/{list}/{id}` | Delete an entry |
-| `POST`   | `/api/ip-blacklist/bulk-delete`, `/api/domain-blacklist/bulk-delete` | Delete entries by ID |
-| `DELETE` | `/api/ip-blacklist/clear-all`, `/api/domain-blacklist/clear-all` | Delete every entry |
+| `POST`   | `/api/{list}/bulk-delete` | Delete entries by ID (`{"ids": [...]}`, 1 to 1000; `data.removed`) |
+| `DELETE` | `/api/{list}/clear-all` | Delete every entry (`data.removed`) |
 | `GET`    | `/api/{list}/sources` | Where the entries came from, one row per source |
 | `DELETE` | `/api/{list}/sources/{id}` | Delete the entries one source added (`{id}` or `unrecorded`) |
 | `GET`    | `/api/{list}/export` | Every entry, one per line, as text |

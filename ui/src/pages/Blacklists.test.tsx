@@ -389,6 +389,29 @@ describe('Blacklists', () => {
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith('ip-blacklist/2'))
   })
 
+  it('removes the entries checked on the page in one request, after a confirmation naming the count', async () => {
+    vi.mocked(api.post).mockResolvedValue({ data: { status: 'success', data: { removed: 2, deleted: 2 } } } as never)
+    renderWithProviders(<Blacklists />)
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Select 10.0.0.1' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select 203.0.113.0/24' }))
+    expect(screen.getByText('2 blocked IPs and networks selected on this page')).toBeInTheDocument()
+    expect((screen.getByRole('checkbox', { name: 'Select every blocked IP or network on this page' }) as HTMLInputElement).indeterminate).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Remove 2' }))
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText('Remove 2 blocked IPs and networks?')).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove 2' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('ip-blacklist/bulk-delete', { ids: [1, 3] }))
+    await waitFor(() => expect(screen.queryByText(/selected on this page/)).not.toBeInTheDocument())
+  })
+
+  it('checks every row of the page from the header, and a search starts with none checked', async () => {
+    renderWithProviders(<Blacklists />)
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Select every blocked IP or network on this page' }))
+    expect(screen.getByText('5 blocked IPs and networks selected on this page')).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search Blocked IPs' }), { target: { value: '10.' } })
+    await waitFor(() => expect(screen.queryByText(/selected on this page/)).not.toBeInTheDocument())
+  })
+
   it('keeps Remove all in a danger zone whose confirmation names the count and the consequence', async () => {
     counts['ip-blacklist'] = 50772
     renderWithProviders(<Blacklists />)
@@ -402,11 +425,11 @@ describe('Blacklists', () => {
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith('ip-blacklist/clear-all'))
   })
 
-  it('has no danger zone and no Popular lists on an allowed list', async () => {
+  it('empties an exception list like the others, and offers no Popular lists there', async () => {
     go('?tab=allowed-domains')
     renderWithProviders(<Blacklists />)
     await screen.findByRole('heading', { name: 'Where the entries came from' })
-    expect(screen.queryByRole('heading', { name: 'Remove every entry on this list' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Remove every entry on this list' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Popular lists' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Add entries' }))
     expect(within(screen.getByRole('group', { name: 'How to add' })).getAllByRole('button').map((b) => b.textContent)).toEqual(['Single entry', 'Paste a list'])

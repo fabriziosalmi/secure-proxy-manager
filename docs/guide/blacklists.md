@@ -208,8 +208,12 @@ curl -k $SPM/api/egress-allowlist -H "$AUTH"
 curl -k -X DELETE $SPM/api/egress-allowlist/42 -H "$AUTH"
 ```
 
-`POST /api/egress-allowlist/bulk-delete` removes entries by a list of IDs, and
-`DELETE /api/egress-allowlist/clear-all` removes them all.
+On the page, check entries to remove several at once, or empty the list from
+**Remove every destination on this list**; the provider lists stay. Both take
+a configuration snapshot first, so Settings > Admin and backup >
+Configuration history can undo them. `POST /api/egress-allowlist/bulk-delete`
+removes entries by a list of IDs, and `DELETE /api/egress-allowlist/clear-all`
+removes them all.
 
 ::: tip
 The blocked lists still apply when default-deny egress is on: they are

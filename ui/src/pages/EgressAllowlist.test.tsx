@@ -91,6 +91,7 @@ describe('EgressAllowlist', () => {
     const table = await screen.findByRole('table', { name: 'Allowed destinations' })
     expect(screen.getAllByRole('heading').map((h) => `${h.tagName}:${h.textContent}`)).toEqual([
       'H1:Default-deny allowlist', 'H2:Add a destination', 'H2:Provider lists', 'H2:Allowed destinations',
+      'H2:Remove every destination on this list',
     ])
     // Labels on every field.
     expect(screen.getByLabelText('Kind')).toHaveValue('domain')
@@ -213,6 +214,32 @@ describe('EgressAllowlist', () => {
     expect(within(dialog).getByText(/clients can no longer reach 203\.0\.113\.0\/24/)).toBeInTheDocument()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Remove' }))
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith('egress-allowlist/1'))
+  })
+
+  it('removes the destinations checked on the page in one request, saying a snapshot makes it undoable', async () => {
+    deny = 'true'
+    vi.mocked(api.post).mockResolvedValue({ data: { status: 'success', data: { removed: 2, deleted: 2 } } } as never)
+    renderWithProviders(<EgressAllowlist />)
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Select acme-v02.api.letsencrypt.org' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select 203.0.113.0/24' }))
+    expect(screen.getByText('2 destinations selected on this page')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove 2' }))
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText('Remove 2 destinations?')).toBeInTheDocument()
+    expect(within(dialog).getByText(/clients can no longer reach them .* A configuration snapshot is taken first/)).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove 2' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('egress-allowlist/bulk-delete', { ids: [3, 1] }))
+  })
+
+  it('empties the manual destinations from a danger zone that names the count and keeps the provider lists', async () => {
+    renderWithProviders(<EgressAllowlist />)
+    const zone = (await screen.findByRole('heading', { name: 'Remove every destination on this list' })).closest('section')!
+    await within(zone).findByText('3 destinations added here. The provider lists stay.')
+    fireEvent.click(within(zone).getByRole('button', { name: 'Remove all' }))
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText('Remove all 3 destinations?')).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove all 3' }))
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith('egress-allowlist/clear-all'))
   })
 
   it('searches on the backend', async () => {
