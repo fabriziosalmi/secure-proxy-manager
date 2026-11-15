@@ -113,6 +113,7 @@ export default defineConfig({
           { text: 'What is Secure Proxy Manager?', link: '/guide/introduction' },
           { text: 'Getting Started', link: '/guide/getting-started' },
           { text: 'Tour of the dashboard', link: '/guide/tour' },
+          { text: 'Command line (spm)', link: '/guide/command-line' },
           { text: 'Architecture', link: '/guide/architecture' }
         ]
       },
