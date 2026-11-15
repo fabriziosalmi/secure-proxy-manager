@@ -30,6 +30,12 @@ for at least one minor release before disappearing.
   their requests.** The WAF policy and client group schemas are closed, as
   their handlers refuse a field they do not know; the categories toggle,
   which the WAF validates, is held to its schema by a test in the WAF.
+- **Every write operation describes what it reads.** The last ones: sign-in,
+  the password change, API tokens, the DNS scan, the restore from a backup
+  file, the maintenance actions, the logs, the database, and the log forward
+  and alert tests. `POST /api/logs/clear-old` publishes its `days` query
+  parameter. A new write operation that does not say what it reads fails the
+  build.
 
 ### Changed
 

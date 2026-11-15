@@ -30,9 +30,8 @@ the request schemas are tested against the handlers both ways (a body valid
 by its schema is not refused as malformed, and one without a required field
 is), and a field the schema does not know is refused exactly when the
 schema is closed (`additionalProperties: false`, where the handler decodes
-strictly). The writes of the lists, the egress provider lists, the WAF policy,
-the configuration history and the client groups are described so far; the
-others follow.
+strictly). Every write operation is described; a new one that is not fails
+the build.
 
 `x-spm-surfaces` names where each operation can be reached: always `api`,
 and `ui`, `cli` and `mcp` when the dashboard, the `spm` command or the MCP

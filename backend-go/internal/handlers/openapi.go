@@ -205,6 +205,42 @@ var openAPISchemas = map[string]any{
 		"regex": map[string]any{"type": "string", "maxLength": 1024},
 		"hours": map[string]any{"type": "integer", "description": "1 to 168; another value is read as 24"},
 	}, "regex"),
+	"Login": oaRequest(map[string]any{
+		"username": map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
+		"password": map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
+	}, "username", "password"),
+	"ChangePassword": oaRequest(map[string]any{
+		"current_password": oaStr,
+		"new_password":     map[string]any{"type": "string", "minLength": 8, "description": "at least 8 characters, with a number and a special character"},
+	}, "current_password", "new_password"),
+	"NewToken": oaRequest(map[string]any{
+		"name":            map[string]any{"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$"},
+		"scope":           map[string]any{"enum": []string{"read", "write"}},
+		"expires_in_days": map[string]any{"type": "integer", "minimum": 1, "maximum": 3650, "description": "90 when absent; not with no_expiry"},
+		"no_expiry":       map[string]any{"type": "boolean", "description": "a token that does not expire; not with expires_in_days"},
+	}, "name", "scope"),
+	"DNSDetect": oaRequest(map[string]any{
+		"subnet": map[string]any{"type": "string", "description": "a private or loopback /24 written as its first three numbers (192.168.1); the backend's own when absent"},
+	}),
+	"BackupFile": func() map[string]any {
+		o := oaRequest(map[string]any{
+			"backup_version":   oaInt,
+			"settings":         map[string]any{"type": "object", "additionalProperties": oaStr},
+			"config":           map[string]any{"type": "object", "additionalProperties": oaStr, "description": "the settings of a backup before version 2"},
+			"lists":            map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "array", "items": map[string]any{"type": "object"}}},
+			"egress_providers": map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
+			"list_sources":     map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
+			"client_groups":    map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
+			"waf_policy":       oaRef("WafPolicyFile"),
+		})
+		o["description"] = "a file GET /api/database/export or the dashboard's backup wrote"
+		var alts []any
+		for _, k := range []string{"settings", "config", "lists", "egress_providers", "client_groups", "waf_policy"} {
+			alts = append(alts, map[string]any{"required": []string{k}})
+		}
+		o["anyOf"] = alts
+		return o
+	}(),
 	"ImportGeo": oaRequest(map[string]any{
 		"countries": map[string]any{"type": "array", "items": oaStr, "minItems": 1, "maxItems": 50, "description": "ISO 3166-1 alpha-2 codes"},
 	}, "countries"),
@@ -324,6 +360,26 @@ var routeSchemas = map[string]routeSchema{
 	"POST /api/client-groups":                 {request: "ClientGroupInput"},
 	"PUT /api/client-groups/{id}":             {request: "ClientGroupInput"},
 	"DELETE /api/client-groups/{id}":          {noBody: true},
+
+	// Sign-in, tokens, maintenance and the rest.
+	"POST /api/auth/login":                  {request: "Login"},
+	"POST /api/logout":                      {noBody: true},
+	"POST /api/change-password":             {request: "ChangePassword"},
+	"POST /api/tokens":                      {request: "NewToken"},
+	"DELETE /api/tokens/{id}":               {noBody: true},
+	"DELETE /api/security/rate-limits/{ip}": {noBody: true},
+	"POST /api/dns/detect":                  {request: "DNSDetect", optionalBody: true},
+	"POST /api/maintenance/restore-config":  {request: "BackupFile"},
+	"POST /api/maintenance/reload-config":   {noBody: true},
+	"POST /api/maintenance/reload-dns":      {noBody: true},
+	"POST /api/maintenance/clear-cache":     {noBody: true},
+	"POST /api/logs/clear":                  {noBody: true},
+	"POST /api/logs/clear-old":              {noBody: true, query: []oaParam{{name: "days", schema: map[string]any{"type": "integer", "minimum": 1, "maximum": 3650, "default": 30}, desc: "delete the rows older than this many days"}}},
+	"POST /api/counters/reset":              {noBody: true},
+	"POST /api/database/optimize":           {noBody: true},
+	"POST /api/database/reset":              {noBody: true},
+	"POST /api/log-forward/test":            {noBody: true},
+	"POST /api/notifications/test":          {noBody: true},
 }
 
 // chiParam matches a path parameter, with chi's optional regexp ({id:[0-9]+}).
