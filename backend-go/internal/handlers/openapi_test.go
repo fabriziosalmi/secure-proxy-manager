@@ -277,6 +277,9 @@ func TestOpenAPIIsServedBehindAuthentication(t *testing.T) {
 // publishedOpenAPI is the copy the documentation site serves.
 const publishedOpenAPI = "../../../docs/public/openapi.json"
 
+// embeddedOpenAPI is the copy the spm command is built with (internal/cli).
+const embeddedOpenAPI = "../cli/openapi.json"
+
 // publishedRouter is the full handler router plus the two routes cmd/server
 // mounts itself, as the published document describes it.
 func publishedRouter(t *testing.T) chi.Router {
@@ -298,13 +301,17 @@ func TestThePublishedOpenAPIIsCurrent(t *testing.T) {
 	}
 	b = append(b, '\n')
 	if os.Getenv("UPDATE_OPENAPI") == "1" {
-		if err := os.WriteFile(publishedOpenAPI, b, 0o644); err != nil {
-			t.Fatal(err)
+		for _, p := range []string{publishedOpenAPI, embeddedOpenAPI} {
+			if err := os.WriteFile(p, b, 0o644); err != nil {
+				t.Fatal(err)
+			}
 		}
 		return
 	}
-	have, err := os.ReadFile(publishedOpenAPI)
-	if err != nil || !bytes.Equal(have, b) {
-		t.Fatalf("docs/public/openapi.json is not the generated document; run: UPDATE_OPENAPI=1 go test ./internal/handlers -run TestThePublishedOpenAPIIsCurrent (%v)", err)
+	for _, p := range []string{publishedOpenAPI, embeddedOpenAPI} {
+		have, err := os.ReadFile(p)
+		if err != nil || !bytes.Equal(have, b) {
+			t.Fatalf("%s is not the generated document; run: UPDATE_OPENAPI=1 go test ./internal/handlers -run TestThePublishedOpenAPIIsCurrent (%v)", p, err)
+		}
 	}
 }

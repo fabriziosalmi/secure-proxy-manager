@@ -15,6 +15,20 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Added
+
+- **`spm`, the API from a terminal** (`backend-go/cmd/spm`; see the Command
+  line guide). `spm login` checks the server's certificate and pins it only
+  after you confirm its fingerprint, checks the API token, and saves both to a
+  config file of mode 0600. `spm status` and `spm api METHOD PATH` call the
+  API; `spm api` refuses before sending a method and path that are no
+  operation of its release, a body that is not JSON, or a body sent to an
+  operation that reads none, and `--dry-run` prints the request. The exit
+  status says what happened (0 done, 1 refused, 2 usage, 3 unreachable,
+  certificate mismatch or server error). A test runs it against the backend
+  binary the release ships, behind a TLS server whose certificate no
+  authority signed.
+
 ## [3.38.0] - 2026-11-15
 
 The database reset asks for a confirmation, and the egress provider routes
