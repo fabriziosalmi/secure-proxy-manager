@@ -51,7 +51,7 @@ Exit status: 0 done, 1 refused (4xx) or declined, 2 usage or config error
 // Run is the spm command. It returns the exit status.
 func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
-		fmt.Fprint(stdout, usage)
+		fmt.Fprintf(stdout, usage)
 		if len(args) == 0 {
 			return exitUsage
 		}
@@ -168,7 +168,7 @@ func runAPI(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return exitOK
 	}
 	if len(pos) != 2 {
-		fmt.Fprint(stderr, "spm api: give METHOD and PATH, e.g. spm api GET /api/status\n")
+		fmt.Fprintf(stderr, "spm api: give METHOD and PATH, e.g. spm api GET /api/status\n")
 		return exitUsage
 	}
 	method, path := strings.ToUpper(pos[0]), pos[1]
@@ -199,7 +199,7 @@ func runAPI(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	if body != nil {
 		if !json.Valid(body) {
-			fmt.Fprint(stderr, "spm api: the body is not JSON\n")
+			fmt.Fprintf(stderr, "spm api: the body is not JSON\n")
 			return exitUsage
 		}
 		if op.ReadsNoBody {
@@ -320,7 +320,7 @@ func peerCertificate(rawURL string) (*x509.Certificate, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
 		return nil, false, errors.New("the server showed no certificate")
@@ -354,7 +354,7 @@ func runLogin(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 	if cfg.URL == "" {
-		fmt.Fprint(stderr, "spm login: give --url https://HOST:8443\n")
+		fmt.Fprintf(stderr, "spm login: give --url https://HOST:8443\n")
 		return exitUsage
 	}
 	cfg.URL = strings.TrimRight(cfg.URL, "/")
@@ -375,14 +375,14 @@ func runLogin(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			switch {
 			case expect != "":
 				if strings.ToLower(strings.ReplaceAll(expect, ":", "")) != fp {
-					fmt.Fprint(stderr, "spm login: the certificate's fingerprint is not the one given with --fingerprint; nothing saved\n")
+					fmt.Fprintf(stderr, "spm login: the certificate's fingerprint is not the one given with --fingerprint; nothing saved\n")
 					return exitRefused
 				}
 			default:
-				fmt.Fprint(stdout, "Compare the fingerprint with the one the server's console shows. Pin it? [y/N] ")
+				fmt.Fprintf(stdout, "Compare the fingerprint with the one the server's console shows. Pin it? [y/N] ")
 				answer, _ := in.ReadString('\n')
 				if a := strings.ToLower(strings.TrimSpace(answer)); a != "y" && a != "yes" {
-					fmt.Fprint(stderr, "spm login: not pinned; nothing saved\n")
+					fmt.Fprintf(stderr, "spm login: not pinned; nothing saved\n")
 					return exitRefused
 				}
 			}
@@ -390,12 +390,12 @@ func runLogin(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 	}
 	if cfg.Token == "" {
-		fmt.Fprint(stdout, "API token (Settings > Admin and backup > API tokens): ")
+		fmt.Fprintf(stdout, "API token (Settings > Admin and backup > API tokens): ")
 		line, _ := in.ReadString('\n')
 		cfg.Token = strings.TrimSpace(line)
 	}
 	if cfg.Token == "" {
-		fmt.Fprint(stderr, "spm login: no token\n")
+		fmt.Fprintf(stderr, "spm login: no token\n")
 		return exitUsage
 	}
 	cl, err := newClient(cfg, c.insecure)
