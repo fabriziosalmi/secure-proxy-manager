@@ -255,7 +255,12 @@ Returns `size_bytes` (SQLite page count times page size) and `size_mb`.
 POST /api/database/reset
 ```
 
-Deletes every row of the tables above except `users` inside one transaction,
+```json
+{ "confirm": "RESET" }
+```
+
+Without that body, or with any other value, it answers `400` and deletes
+nothing. Deletes every row of the tables above except `users` inside one transaction,
 settings included; if a table cannot be cleared, the transaction rolls back and
 the endpoint answers `500` naming the table. After clearing the tables, it
 writes the `database_reset` row to `audit_log` in the same transaction so the

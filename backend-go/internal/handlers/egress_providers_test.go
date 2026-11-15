@@ -568,9 +568,9 @@ func TestEgressProviderAPIAndExport(t *testing.T) {
 	}
 	oneAuditRow(t, db, "egress_provider_enabled")
 
-	// 3. Unknown provider name outside catalog (e.g. bing) -> 400.
-	if code, out := call(t, h, "PUT", "/api/egress-providers/bing", `{"enabled":true,"confirm_shared":true}`); code != http.StatusBadRequest {
-		t.Fatalf("unknown provider bing = %d %v, want 400", code, out)
+	// 3. Unknown provider name outside catalog (e.g. bing) -> 404.
+	if code, out := call(t, h, "PUT", "/api/egress-providers/bing", `{"enabled":true,"confirm_shared":true}`); code != http.StatusNotFound {
+		t.Fatalf("unknown provider bing = %d %v, want 404", code, out)
 	}
 
 	// 4. Custom URL provider add and delete, plus manual dst_allowlist union and clear-all isolation.

@@ -82,7 +82,7 @@ func TestDatabaseHandlers_Reset(t *testing.T) {
 	// Add some dummy data
 	_, _ = db.Exec("INSERT INTO ip_blacklist (ip) VALUES ('1.1.1.1')")
 
-	r := httptest.NewRequest("POST", "/api/database/reset", nil)
+	r := httptest.NewRequest("POST", "/api/database/reset", strings.NewReader(`{"confirm":"RESET"}`))
 	w := httptest.NewRecorder()
 	h.Reset(w, r)
 
@@ -105,7 +105,7 @@ func TestDatabaseHandlers_Reset_PreservesResetAuditRow(t *testing.T) {
 	_, _ = db.Exec("INSERT INTO ip_blacklist (ip) VALUES ('198.51.100.10')")
 	_, _ = db.Exec("INSERT INTO audit_log (username, action, target, details) VALUES ('admin', 'old_action', 'x', 'prior row')")
 
-	r := withUserContext(httptest.NewRequest("POST", "/api/database/reset", nil), "admin")
+	r := withUserContext(httptest.NewRequest("POST", "/api/database/reset", strings.NewReader(`{"confirm":"RESET"}`)), "admin")
 	w := httptest.NewRecorder()
 	h.Reset(w, r)
 
@@ -151,7 +151,7 @@ func TestDatabaseHandlers_Reset_RollsBackOnDeleteError(t *testing.T) {
 		t.Fatalf("create trigger: %v", err)
 	}
 
-	r := withUserContext(httptest.NewRequest("POST", "/api/database/reset", nil), "admin")
+	r := withUserContext(httptest.NewRequest("POST", "/api/database/reset", strings.NewReader(`{"confirm":"RESET"}`)), "admin")
 	w := httptest.NewRecorder()
 	h.Reset(w, r)
 
@@ -167,5 +167,34 @@ func TestDatabaseHandlers_Reset_RollsBackOnDeleteError(t *testing.T) {
 	_ = db.QueryRow("SELECT COUNT(*) FROM domain_blacklist").Scan(&domCount)
 	if ipCount != 1 || domCount != 1 {
 		t.Errorf("after failed reset: ip_blacklist=%d, domain_blacklist=%d; want 1, 1 (rolled back)", ipCount, domCount)
+	}
+}
+
+// A reset without {"confirm": "RESET"} deletes nothing: it used to empty every
+// table on a bare POST.
+func TestDatabaseResetNeedsItsConfirmation(t *testing.T) {
+	db, _, _, cleanup := setupTestDB(t)
+	defer cleanup()
+	if _, err := db.Exec("INSERT INTO ip_blacklist(ip) VALUES('203.0.113.9')"); err != nil {
+		t.Fatal(err)
+	}
+	h := NewDatabaseHandlers(db)
+	for _, body := range []string{"", "{}", `{"confirm":"reset"}`, `{"confirm":"yes"}`} {
+		w := httptest.NewRecorder()
+		h.Reset(w, withUserContext(httptest.NewRequest("POST", "/api/database/reset", strings.NewReader(body)), "admin"))
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("body %q: %d, want 400", body, w.Code)
+		}
+	}
+	var n int
+	_ = db.QueryRow("SELECT COUNT(*) FROM ip_blacklist").Scan(&n)
+	if n != 1 {
+		t.Fatalf("a refused reset deleted the blacklist: %d rows left of 1", n)
+	}
+	w := httptest.NewRecorder()
+	h.Reset(w, withUserContext(httptest.NewRequest("POST", "/api/database/reset", strings.NewReader(`{"confirm":"RESET"}`)), "admin"))
+	_ = db.QueryRow("SELECT COUNT(*) FROM ip_blacklist").Scan(&n)
+	if w.Code != http.StatusOK || n != 0 {
+		t.Errorf("confirmed reset: %d, %d rows left, want 200 and none", w.Code, n)
 	}
 }

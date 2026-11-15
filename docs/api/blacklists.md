@@ -716,6 +716,8 @@ PUT /api/egress-providers/{name}
 
 - Enabling a provider with `shared_network: true` without `"confirm_shared": true`
   is refused with `400`.
+- A `{name}` that is neither a catalog provider nor a URL provider answers
+  `404`, here and on `refresh` and `apply-held`.
 - When a provider is enabled for the first time with `0` stored entries, the
   backend fetches and validates its feed immediately. If the initial fetch
   fails, the provider remains enabled and the `200` response includes
@@ -781,7 +783,9 @@ POST /api/egress-providers/{name}/apply-held
 Promotes the held candidate (`held`) to the active prefix list for `{name}`,
 clears `held` and `last_error`, writes an `egress_provider_held_applied` audit
 row, exports `/config/dst_allow_ip.txt`, and returns the updated provider state.
-Answers `400` when `{name}` has no held update.
+Answers `404` when `{name}` is no provider, `409` when it has no held update
+or the held update cannot be applied (the reason is in `detail`), and `500`
+on a database failure.
 
 ### Audit actions
 

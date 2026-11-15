@@ -221,7 +221,7 @@ var requestCases = map[string]requestCase{
 	"POST /api/logs/clear-old":              {path: "/api/logs/clear-old?days=30"},
 	"POST /api/counters/reset":              {path: "/api/counters/reset"},
 	"POST /api/database/optimize":           {path: "/api/database/optimize"},
-	"POST /api/database/reset":              {path: "/api/database/reset"},
+	"POST /api/database/reset":              {path: "/api/database/reset", body: `{"confirm":"RESET"}`},
 	"POST /api/log-forward/test":            {path: "/api/log-forward/test", setup: aLogTarget},
 	"POST /api/notifications/test":          {path: "/api/notifications/test"},
 }

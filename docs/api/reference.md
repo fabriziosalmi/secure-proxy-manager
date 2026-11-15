@@ -202,7 +202,7 @@ Details: [Settings and Maintenance API](./settings.md).
 | `GET`    | `/api/database/stats` | Row count per table |
 | `GET`    | `/api/database/export` | Every table as JSON, `password`, `secret` and `token` columns redacted; client addresses in `proxy_logs` are unmasked (`contains_unmasked_addresses: true` when `gdpr_mode` is on) |
 | `POST`   | `/api/database/optimize` | `VACUUM` and `REINDEX` |
-| `POST`   | `/api/database/reset` | Delete every row of every table except `users` |
+| `POST`   | `/api/database/reset` | Delete every row of every table except `users` (`{"confirm": "RESET"}`) |
 | `GET`    | `/api/cache/statistics` | Squid cache statistics as the proxy last collected them |
 | `POST`   | `/api/maintenance/reload-config` | Export the lists, ask the proxy to regenerate and reload, and report what it did |
 | `POST`   | `/api/maintenance/reload-dns` | Export every list again and ask dnsmasq to reload; says how many domain entries the DNS sinkhole got |

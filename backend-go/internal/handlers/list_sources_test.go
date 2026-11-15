@@ -513,7 +513,7 @@ func TestResetEmptiesTheSourcesWithTheLists(t *testing.T) {
 		t.Fatal("paste failed")
 	}
 	w := httptest.NewRecorder()
-	NewDatabaseHandlers(db).Reset(w, withUserContext(httptest.NewRequest("POST", "/api/database/reset", nil), "admin"))
+	NewDatabaseHandlers(db).Reset(w, withUserContext(httptest.NewRequest("POST", "/api/database/reset", strings.NewReader(`{"confirm":"RESET"}`)), "admin"))
 	var entries, sources int
 	_ = db.QueryRow("SELECT COUNT(*) FROM ip_blacklist").Scan(&entries)
 	_ = db.QueryRow("SELECT COUNT(*) FROM list_sources").Scan(&sources)

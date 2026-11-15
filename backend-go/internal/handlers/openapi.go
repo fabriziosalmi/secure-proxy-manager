@@ -241,6 +241,9 @@ var openAPISchemas = map[string]any{
 		o["anyOf"] = alts
 		return o
 	}(),
+	"DatabaseReset": oaRequest(map[string]any{
+		"confirm": map[string]any{"const": "RESET", "description": "the reset deletes every list, setting and log, and cannot be undone"},
+	}, "confirm"),
 	"ImportGeo": oaRequest(map[string]any{
 		"countries": map[string]any{"type": "array", "items": oaStr, "minItems": 1, "maxItems": 50, "description": "ISO 3166-1 alpha-2 codes"},
 	}, "countries"),
@@ -377,7 +380,7 @@ var routeSchemas = map[string]routeSchema{
 	"POST /api/logs/clear-old":              {noBody: true, query: []oaParam{{name: "days", schema: map[string]any{"type": "integer", "minimum": 1, "maximum": 3650, "default": 30}, desc: "delete the rows older than this many days"}}},
 	"POST /api/counters/reset":              {noBody: true},
 	"POST /api/database/optimize":           {noBody: true},
-	"POST /api/database/reset":              {noBody: true},
+	"POST /api/database/reset":              {request: "DatabaseReset"},
 	"POST /api/log-forward/test":            {noBody: true},
 	"POST /api/notifications/test":          {noBody: true},
 }

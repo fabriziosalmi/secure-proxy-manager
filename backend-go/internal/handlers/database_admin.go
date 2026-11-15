@@ -100,7 +100,17 @@ func (h *DatabaseHandlers) Export(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp) //nolint:errcheck
 }
 
+// Reset answers POST /api/database/reset, which empties every table but
+// users. It takes {"confirm": "RESET"}: it used to delete everything on a
+// bare POST, so a mistyped or replayed request was enough.
 func (h *DatabaseHandlers) Reset(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Confirm string `json:"confirm"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&body); err != nil || body.Confirm != "RESET" {
+		writeError(w, http.StatusBadRequest, `send {"confirm": "RESET"}: the reset deletes every list, setting and log, and cannot be undone`)
+		return
+	}
 	username, _ := r.Context().Value(middleware.CtxUsername).(string)
 	tx, err := h.db.BeginTx(r.Context(), nil)
 	if err != nil {
