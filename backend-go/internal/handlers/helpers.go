@@ -15,6 +15,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
+	appMW "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/netguard"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/privacy"
 )
@@ -31,7 +32,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // {"status": "error", "detail": "..."} — so detail must be a stable string
 // this project controls, never a message from a dependency.
 func writeError(w http.ResponseWriter, status int, detail string) {
-	writeJSON(w, status, map[string]string{"status": "error", "detail": detail})
+	writeJSON(w, status, appMW.ErrorBody(status, detail))
 }
 
 // writeInternalError reports a server-side failure to the caller with a stable

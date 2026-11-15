@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	appMW "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"net/http"
 	"regexp"
 	"strings"
@@ -102,13 +103,13 @@ var openAPISchemas = map[string]any{
 		"properties": map[string]any{
 			"status":     map[string]any{"const": "error"},
 			"detail":     map[string]any{"type": "string", "description": "what went wrong, in words"},
-			"code":       oaStr,
+			"code":       map[string]any{"enum": appMW.ErrorCodes, "description": "what kind of error, for a client to branch on; detail says it in words"},
 			"errors":     map[string]any{"type": "object", "additionalProperties": oaStr, "description": "the refused fields of a settings save and why"},
 			"data":       map[string]any{"type": "object", "description": "what the operation found, where it says more than detail (a reload's exit codes)"},
 			"waf_status": map[string]any{"type": "string", "description": "why the WAF statistics could not be read: unreachable, auth_failed or error"},
 			"message":    map[string]any{"type": "string", "deprecated": true, "description": "the same text as detail, on a reload trigger failure; read detail"},
 		},
-		"required":             []string{"status", "detail"},
+		"required":             []string{"status", "code", "detail"},
 		"additionalProperties": false,
 	},
 	"Message": map[string]any{

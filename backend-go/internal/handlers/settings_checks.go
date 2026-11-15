@@ -117,6 +117,7 @@ func writeFieldErrors(w http.ResponseWriter, errs map[string]string) {
 	sort.Strings(keys)
 	writeJSON(w, http.StatusBadRequest, map[string]any{
 		"status": "error",
+		"code":   "invalid_request",
 		"detail": keys[0] + ": " + errs[keys[0]],
 		"errors": errs,
 	})

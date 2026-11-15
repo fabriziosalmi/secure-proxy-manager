@@ -88,7 +88,8 @@ func GlobalRateLimit(rate float64, burst int, exempt ...func(*http.Request) bool
 			ip := extractIP(r)
 			if !rl.allow(ip) {
 				w.Header().Set("Retry-After", "1")
-				http.Error(w, `{"status":"error","detail":"rate limit exceeded"}`, http.StatusTooManyRequests)
+				// JSON with its content type: http.Error sent the same body as text/plain.
+				WriteError(w, http.StatusTooManyRequests, "rate limit exceeded")
 				return
 			}
 			next.ServeHTTP(w, r)

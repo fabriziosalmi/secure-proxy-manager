@@ -40,8 +40,7 @@ func Auth(svc *auth.Service) func(http.Handler) http.Handler {
 			p, err := svc.AuthenticateRequest(r)
 			if err != nil {
 				w.Header().Set("WWW-Authenticate", `Bearer realm="Secure Proxy Manager"`)
-				writeJSON(w, http.StatusUnauthorized,
-					map[string]string{"status": "error", "detail": err.Error()})
+				WriteError(w, http.StatusUnauthorized, err.Error())
 				return
 			}
 			ctx := context.WithValue(r.Context(), CtxUsername, p.Username)
@@ -54,6 +53,7 @@ func Auth(svc *auth.Service) func(http.Handler) http.Handler {
 				if !auth.TokenAllows(p.Token.Scope, r.Method, route) {
 					writeJSON(w, http.StatusForbidden, map[string]string{
 						"status": "error",
+						"code":   "token_scope",
 						"detail": "this API token (scope " + p.Token.Scope + ") is not allowed to " + r.Method + " this route",
 					})
 					return
@@ -101,10 +101,7 @@ func SessionCSRF(cfg *config.Config) func(http.Handler) http.Handler {
 				return
 			}
 			if r.Header.Get(CSRFHeader) != CSRFHeaderValue || !sameSiteOrigin(r, allowed) {
-				writeJSON(w, http.StatusForbidden, map[string]string{
-					"status": "error",
-					"detail": "cross-site request refused: a request authenticated by the session cookie must come from this dashboard",
-				})
+				WriteError(w, http.StatusForbidden, "cross-site request refused: a request authenticated by the session cookie must come from this dashboard")
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -164,8 +161,7 @@ func ServiceAuth(token string, fallback func(http.Handler) http.Handler) func(ht
 			// caller cannot walk the token out one byte at a time.
 			if subtle.ConstantTimeCompare([]byte(got), want) != 1 {
 				w.Header().Set("WWW-Authenticate", `Bearer realm="Secure Proxy Manager internal"`)
-				writeJSON(w, http.StatusUnauthorized,
-					map[string]string{"status": "error", "detail": "invalid service credential"})
+				WriteError(w, http.StatusUnauthorized, "invalid service credential")
 				return
 			}
 			ctx := context.WithValue(r.Context(), CtxUsername, "waf")

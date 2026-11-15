@@ -576,7 +576,25 @@
         "additionalProperties": false,
         "properties": {
           "code": {
-            "type": "string"
+            "description": "what kind of error, for a client to branch on; detail says it in words",
+            "enum": [
+              "invalid_request",
+              "unauthorized",
+              "forbidden",
+              "token_scope",
+              "not_found",
+              "conflict",
+              "gone",
+              "too_large",
+              "unprocessable",
+              "rate_limited",
+              "internal_error",
+              "upstream_unreachable",
+              "unavailable",
+              "trigger_write_failed",
+              "reload_failed",
+              "clear_cache_failed"
+            ]
           },
           "data": {
             "description": "what the operation found, where it says more than detail (a reload's exit codes)",
@@ -608,6 +626,7 @@
         },
         "required": [
           "status",
+          "code",
           "detail"
         ],
         "type": "object"
