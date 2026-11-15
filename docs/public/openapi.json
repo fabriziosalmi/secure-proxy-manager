@@ -573,21 +573,37 @@
         "type": "object"
       },
       "Error": {
+        "additionalProperties": false,
         "properties": {
           "code": {
             "type": "string"
           },
+          "data": {
+            "description": "what the operation found, where it says more than detail (a reload's exit codes)",
+            "type": "object"
+          },
           "detail": {
+            "description": "what went wrong, in words",
             "type": "string"
           },
           "errors": {
             "additionalProperties": {
               "type": "string"
             },
+            "description": "the refused fields of a settings save and why",
             "type": "object"
+          },
+          "message": {
+            "deprecated": true,
+            "description": "the same text as detail, on a reload trigger failure; read detail",
+            "type": "string"
           },
           "status": {
             "const": "error"
+          },
+          "waf_status": {
+            "description": "why the WAF statistics could not be read: unreachable, auth_failed or error",
+            "type": "string"
           }
         },
         "required": [

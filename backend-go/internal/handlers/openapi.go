@@ -94,15 +94,22 @@ func oaListEntry(col string, withType bool) map[string]any {
 }
 
 var openAPISchemas = map[string]any{
+	// Error is every refusal and failure the API answers. Closed, so a
+	// handler that grows a field fails TestRequestSchemasAgreeWithTheHandlers
+	// instead of drifting from what clients read.
 	"Error": map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"status": map[string]any{"const": "error"},
-			"detail": oaStr,
-			"code":   oaStr,
-			"errors": map[string]any{"type": "object", "additionalProperties": oaStr},
+			"status":     map[string]any{"const": "error"},
+			"detail":     map[string]any{"type": "string", "description": "what went wrong, in words"},
+			"code":       oaStr,
+			"errors":     map[string]any{"type": "object", "additionalProperties": oaStr, "description": "the refused fields of a settings save and why"},
+			"data":       map[string]any{"type": "object", "description": "what the operation found, where it says more than detail (a reload's exit codes)"},
+			"waf_status": map[string]any{"type": "string", "description": "why the WAF statistics could not be read: unreachable, auth_failed or error"},
+			"message":    map[string]any{"type": "string", "deprecated": true, "description": "the same text as detail, on a reload trigger failure; read detail"},
 		},
-		"required": []string{"status", "detail"},
+		"required":             []string{"status", "detail"},
+		"additionalProperties": false,
 	},
 	"Message": map[string]any{
 		"type":       "object",
