@@ -31,5 +31,9 @@ export default defineConfig({
     setupFiles: './src/test/setup.ts',
     css: true,
     include: ['src/**/*.test.{ts,tsx}'],
+    // The persistent module cache keys a test by its own text, so an
+    // import.meta.glob test (allowNames, surfaces) went on reading the
+    // sources of an earlier run and missed a new file. Correctness first.
+    fsModuleCache: false,
   }
 })

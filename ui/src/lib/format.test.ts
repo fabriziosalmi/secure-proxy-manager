@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeAll, afterAll } from 'vitest'
-import { formatAge, formatBytes, formatClock, formatCount, formatDate, formatDateTime, formatHourMinute, formatKilobytes, formatPercent, formatRange, formatShare, formatTime, formatWhen, formatWhenExact, utcClockIn } from './format'
+import { formatAge, formatBytes, formatClock, formatCount, formatDate, formatDateTime, formatHourMinute, formatKilobytes, formatPercent, formatRange, formatShare, formatSpan, formatTime, formatWhen, formatWhenExact, utcClockIn } from './format'
 import { simulateItalianLocale, setRomeTimeZone } from '../test/helpers'
 
 describe('formatRange', () => {
@@ -244,5 +244,11 @@ describe('utcClockIn', () => {
     expect(utcClockIn('8:00', 'Europe/Rome')).toBeNull()
     expect(utcClockIn('24:00', 'Europe/Rome')).toBeNull()
     expect(utcClockIn('08:00', 'Mars/Olympus')).toBeNull()
+  })
+})
+
+describe('formatSpan', () => {
+  it('names a span in its largest whole unit', () => {
+    expect([1, 60, 900, 3600, 7200, 90].map(formatSpan)).toEqual(['1 second', '1 minute', '15 minutes', '1 hour', '2 hours', '90 seconds'])
   })
 })

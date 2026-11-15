@@ -7,6 +7,11 @@ const row = (action: string, target: string | null = null, details: string | nul
 })
 
 describe('describeAudit', () => {
+  it('says which address an admin let sign in again', () => {
+    expect(describeAudit(row('clear_sign_in_limit', '192.0.2.7')))
+      .toEqual({ event: 'Let 192.0.2.7 sign in again', details: 'Its failed sign-ins were cleared', kind: 'change' });
+  });
+
   it('writes the WAF policy changes as sentences', () => {
     const cases: [AuditEntry, string, string | null][] = [
       [row('add_waf_exception', 'CRS-942290', '{"host":"shop.example","path":"","target":"ARGS:pwd"}'), 'Added a WAF exception for CRS-942290', 'On shop.example, ARGS:pwd'],

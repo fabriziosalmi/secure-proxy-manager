@@ -226,3 +226,31 @@ func TestTestNotificationReportsTheWAFAlertGap(t *testing.T) {
 		t.Error("warned about a gap that does not exist")
 	}
 }
+
+// Unblocking an address that failed to sign in is a change an admin made:
+// it is in the audit log, with the address.
+func TestClearingASignInLimitIsAudited(t *testing.T) {
+	db, svc, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	h := NewSecurityHandlers(db, svc, cfg, nil)
+	bad := httptest.NewRequest("GET", "/", nil)
+	bad.SetBasicAuth("admin", "wrong-password")
+	bad.RemoteAddr = "192.0.2.7:4000"
+	_, _, _ = svc.Authenticate(bad)
+	if snap := svc.RateLimitSnapshot(); len(snap) != 1 || snap[0]["ip"] != "192.0.2.7" {
+		t.Fatalf("snapshot after a failed sign-in: %v", snap)
+	}
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("ip", "192.0.2.7")
+	r := httptest.NewRequest("DELETE", "/api/security/rate-limits/192.0.2.7", nil)
+	r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+	w := httptest.NewRecorder()
+	h.ClearRateLimit(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("clear: %d %s", w.Code, w.Body.String())
+	}
+	var n int
+	if err := db.QueryRow("SELECT COUNT(*) FROM audit_log WHERE action = 'clear_sign_in_limit' AND target = '192.0.2.7'").Scan(&n); err != nil || n != 1 {
+		t.Errorf("audit rows for the clear: %d (%v), want 1", n, err)
+	}
+}

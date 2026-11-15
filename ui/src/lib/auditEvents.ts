@@ -371,6 +371,9 @@ export function describeAudit(e: AuditEntry): AuditDescription {
     return { event: 'Sign-in failed', details: join([e.target ? `From ${e.target}` : null, e.details]), kind: 'signin-failed' };
   }
   if (PLAIN[action]) return { event: PLAIN[action], details: e.details || null, kind: 'change' };
+  if (action === 'clear_sign_in_limit') {
+    return { event: e.target ? `Let ${e.target} sign in again` : 'Let an address sign in again', details: 'Its failed sign-ins were cleared', kind: 'change' };
+  }
   if (action === 'update_settings' || action === 'update_setting') {
     const keys = (e.target ?? '').split(',').filter(Boolean);
     // A row with values names each change; an older row only the keys.
