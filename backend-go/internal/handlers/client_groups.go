@@ -132,6 +132,14 @@ func (h *BlacklistHandlers) deleteClientGroup(w http.ResponseWriter, r *http.Req
 		writeInternalError(w, "delete_client_group", err)
 		return
 	}
+	dry, ok := dryRun(w, r)
+	if !ok {
+		return
+	}
+	if dry {
+		writeDryRun(w, map[string]any{"removed": g.Name, "members": len(g.Members), "lists": len(g.Lists)})
+		return
+	}
 	if _, err := database.DeleteClientGroup(h.db, id); err != nil {
 		writeInternalError(w, "delete_client_group", err)
 		return

@@ -191,6 +191,19 @@ func bulkDeleteHandler(db *sql.DB, table string, cfg *config.Config) http.Handle
 		for i, id := range req.IDs {
 			args[i] = id
 		}
+		dry, ok := dryRun(w, r)
+		if !ok {
+			return
+		}
+		if dry {
+			var n int64
+			if err := db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE id IN (%s)", table, placeholders), args...).Scan(&n); err != nil {
+				writeInternalError(w, "bulk_delete_preview", err)
+				return
+			}
+			writeDryRun(w, map[string]any{"removed": n})
+			return
+		}
 		res, err := db.Exec(fmt.Sprintf("DELETE FROM %s WHERE id IN (%s)", table, placeholders), args...)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "database error")
@@ -212,6 +225,19 @@ func bulkDeleteHandler(db *sql.DB, table string, cfg *config.Config) http.Handle
 func clearAllHandler(db *sql.DB, table string, cfg *config.Config, col string) http.HandlerFunc {
 	_ = col
 	return func(w http.ResponseWriter, r *http.Request) {
+		dry, ok := dryRun(w, r)
+		if !ok {
+			return
+		}
+		if dry {
+			var n int64
+			if err := db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", table)).Scan(&n); err != nil {
+				writeInternalError(w, "clear_all_preview", err)
+				return
+			}
+			writeDryRun(w, map[string]any{"removed": n})
+			return
+		}
 		res, err := db.Exec(fmt.Sprintf("DELETE FROM %s", table))
 		if err != nil {
 			writeInternalError(w, "clear_all_blacklist", err)

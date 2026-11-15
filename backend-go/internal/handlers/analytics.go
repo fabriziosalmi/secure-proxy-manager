@@ -984,6 +984,19 @@ func (h *AnalyticsHandlers) WAFStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AnalyticsHandlers) ResetCounters(w http.ResponseWriter, r *http.Request) {
+	dry, ok := dryRun(w, r)
+	if !ok {
+		return
+	}
+	if dry {
+		var n int64
+		if err := h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs").Scan(&n); err != nil {
+			writeInternalError(w, "reset_counters_preview", err)
+			return
+		}
+		writeDryRun(w, map[string]any{"logs_cleared": n, "waf_reset": "the WAF would be asked to reset its counters"})
+		return
+	}
 	res, err := h.db.Exec("DELETE FROM proxy_logs")
 	database.ClearWAFRecords(h.db)
 	var deleted int64

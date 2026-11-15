@@ -315,6 +315,17 @@ func ListSources(db *sql.DB, list string) ([]SourceSummary, error) {
 // entries whose source was not recorded. The caller exports the lists
 // afterwards, so the proxy and the DNS sinkhole stop enforcing what went.
 func RemoveSource(db *sql.DB, list string, sourceID int64) (removed, kept int64, err error) {
+	return removeSource(db, list, sourceID, false)
+}
+
+// PreviewRemoveSource is what RemoveSource would do: the same statements in
+// one transaction, rolled back, so the counts are the removal's own and
+// nothing changes.
+func PreviewRemoveSource(db *sql.DB, list string, sourceID int64) (removed, kept int64, err error) {
+	return removeSource(db, list, sourceID, true)
+}
+
+func removeSource(db *sql.DB, list string, sourceID int64, preview bool) (removed, kept int64, err error) {
 	q, ok := sourceLists[list]
 	if !ok {
 		return 0, 0, ErrUnknownList
@@ -354,6 +365,9 @@ func RemoveSource(db *sql.DB, list string, sourceID int64) (removed, kept int64,
 		if _, err := tx.Exec("DELETE FROM list_sources WHERE id = ? AND list = ?", sourceID, list); err != nil {
 			return 0, 0, err
 		}
+	}
+	if preview {
+		return removed, kept, nil // the deferred Rollback undoes it all
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, 0, err

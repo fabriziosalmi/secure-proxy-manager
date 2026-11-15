@@ -83,6 +83,19 @@ func (h *BlacklistHandlers) removeSource(l listRoute) http.HandlerFunc {
 			}
 			id = n
 		}
+		dry, ok := dryRun(w, r)
+		if !ok {
+			return
+		}
+		if dry {
+			removed, kept, err := database.PreviewRemoveSource(h.db, l.table, id)
+			if err != nil {
+				writeInternalError(w, "remove_source_preview", err)
+				return
+			}
+			writeDryRun(w, map[string]any{"removed": removed, "kept": kept})
+			return
+		}
 		removed, kept, err := database.RemoveSource(h.db, l.table, id)
 		if err != nil {
 			writeInternalError(w, "remove_source", err)
