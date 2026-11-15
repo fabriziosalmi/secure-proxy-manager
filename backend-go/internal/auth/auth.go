@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -611,11 +612,16 @@ func (s *Service) pruneAttempts(ip string) {
 	}
 }
 
-// RateLimitSnapshot returns active rate-limited IPs.
+// RateLimitSnapshot returns the addresses with failed sign-ins in the window,
+// blocked first, then by address: attempts, blocked, last_attempt (Unix
+// seconds) and, for a blocked address, until, when it may sign in again.
+// Attempts are recorded in time order and a refused one is not recorded, so
+// an address is blocked until the attempt MaxAttempts from the newest leaves
+// the window.
 func (s *Service) RateLimitSnapshot() []map[string]any {
 	s.attemptsMu.Lock()
 	defer s.attemptsMu.Unlock()
-	var result []map[string]any
+	result := []map[string]any{}
 	cutoff := time.Now().Add(-s.cfg.RateLimitWindow)
 	for ip, times := range s.attempts {
 		var recent []time.Time
@@ -624,14 +630,28 @@ func (s *Service) RateLimitSnapshot() []map[string]any {
 				recent = append(recent, t)
 			}
 		}
-		if len(recent) > 0 {
-			result = append(result, map[string]any{
-				"ip":       ip,
-				"attempts": len(recent),
-				"blocked":  len(recent) >= s.cfg.MaxAttempts,
-			})
+		if len(recent) == 0 {
+			continue
 		}
+		blocked := len(recent) >= s.cfg.MaxAttempts
+		row := map[string]any{
+			"ip":           ip,
+			"attempts":     len(recent),
+			"blocked":      blocked,
+			"last_attempt": recent[len(recent)-1].Unix(),
+		}
+		if blocked {
+			row["until"] = recent[len(recent)-s.cfg.MaxAttempts].Add(s.cfg.RateLimitWindow).Unix()
+		}
+		result = append(result, row)
 	}
+	sort.Slice(result, func(i, j int) bool {
+		bi, bj := result[i]["blocked"].(bool), result[j]["blocked"].(bool)
+		if bi != bj {
+			return bi
+		}
+		return result[i]["ip"].(string) < result[j]["ip"].(string)
+	})
 	return result
 }
 

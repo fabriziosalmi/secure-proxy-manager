@@ -52,9 +52,11 @@ expires.
   (including `POST /api/auth/login`) is counted before the password is checked
   and refunded when it succeeds. With `MAX_LOGIN_ATTEMPTS` (default 5) counted
   attempts in the last `RATE_LIMIT_WINDOW_SECONDS` (default 300), further
-  attempts get HTTP 429 until older ones leave the window. The current counts
-  are at `GET /api/security/rate-limits`; `DELETE /api/security/rate-limits/{ip}`
-  clears one address.
+  attempts get HTTP 429 until older ones leave the window. Settings > Admin
+  and backup > Sign-in limits lists the addresses with failed attempts,
+  refused ones first with the time they may sign in again, and lets one sign
+  in again at once (an audit event). The same is at
+  `GET /api/security/rate-limits` and `DELETE /api/security/rate-limits/{ip}`.
 - **All requests per client address.** A token bucket of 20 requests per
   second with a burst of 60; over it, HTTP 429 with `Retry-After: 1`. nginx
   also limits `/api/` to 20 requests per second with a burst of 40.

@@ -370,6 +370,7 @@ func (h *SecurityHandlers) ClearRateLimit(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusNotFound, fmt.Sprintf("no active rate limit for IP %s", ip))
 		return
 	}
+	auditChange(h.db, r, "clear_sign_in_limit", ip, nil)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Rate limit cleared for " + ip})
 }
 

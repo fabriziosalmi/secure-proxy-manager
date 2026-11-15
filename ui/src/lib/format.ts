@@ -196,3 +196,11 @@ export function formatAge(seconds: number): string {
   if (h < 48) return `${h} h`;
   return `${Math.floor(h / 24)} d`;
 }
+
+/** "15 minutes", "1 hour", "90 seconds": a span in its largest whole unit, for a sentence. */
+export function formatSpan(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
+  if (s > 0 && s % 3600 === 0) return s === 3600 ? '1 hour' : `${s / 3600} hours`;
+  if (s > 0 && s % 60 === 0) return s === 60 ? '1 minute' : `${s / 60} minutes`;
+  return s === 1 ? '1 second' : `${s} seconds`;
+}

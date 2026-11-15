@@ -17,6 +17,15 @@ for at least one minor release before disappearing.
 
 ### Added
 
+- **Sign-in limits** (Settings > Admin and backup): the addresses that failed
+  to sign in within the window, refused ones first with the time they may
+  sign in again, and a button that lets one sign in again at once. The rule
+  is stated with the configured limit and window. Letting an address sign in
+  again is in the audit log ("Let 192.0.2.7 sign in again").
+  `GET /api/security/rate-limits` lists the addresses in that order and adds
+  `last_attempt` and, for a refused one, `until`; it used to answer in no
+  fixed order.
+
 - **Where each operation is reached** (`GET /api/openapi.json`): every
   operation carries `x-spm-surfaces` (`api`, and `ui`, `cli`, `mcp` when the
   dashboard, the `spm` command or the MCP server offer it) and, when only the
