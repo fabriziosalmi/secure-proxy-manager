@@ -420,7 +420,7 @@ function ListBody({ list, initialSearch = '', total, enforcement, confirm, onCha
         );
       },
     },
-    { id: 'kind', header: 'Kind', className: 'whitespace-nowrap text-ink-muted', cell: (e) => entryKind(list, e[list.field] ?? '') },
+    { id: 'kind', header: 'Kind', className: 'whitespace-nowrap text-ink-muted', hideOnPhone: true, cell: (e) => entryKind(list, e[list.field] ?? '') },
     {
       id: 'source',
       header: 'Source',
@@ -485,6 +485,18 @@ function ListBody({ list, initialSearch = '', total, enforcement, confirm, onCha
             className="w-full sm:max-w-[360px]"
           />
         </div>
+        {(entries.data?.rows.length ?? 0) > 0 && (
+          <SelectionBar
+            count={selected.size}
+            one={list.singular}
+            many={list.plural}
+            actionLabel={(n) => `Remove ${formatCount(n)}`}
+            onAction={() => { void removeSelected(); }}
+            onClear={() => setChecked({ page: '', ids: new Set() })}
+            busy={removing}
+            hint={`Check ${list.plural} to remove several at once.`}
+          />
+        )}
         <DataTable<ListEntry>
           caption={`${list.label} entries`}
           // With one source or none, the source is the same on every row and
@@ -504,15 +516,6 @@ function ListBody({ list, initialSearch = '', total, enforcement, confirm, onCha
             rowLabel: (e) => `Select ${e[list.field] ?? `entry ${e.id}`}`,
             pageLabel: `Select every ${list.singular} on this page`,
           }}
-        />
-        <SelectionBar
-          count={selected.size}
-          one={list.singular}
-          many={list.plural}
-          actionLabel={(n) => `Remove ${formatCount(n)}`}
-          onAction={() => { void removeSelected(); }}
-          onClear={() => setChecked({ page: '', ids: new Set() })}
-          busy={removing}
         />
       </Section>
 

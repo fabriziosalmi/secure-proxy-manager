@@ -149,7 +149,7 @@ Details: [Logs and Analytics API](./logs.md).
 | `GET`  | `/api/logs/export` | The same rows as streamed CSV |
 | `GET`  | `/api/logs/stats` | Total, blocked and direct-IP counts, blocks by rule |
 | `GET`  | `/api/logs/timeline` | Requests and blocks per hour (`hours`, default 24) of the zone `tz` (default UTC) |
-| `POST` | `/api/logs/clear` | Delete every log row |
+| `POST` | `/api/logs/clear` | Delete every log row (`data.removed`) |
 | `POST` | `/api/logs/clear-old` | Delete rows older than `days` (query parameter, 1 to 3650, default 30; `data.removed`) |
 | `POST` | `/api/counters/reset` | Delete every log row and reset the WAF's counters |
 | `GET`  | `/api/status` | Proxy reachability, version, today's request count, Squid version, CVE count (`squid_cves`) and whether that major version has an advisory table (`cves_checked`), update availability |

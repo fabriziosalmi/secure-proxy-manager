@@ -383,8 +383,6 @@ export function EgressAllowlist() {
 
       <AddDestination onAdded={refresh} />
 
-      <ProviderListsSection refreshHours={refreshHours} onChanged={refresh} />
-
       <Section title="Allowed destinations" flush>
         <div className="px-5 pb-3">
           <SearchInput
@@ -395,6 +393,18 @@ export function EgressAllowlist() {
             className="w-full sm:max-w-[360px]"
           />
         </div>
+        {(entries.data?.rows.length ?? 0) > 0 && (
+          <SelectionBar
+            count={selected.size}
+            one="destination"
+            many="destinations"
+            actionLabel={(n) => `Remove ${formatCount(n)}`}
+            onAction={() => { void removeSelected(); }}
+            onClear={() => setChecked({ page: '', ids: new Set() })}
+            busy={removing}
+            hint="Check destinations to remove several at once."
+          />
+        )}
         <DataTable<EgressEntry>
           caption="Allowed destinations"
           columns={columns}
@@ -412,16 +422,9 @@ export function EgressAllowlist() {
             pageLabel: 'Select every destination on this page',
           }}
         />
-        <SelectionBar
-          count={selected.size}
-          one="destination"
-          many="destinations"
-          actionLabel={(n) => `Remove ${formatCount(n)}`}
-          onAction={() => { void removeSelected(); }}
-          onClear={() => setChecked({ page: '', ids: new Set() })}
-          busy={removing}
-        />
       </Section>
+
+      <ProviderListsSection refreshHours={refreshHours} onChanged={refresh} />
 
       <Section
         title="Remove every destination on this list"

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
-	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/privacy"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 	"github.com/go-chi/chi/v5"
@@ -261,13 +260,20 @@ func (h *LogHandlers) Timeline(w http.ResponseWriter, r *http.Request) {
 	writeOK(w, data)
 }
 
+// Clear answers POST /api/logs/clear: every logged request and WAF record
+// goes. A database failure is an error; it used to answer "All logs cleared"
+// whatever the DELETE did. The answer says how many requests went.
 func (h *LogHandlers) Clear(w http.ResponseWriter, r *http.Request) {
-	username, _ := r.Context().Value(middleware.CtxUsername).(string)
-	h.db.Exec("DELETE FROM proxy_logs") //nolint:errcheck
+	res, err := h.db.Exec("DELETE FROM proxy_logs")
+	if err != nil {
+		writeInternalError(w, "clear_logs", err)
+		return
+	}
+	removed, _ := res.RowsAffected()
 	database.ClearWAFRecords(h.db)
 	h.src.forget()
-	h.db.Exec("INSERT INTO audit_log(username,action,target,details) VALUES(?,?,?,?)", username, "clear_logs", "proxy_logs", "") //nolint:errcheck
-	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "All logs cleared"})
+	auditChange(h.db, r, "clear_logs", "proxy_logs", map[string]any{"removed": removed})
+	writeJSON(w, http.StatusOK, map[string]any{"status": "success", "message": "All logs cleared", "data": map[string]any{"removed": removed}})
 }
 
 // ClearOld answers POST /api/logs/clear-old?days=N: it deletes the logged

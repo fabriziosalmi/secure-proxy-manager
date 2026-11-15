@@ -76,6 +76,12 @@ type snapshotAllowlistItem struct {
 }
 
 // captureSnapshot reads the configuration in force.
+// notSnapshotted are settings that record the dashboard's own state, not the
+// configuration: closing the setup wizard saved wizard_completed, which took
+// a snapshot "before a settings save" for nothing a restore should bring back.
+// Older snapshots that hold one are not compared on it either.
+var notSnapshotted = map[string]bool{"wizard_completed": true}
+
 func captureSnapshot(db *sql.DB, cfg *config.Config) (configSnapshot, error) {
 	s := configSnapshot{Version: snapshotVersion, Settings: map[string]string{}, ClientGroups: []snapshotGroup{}, EgressAllowlist: []snapshotAllowlistItem{}}
 	rows, err := db.Query("SELECT setting_name, setting_value FROM settings")
@@ -84,7 +90,7 @@ func captureSnapshot(db *sql.DB, cfg *config.Config) (configSnapshot, error) {
 	}
 	for rows.Next() {
 		var k, v string
-		if rows.Scan(&k, &v) == nil && isWritableSettingKey(k) {
+		if rows.Scan(&k, &v) == nil && isWritableSettingKey(k) && !notSnapshotted[k] {
 			s.Settings[k] = v
 		}
 	}
@@ -313,7 +319,9 @@ func diffSnapshots(cur, to configSnapshot) snapshotDiff {
 		AllowlistAdded: []string{}, AllowlistRemoved: []string{}}
 	keys := map[string]bool{}
 	for k := range to.Settings {
-		keys[k] = true
+		if !notSnapshotted[k] {
+			keys[k] = true
+		}
 	}
 	// A setting the snapshot does not have (added by a later version) is left
 	// as it is by a restore, so it is not a change.

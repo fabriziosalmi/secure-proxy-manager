@@ -1239,7 +1239,7 @@
           }
         },
         "security": [],
-        "summary": "",
+        "summary": "A new access token for a refresh token ({refresh_token}, from POST /api/auth/login): 400 without one, 401 when it is invalid or expired",
         "tags": [
           "auth"
         ],
@@ -1785,7 +1785,7 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "",
+        "summary": "One client's or a /24 or /64 network CIDR's totals, top domains, recent requests and blocks by rule; ?window=7d for the last 7 days, all (default) for every request logged",
         "tags": [
           "clients"
         ],
@@ -1842,7 +1842,7 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "",
+        "summary": "The same as GET /api/clients/{ip}/details for a network CIDR written with its slash unencoded (10.0.0.0/24)",
         "tags": [
           "clients"
         ],
@@ -2329,7 +2329,7 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "",
+        "summary": "Look for Pi-hole and AdGuard Home servers on a private /24 ({subnet}, e.g. 192.168.1; the local one when absent); at most two scans at once",
         "tags": [
           "dns"
         ],
@@ -2626,7 +2626,7 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "",
+        "summary": "Retired: answers 410 Gone naming POST /api/blacklists/import",
         "tags": [
           "domain-blacklist"
         ],
@@ -3481,7 +3481,7 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "",
+        "summary": "The manual entries of the default-deny allowlist (limit, offset, search), newest first; meta.total",
         "tags": [
           "egress-allowlist"
         ],
@@ -3535,7 +3535,7 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "",
+        "summary": "Add a destination to the default-deny allowlist ({entry}: an IP, a CIDR or a domain; include_subdomains for a domain; description), after a configuration snapshot",
         "tags": [
           "egress-allowlist"
         ],
@@ -3663,7 +3663,7 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "",
+        "summary": "Remove one destination from the default-deny allowlist, after a configuration snapshot",
         "tags": [
           "egress-allowlist"
         ],
@@ -4290,7 +4290,7 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "",
+        "summary": "Retired: answers 410 Gone naming POST /api/blacklists/import",
         "tags": [
           "ip-blacklist"
         ],
@@ -5582,7 +5582,7 @@
           }
         },
         "security": [],
-        "summary": "",
+        "summary": "Readiness: 200 when the database answers within a short deadline, 503 otherwise",
         "tags": [
           "ready"
         ],
@@ -5991,7 +5991,7 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "",
+        "summary": "Set one setting ({value}) through the same validation, secret handling and proxy files as POST /api/settings",
         "tags": [
           "settings"
         ],
@@ -6234,7 +6234,7 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "",
+        "summary": "The WAF rule categories with their state, as the WAF reports them",
         "tags": [
           "waf"
         ],
@@ -6274,7 +6274,7 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "",
+        "summary": "Switch one WAF rule category on or off, as the WAF answers; the dashboard changes categories through the WAF policy instead",
         "tags": [
           "waf"
         ],
@@ -6634,7 +6634,7 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "",
+        "summary": "Test a regular expression against the URLs of recent requests in the log: what it matches, not what the WAF would block",
         "tags": [
           "waf"
         ],
@@ -6819,7 +6819,7 @@
           }
         },
         "security": [],
-        "summary": "",
+        "summary": "Liveness: 200 while the process serves; it does not touch the database",
         "tags": [
           "livez"
         ],
@@ -6838,7 +6838,7 @@
           }
         },
         "security": [],
-        "summary": "",
+        "summary": "Prometheus metrics of the backend",
         "tags": [
           "metrics"
         ],
@@ -6857,7 +6857,7 @@
           }
         },
         "security": [],
-        "summary": "",
+        "summary": "Readiness: 200 when the database answers within a short deadline, 503 otherwise",
         "tags": [
           "readyz"
         ],
