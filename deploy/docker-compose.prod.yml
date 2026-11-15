@@ -8,6 +8,9 @@ services:
       - "8443:8443"   # HTTPS alt (backward compat)
     volumes:
       - letsencrypt:/etc/letsencrypt
+      # The certificate the web generates for itself, kept across restarts
+      # and upgrades so browsers and devices keep trusting it.
+      - web-tls:/etc/nginx/ssl
     depends_on:
       backend:
         condition: service_healthy
@@ -35,7 +38,6 @@ services:
       - /tmp
       - /var/run
       - /var/cache/nginx
-      - /etc/nginx/ssl
       - /etc/nginx/conf.d
       - /var/www/certbot
     cap_drop:
@@ -443,6 +445,8 @@ volumes:
   tailscale-data:
     driver: local
   letsencrypt:
+    driver: local
+  web-tls:
     driver: local
   prometheus-data:
     driver: local
