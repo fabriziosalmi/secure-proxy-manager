@@ -15,6 +15,22 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Added
+
+- **The lists' write operations describe their requests** in
+  `GET /api/openapi.json`: a body schema (bulk delete with 1 to 1000 ids, the
+  source scope, the imports) or `x-spm-body: none` (removals, clear-all,
+  presets). A test holds each schema to its handler both ways. The add of
+  the default-deny allowlist now lists `include_subdomains`.
+
+### Changed
+
+- Request schemas no longer say `additionalProperties: false`: the handlers
+  ignore a field they do not know, and the schema said such a request was
+  refused.
+- `POST /api/ip-blacklist/import` and `POST /api/domain-blacklist/import`,
+  retired with `410`, are marked api-only; the dashboard never called them.
+
 ## [3.36.0] - 2026-11-15
 
 Every API operation says whether the dashboard and the MCP server reach it,
