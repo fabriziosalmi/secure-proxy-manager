@@ -154,6 +154,14 @@ var openAPISchemas = map[string]any{
 		o["anyOf"] = []any{map[string]any{"required": []string{"url"}}, map[string]any{"required": []string{"content"}}}
 		return o
 	}(),
+	"EgressProviderURL": oaRequest(map[string]any{
+		"url":   map[string]any{"type": "string", "description": "an http or https URL of a list of networks, on a public address"},
+		"label": map[string]any{"type": "string", "minLength": 1, "maxLength": 100, "description": "the list's name; not a catalog provider's"},
+	}, "url", "label"),
+	"EgressProviderSet": oaRequest(map[string]any{
+		"enabled":        oaBool,
+		"confirm_shared": map[string]any{"type": "boolean", "description": "required to enable a provider whose network other people's workloads share"},
+	}, "enabled"),
 	"ImportGeo": oaRequest(map[string]any{
 		"countries": map[string]any{"type": "array", "items": oaStr, "minItems": 1, "maxItems": 50, "description": "ISO 3166-1 alpha-2 codes"},
 	}, "countries"),
@@ -253,6 +261,13 @@ var routeSchemas = map[string]routeSchema{
 	"POST /api/domain-whitelist/import":            {request: "ImportAllowed"},
 	"POST /api/blacklists/import":                  {request: "ImportBlacklist"},
 	"POST /api/blacklists/import-geo":              {request: "ImportGeo"},
+
+	// Egress provider lists.
+	"POST /api/egress-providers/url":               {request: "EgressProviderURL"},
+	"DELETE /api/egress-providers/url/{id}":        {noBody: true},
+	"PUT /api/egress-providers/{name}":             {request: "EgressProviderSet"},
+	"POST /api/egress-providers/{name}/refresh":    {noBody: true},
+	"POST /api/egress-providers/{name}/apply-held": {noBody: true},
 }
 
 // chiParam matches a path parameter, with chi's optional regexp ({id:[0-9]+}).

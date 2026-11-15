@@ -342,6 +342,40 @@
         ],
         "type": "object"
       },
+      "EgressProviderSet": {
+        "properties": {
+          "confirm_shared": {
+            "description": "required to enable a provider whose network other people's workloads share",
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "EgressProviderURL": {
+        "properties": {
+          "label": {
+            "description": "the list's name; not a catalog provider's",
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "url": {
+            "description": "an http or https URL of a list of networks, on a public address",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "label"
+        ],
+        "type": "object"
+      },
       "Error": {
         "properties": {
           "code": {
@@ -3905,6 +3939,16 @@
     "/api/egress-providers/url": {
       "post": {
         "operationId": "post_api_egress_providers_url",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EgressProviderURL"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Success"
@@ -3983,6 +4027,7 @@
         "tags": [
           "egress-providers"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -4003,6 +4048,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EgressProviderSet"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Success"
@@ -4081,6 +4136,7 @@
         "tags": [
           "egress-providers"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -4130,6 +4186,7 @@
         "tags": [
           "egress-providers"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
