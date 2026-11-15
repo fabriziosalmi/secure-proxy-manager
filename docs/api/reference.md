@@ -27,7 +27,9 @@ schemas for now.
 `x-spm-surfaces` names where each operation can be reached: always `api`,
 and `ui`, `cli` and `mcp` when the dashboard, the `spm` command or the MCP
 server offer it. `x-spm-api-only`, when present, says why only the API offers
-an operation (a health probe, a call the WAF makes). Tests hold the dashboard
+an operation (a health probe, a call the WAF makes, a retired route), and
+`x-spm-not-in-ui` why the dashboard deliberately leaves one to the command
+and the MCP server. Tests hold the dashboard
 and the MCP server to the list: an operation marked `ui` that the dashboard
 does not call, or one it calls that is not marked, fails the build.
 

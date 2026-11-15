@@ -255,6 +255,9 @@ func OpenAPIDocument(r chi.Router) map[string]any {
 		if surf.apiOnly != "" {
 			op["x-spm-api-only"] = surf.apiOnly
 		}
+		if surf.notInUI != "" {
+			op["x-spm-not-in-ui"] = surf.notInUI
+		}
 		item[strings.ToLower(d.Method)] = op
 	}
 	return map[string]any{
@@ -262,7 +265,7 @@ func OpenAPIDocument(r chi.Router) map[string]any {
 		"info": map[string]any{
 			"title":       "Secure Proxy Manager API",
 			"version":     config.APIVersion,
-			"description": "The management API of Secure Proxy Manager. x-spm-token-scope on an operation is the scope an API token needs to call it: read, write, or none when no token may. x-spm-surfaces names where the operation can be reached: api, and ui, cli and mcp when the dashboard, the spm command or the MCP server offer it; x-spm-api-only, when present, is why only the API offers it.",
+			"description": "The management API of Secure Proxy Manager. x-spm-token-scope on an operation is the scope an API token needs to call it: read, write, or none when no token may. x-spm-surfaces names where the operation can be reached: api, and ui, cli and mcp when the dashboard, the spm command or the MCP server offer it; x-spm-api-only, when present, is why only the API offers it, and x-spm-not-in-ui why the dashboard does not.",
 			"license":     map[string]any{"name": "MIT", "identifier": "MIT"},
 		},
 		"servers": []any{map[string]any{"url": "/", "description": "The dashboard host (https://<host>:8443), or the backend from its host (http://127.0.0.1:5001)"}},

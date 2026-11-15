@@ -790,7 +790,7 @@
     }
   },
   "info": {
-    "description": "The management API of Secure Proxy Manager. x-spm-token-scope on an operation is the scope an API token needs to call it: read, write, or none when no token may. x-spm-surfaces names where the operation can be reached: api, and ui, cli and mcp when the dashboard, the spm command or the MCP server offer it; x-spm-api-only, when present, is why only the API offers it.",
+    "description": "The management API of Secure Proxy Manager. x-spm-token-scope on an operation is the scope an API token needs to call it: read, write, or none when no token may. x-spm-surfaces names where the operation can be reached: api, and ui, cli and mcp when the dashboard, the spm command or the MCP server offer it; x-spm-api-only, when present, is why only the API offers it, and x-spm-not-in-ui why the dashboard does not.",
     "license": {
       "identifier": "MIT",
       "name": "MIT"
@@ -1609,6 +1609,7 @@
         "tags": [
           "client-groups"
         ],
+        "x-spm-not-in-ui": "the Clients page reads every group at once (GET /api/client-groups); one group by id is for scripts",
         "x-spm-surfaces": [
           "api"
         ],
@@ -1845,6 +1846,7 @@
         "tags": [
           "clients"
         ],
+        "x-spm-not-in-ui": "the same detail as GET /api/clients/{ip}/details for a CIDR written with its slash unencoded; the dashboard encodes it",
         "x-spm-surfaces": [
           "api"
         ],
@@ -2214,6 +2216,7 @@
         "tags": [
           "database"
         ],
+        "x-spm-not-in-ui": "deletes every list, setting and log at once; the dashboard restores a backup or a snapshot instead",
         "x-spm-surfaces": [
           "api"
         ],
@@ -2291,6 +2294,7 @@
         "tags": [
           "database"
         ],
+        "x-spm-not-in-ui": "row counts per table are a maintenance query, not something the dashboard acts on",
         "x-spm-surfaces": [
           "api"
         ],
@@ -5827,6 +5831,7 @@
         "tags": [
           "settings"
         ],
+        "x-spm-not-in-ui": "the dashboard saves a section of settings at once (POST /api/settings), which validates them together",
         "x-spm-surfaces": [
           "api"
         ],
@@ -6109,6 +6114,7 @@
         "tags": [
           "waf"
         ],
+        "x-spm-not-in-ui": "the dashboard changes WAF categories through the WAF policy, which keeps one history (PUT /api/waf/policy)",
         "x-spm-surfaces": [
           "api",
           "mcp"

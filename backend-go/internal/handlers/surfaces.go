@@ -13,17 +13,25 @@ package handlers
 //   - tests/python/test_mcp_surfaces.py: the operations marked mcp are
 //     exactly the ones the MCP tools call.
 //
-// An entry with nothing set is an operation only the API offers for now: a
-// gap, not a decision. apiOnly is the decision that an operation belongs to
-// the API alone, with the reason.
+// Every operation carries a decision, and TestEveryOperationSaysWhereItIsReached
+// fails on one that does not:
+//   - apiOnly: it belongs to the API alone, with the reason (a probe, a call
+//     the WAF makes, a retired route);
+//   - notInUI: the dashboard deliberately does not offer it, with the reason;
+//     the command and the MCP server are where it goes;
+//   - uiPlanned: the dashboard is to offer it and does not yet. The UI test
+//     fails once the dashboard calls it, so the flag cannot outlive the work.
 //
-// The published document carries them as x-spm-surfaces and x-spm-api-only.
+// The published document carries x-spm-surfaces, x-spm-api-only and
+// x-spm-not-in-ui.
 
 type surfaceSet struct {
-	ui      bool
-	cli     bool
-	mcp     bool
-	apiOnly string
+	ui        bool
+	cli       bool
+	mcp       bool
+	apiOnly   string
+	notInUI   string
+	uiPlanned bool
 }
 
 // names lists the surfaces besides the API, in a fixed order.
@@ -49,7 +57,7 @@ var routeSurfaces = map[string]surfaceSet{
 	"DELETE /api/domain-blacklist/{id}":            {ui: true, mcp: true},
 	"DELETE /api/domain-whitelist/sources/{id}":    {ui: true},
 	"DELETE /api/domain-whitelist/{id}":            {ui: true},
-	"DELETE /api/egress-allowlist/clear-all":       {},
+	"DELETE /api/egress-allowlist/clear-all":       {uiPlanned: true},
 	"DELETE /api/egress-allowlist/{id}":            {ui: true},
 	"DELETE /api/egress-providers/url/{id}":        {ui: true},
 	"DELETE /api/ip-blacklist/clear-all":           {ui: true},
@@ -57,7 +65,7 @@ var routeSurfaces = map[string]surfaceSet{
 	"DELETE /api/ip-blacklist/{id}":                {ui: true},
 	"DELETE /api/ip-whitelist/sources/{id}":        {ui: true},
 	"DELETE /api/ip-whitelist/{id}":                {ui: true},
-	"DELETE /api/security/rate-limits/{ip}":        {},
+	"DELETE /api/security/rate-limits/{ip}":        {uiPlanned: true},
 	"DELETE /api/tokens/{id}":                      {ui: true},
 	"GET /api/analytics/blocked-by-day":            {ui: true},
 	"GET /api/analytics/cache-by-day":              {ui: true},
@@ -74,18 +82,18 @@ var routeSurfaces = map[string]surfaceSet{
 	"GET /api/blacklists/enforcement":              {ui: true},
 	"GET /api/cache/statistics":                    {ui: true},
 	"GET /api/client-groups":                       {ui: true},
-	"GET /api/client-groups/{id}":                  {},
+	"GET /api/client-groups/{id}":                  {notInUI: "the Clients page reads every group at once (GET /api/client-groups); one group by id is for scripts"},
 	"GET /api/client-setup":                        {ui: true},
 	"GET /api/client-setup/ca.crt":                 {apiOnly: "a device fetches it while it is set up"},
 	"GET /api/clients/statistics":                  {ui: true},
 	"GET /api/clients/{ip}/details":                {ui: true},
-	"GET /api/clients/{ip}/{prefix}/details":       {},
+	"GET /api/clients/{ip}/{prefix}/details":       {notInUI: "the same detail as GET /api/clients/{ip}/details for a CIDR written with its slash unencoded; the dashboard encodes it"},
 	"GET /api/config/snapshots":                    {ui: true},
 	"GET /api/config/snapshots/{id}/diff":          {ui: true},
 	"GET /api/dashboard/summary":                   {ui: true, mcp: true},
 	"GET /api/database/export":                     {ui: true},
 	"GET /api/database/size":                       {ui: true},
-	"GET /api/database/stats":                      {},
+	"GET /api/database/stats":                      {notInUI: "row counts per table are a maintenance query, not something the dashboard acts on"},
 	"GET /api/docs":                                {apiOnly: "the API describing itself to its clients"},
 	"GET /api/domain-blacklist":                    {ui: true, mcp: true},
 	"GET /api/domain-blacklist/export":             {ui: true},
@@ -110,13 +118,13 @@ var routeSurfaces = map[string]surfaceSet{
 	"GET /api/logs/stats":                          {ui: true},
 	"GET /api/logs/timeline":                       {ui: true},
 	"GET /api/maintenance/backup-config":           {ui: true},
-	"GET /api/maintenance/check-cert-security":     {},
+	"GET /api/maintenance/check-cert-security":     {uiPlanned: true},
 	"GET /api/notifications/status":                {ui: true},
 	"GET /api/openapi.json":                        {apiOnly: "the API describing itself to its clients"},
 	"GET /api/ready":                               {apiOnly: "a probe for the container runtime or a load balancer, not an action"},
 	"GET /api/security/cve":                        {ui: true},
 	"GET /api/security/download-ca":                {ui: true},
-	"GET /api/security/rate-limits":                {},
+	"GET /api/security/rate-limits":                {uiPlanned: true},
 	"GET /api/security/score":                      {apiOnly: "retired: it answers 410 Gone"},
 	"GET /api/session":                             {ui: true},
 	"GET /api/settings":                            {ui: true},
@@ -147,31 +155,31 @@ var routeSurfaces = map[string]surfaceSet{
 	"POST /api/config/snapshots/{id}/restore":      {ui: true},
 	"POST /api/counters/reset":                     {ui: true},
 	"POST /api/database/optimize":                  {ui: true},
-	"POST /api/database/reset":                     {},
+	"POST /api/database/reset":                     {notInUI: "deletes every list, setting and log at once; the dashboard restores a backup or a snapshot instead"},
 	"POST /api/dns/detect":                         {ui: true},
 	"POST /api/domain-blacklist":                   {ui: true, mcp: true},
-	"POST /api/domain-blacklist/bulk-delete":       {},
+	"POST /api/domain-blacklist/bulk-delete":       {uiPlanned: true},
 	"POST /api/domain-blacklist/import":            {ui: true},
 	"POST /api/domain-blacklist/presets/{preset}":  {ui: true},
 	"POST /api/domain-whitelist":                   {ui: true},
 	"POST /api/domain-whitelist/import":            {ui: true},
 	"POST /api/domain-whitelist/presets/{preset}":  {ui: true},
 	"POST /api/egress-allowlist":                   {ui: true, mcp: true},
-	"POST /api/egress-allowlist/bulk-delete":       {},
+	"POST /api/egress-allowlist/bulk-delete":       {uiPlanned: true},
 	"POST /api/egress-providers/url":               {ui: true},
 	"POST /api/egress-providers/{name}/apply-held": {ui: true},
 	"POST /api/egress-providers/{name}/refresh":    {ui: true},
 	"POST /api/internal/alert":                     {apiOnly: "the WAF calls it, nobody else"},
 	"POST /api/internal/signals":                   {apiOnly: "the WAF calls it, nobody else"},
 	"POST /api/ip-blacklist":                       {ui: true},
-	"POST /api/ip-blacklist/bulk-delete":           {},
+	"POST /api/ip-blacklist/bulk-delete":           {uiPlanned: true},
 	"POST /api/ip-blacklist/import":                {ui: true},
 	"POST /api/ip-whitelist":                       {ui: true},
 	"POST /api/ip-whitelist/import":                {ui: true},
 	"POST /api/log-forward/test":                   {ui: true},
 	"POST /api/logout":                             {ui: true},
 	"POST /api/logs/clear":                         {ui: true},
-	"POST /api/logs/clear-old":                     {},
+	"POST /api/logs/clear-old":                     {uiPlanned: true},
 	"POST /api/maintenance/clear-cache":            {ui: true},
 	"POST /api/maintenance/reload-config":          {ui: true, mcp: true},
 	"POST /api/maintenance/reload-dns":             {ui: true},
@@ -179,7 +187,7 @@ var routeSurfaces = map[string]surfaceSet{
 	"POST /api/notifications/test":                 {ui: true},
 	"POST /api/settings":                           {ui: true},
 	"POST /api/tokens":                             {ui: true},
-	"POST /api/waf/categories/toggle":              {mcp: true},
+	"POST /api/waf/categories/toggle":              {mcp: true, notInUI: "the dashboard changes WAF categories through the WAF policy, which keeps one history (PUT /api/waf/policy)"},
 	"POST /api/waf/policy/exceptions":              {ui: true},
 	"POST /api/waf/policy/observe-rules":           {ui: true},
 	"POST /api/waf/test-rule":                      {ui: true},
@@ -187,6 +195,6 @@ var routeSurfaces = map[string]surfaceSet{
 	"PUT /api/domain-blacklist/sources/{id}/scope": {ui: true},
 	"PUT /api/egress-providers/{name}":             {ui: true},
 	"PUT /api/ip-blacklist/sources/{id}/scope":     {ui: true},
-	"PUT /api/settings/{name}":                     {},
+	"PUT /api/settings/{name}":                     {notInUI: "the dashboard saves a section of settings at once (POST /api/settings), which validates them together"},
 	"PUT /api/waf/policy":                          {ui: true},
 }
