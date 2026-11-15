@@ -51,9 +51,30 @@ Most successful responses are `{"status": "success", "data": ...}`. The
 authentication endpoints (`/api/auth/login`, `/api/auth/refresh`,
 `/api/ws-token`, `/api/logout`, `/api/change-password`) return a flat object
 with `status` and the payload fields at the top level. Errors are
-`{"status": "error", "detail": "..."}`; a 500 also carries
-`"code": "internal_error"` and a generic `detail`, with the cause in the
-backend log.
+`{"status": "error", "code": "...", "detail": "..."}`: `detail` says what went
+wrong in words, and `code` is one of a fixed list for a client to branch on.
+A 500 carries a generic `detail`, with the cause in the backend log.
+
+| `code` | Status |
+|---|---|
+| `invalid_request` | 400 |
+| `unauthorized` | 401 |
+| `forbidden` | 403 (a cross-site request with the session cookie, a route no token may call) |
+| `token_scope` | 403: the API token's scope does not allow the call |
+| `not_found` | 404 |
+| `conflict` | 409 |
+| `gone` | 410: a retired route; `detail` names the one to use |
+| `too_large` | 413 |
+| `unprocessable` | 422 |
+| `rate_limited` | 429 |
+| `internal_error` | 500 |
+| `upstream_unreachable` | 502: the WAF or another service did not answer |
+| `unavailable` | 503 |
+| `trigger_write_failed`, `reload_failed`, `clear_cache_failed` | 500: the proxy reload or cache clear named failed |
+
+A few errors carry more: `errors` (the refused fields of a settings save),
+`data` (a failed reload's exit codes) or `waf_status`. The `Error` schema of
+the OpenAPI document lists every field and code.
 
 ### Collections
 

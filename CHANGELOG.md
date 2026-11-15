@@ -15,6 +15,17 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Added
+
+- **Every error answer carries a `code`** from a fixed list (`invalid_request`,
+  `unauthorized`, `forbidden`, `token_scope`, `not_found`, `conflict`, `gone`,
+  `too_large`, `unprocessable`, `rate_limited`, `internal_error`,
+  `upstream_unreachable`, `unavailable`, and the three reload and cache ones),
+  so a client branches on it instead of reading `detail`. The refusals the
+  middleware answers carry it too, and a read token refused a write says
+  `token_scope`. The OpenAPI `Error` schema requires it and enumerates the
+  list.
+
 ### Changed
 
 - The `Error` schema of `GET /api/openapi.json` lists every field an error
@@ -22,6 +33,8 @@ for at least one minor release before disappearing.
   deprecated, which repeats `detail` on a reload trigger failure) and is
   closed. The request agreement test checks every error answer its cases
   provoke against it (51 today).
+- The rate limit answers its JSON with `Content-Type: application/json`; it
+  was `text/plain`.
 
 ## [3.39.0] - 2026-11-15
 

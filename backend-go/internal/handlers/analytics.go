@@ -952,7 +952,7 @@ func (h *AnalyticsHandlers) clientDetailsByNetwork(w http.ResponseWriter, rawCID
 // reason in the words DashboardSummary uses (unreachable, auth_failed,
 // error), so a caller can say why without reading detail.
 func writeWAFStatsError(w http.ResponseWriter, status int, wafStatus, detail string) {
-	writeJSON(w, status, map[string]string{"status": "error", "detail": detail, "waf_status": wafStatus})
+	writeJSON(w, status, map[string]string{"status": "error", "code": appMW.ErrorCode(status), "detail": detail, "waf_status": wafStatus})
 }
 
 func (h *AnalyticsHandlers) WAFStats(w http.ResponseWriter, r *http.Request) {
