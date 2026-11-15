@@ -56,7 +56,6 @@ const PLAIN: Record<string, string> = {
   change_password: 'Changed the password',
   reload_config: 'Reloaded the proxy configuration',
   clear_cache: 'Cleared the proxy cache',
-  clear_logs: 'Cleared the access logs',
   database_reset: 'Reset the database',
   restore_config: 'Restored settings from a backup',
 };
@@ -182,8 +181,28 @@ function sourcePhrase(kind: string | null, target: string, name: string | null):
   }
 }
 
+/** Why a sign-in failed, in words (handlers/auth.go and oidc.go record the reason). */
+const SIGN_IN_FAILURES: Record<string, string> = {
+  bad_credentials: 'Wrong username or password',
+  rate_limited: 'Refused: too many failed attempts from this address',
+  password_off: 'Password sign-in is turned off',
+};
+
+function signInFailure(details: string | null): string | null {
+  if (!details) return null;
+  const f = fields(details);
+  if (f) {
+    const reason = str(f, 'reason');
+    return str(f, 'via') === 'oidc' ? `Through the identity provider${reason ? `: ${reason}` : ''}` : readable(details);
+  }
+  return SIGN_IN_FAILURES[details] ?? details;
+}
+
 function describeList(e: AuditEntry, verb: string, list: ListWords): AuditDescription | null {
-  const target = e.target ?? '';
+  // The default-deny allowlist stores a domain with its subdomains as
+  // ".name"; the page shows it as the name and says it covers its subdomains.
+  const raw = e.target ?? '';
+  const target = list === LISTS.egress_allowlist && raw.startsWith('.') && raw.length > 1 ? `${raw.slice(1)} and its subdomains` : raw;
   const f = fields(e.details);
   switch (verb) {
     case 'add_preset': {
@@ -368,9 +387,13 @@ export function describeAudit(e: AuditEntry): AuditDescription {
   const action = e.action ?? '';
   if (SIGN_INS[action]) return describeSignIn(e, SIGN_INS[action]);
   if (action === 'login_failed') {
-    return { event: 'Sign-in failed', details: join([e.target ? `From ${e.target}` : null, e.details]), kind: 'signin-failed' };
+    return { event: 'Sign-in failed', details: join([e.target ? `From ${e.target}` : null, signInFailure(e.details)]), kind: 'signin-failed' };
   }
   if (PLAIN[action]) return { event: PLAIN[action], details: e.details || null, kind: 'change' };
+  if (action === 'clear_logs') {
+    const removed = num(fields(e.details), 'removed');
+    return { event: 'Cleared the access logs', details: removed !== null ? `${count(removed, 'logged request', 'logged requests')} deleted` : null, kind: 'change' };
+  }
   if (action === 'clear_old_logs') {
     const f = fields(e.details);
     const days = num(f, 'days');

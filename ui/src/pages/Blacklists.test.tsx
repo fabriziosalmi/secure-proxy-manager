@@ -394,7 +394,9 @@ describe('Blacklists', () => {
     renderWithProviders(<Blacklists />)
     fireEvent.click(await screen.findByRole('checkbox', { name: 'Select 10.0.0.1' }))
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select 203.0.113.0/24' }))
-    expect(screen.getByText('2 blocked IPs and networks selected on this page')).toBeInTheDocument()
+    const bar = screen.getByText('2 blocked IPs and networks selected on this page')
+    // Above the table, in view while the top rows are checked; it sat under the pagination.
+    expect(bar.compareDocumentPosition(screen.getByRole('table', { name: 'Blocked IPs entries' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect((screen.getByRole('checkbox', { name: 'Select every blocked IP or network on this page' }) as HTMLInputElement).indeterminate).toBe(true)
     fireEvent.click(screen.getByRole('button', { name: 'Remove 2' }))
     const dialog = await screen.findByRole('alertdialog')

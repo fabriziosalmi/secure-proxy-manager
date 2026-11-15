@@ -7,6 +7,22 @@ const row = (action: string, target: string | null = null, details: string | nul
 })
 
 describe('describeAudit', () => {
+  it('says why a sign-in failed in words, not the code the backend records', () => {
+    expect(describeAudit(row('login_failed', '192.0.2.99', 'bad_credentials')).details).toBe('From 192.0.2.99. Wrong username or password')
+    expect(describeAudit(row('login_failed', '192.0.2.99', 'rate_limited')).details).toBe('From 192.0.2.99. Refused: too many failed attempts from this address')
+    expect(describeAudit(row('login_failed', '192.0.2.99', '{"via":"oidc","reason":"not allowed"}')).details).toBe('From 192.0.2.99. Through the identity provider: not allowed')
+  })
+
+  it('names a default-deny domain with its subdomains as the page does, not by its stored dot', () => {
+    expect(describeAudit(row('add_egress_allowlist', '.debian.org', 'mirrors')).event).toBe('Added debian.org and its subdomains to the default-deny allowlist')
+    expect(describeAudit(row('remove_egress_allowlist', 'api.example.com')).event).toBe('Removed api.example.com from the default-deny allowlist')
+  })
+
+  it('says how many requests clearing the access log deleted', () => {
+    expect(describeAudit(row('clear_logs', 'proxy_logs', '{"removed":42}'))).toEqual({ event: 'Cleared the access logs', details: '42 logged requests deleted', kind: 'change' })
+    expect(describeAudit(row('clear_logs', 'proxy_logs', '')).details).toBeNull()
+  })
+
   it('says how old the deleted logs were and how many went', () => {
     expect(describeAudit(row('clear_old_logs', 'proxy_logs', '{"days":30,"removed":1234}')))
       .toEqual({ event: 'Deleted the logs older than 30 days', details: '1,234 logged requests deleted', kind: 'change' })

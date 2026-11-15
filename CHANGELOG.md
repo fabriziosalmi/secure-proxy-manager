@@ -53,6 +53,23 @@ for at least one minor release before disappearing.
 
 ### Changed
 
+- The selection bar of a list sits between its search and the table, in view
+  while the top rows are checked; it was under the pagination.
+- The Default-deny allowlist page shows its destinations before the provider
+  lists, which took twenty rows to scroll past.
+- The audit log says why a sign-in failed in words ("Wrong username or
+  password", not `bad_credentials`), names a default-deny domain as the page
+  does ("debian.org and its subdomains", not ".debian.org"), and says how many
+  requests clearing the access log deleted.
+- Configuration snapshots no longer hold `wizard_completed`, so closing the
+  setup wizard is not a configuration change, and their reasons use the
+  Default-deny allowlist's name.
+- `POST /api/logs/clear` answers `500` on a database failure instead of "All
+  logs cleared", and answers `data.removed`.
+- Every operation in `GET /api/openapi.json` has a summary; 17 had none, and a
+  test now fails on one that does not.
+- On a phone, the Kind column of a list is left out, so a row's remove button
+  is in view without scrolling the table sideways.
 - `POST /api/logs/clear-old` answers `400` for a `days` that is not a whole
   number from 1 to 3650; it fell back to 30 in silence, so `?days=0` or
   `?days=abc` deleted a month of history. A database failure answers `500`

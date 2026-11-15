@@ -28,6 +28,23 @@ type docMeta struct {
 // omitting the whole egress-allowlist resource and POST /api/auth/refresh —
 // the call a non-browser client needs to stay authenticated (SECURE-API-01).
 var routeDocs = map[string]docMeta{
+	"POST /api/auth/refresh":                       {auth: false, desc: "A new access token for a refresh token ({refresh_token}, from POST /api/auth/login): 400 without one, 401 when it is invalid or expired"},
+	"GET /api/clients/{ip}/details":                {auth: true, desc: "One client's or a /24 or /64 network CIDR's totals, top domains, recent requests and blocks by rule; ?window=7d for the last 7 days, all (default) for every request logged"},
+	"GET /api/clients/{ip}/{prefix}/details":       {auth: true, desc: "The same as GET /api/clients/{ip}/details for a network CIDR written with its slash unencoded (10.0.0.0/24)"},
+	"POST /api/dns/detect":                         {auth: true, desc: "Look for Pi-hole and AdGuard Home servers on a private /24 ({subnet}, e.g. 192.168.1; the local one when absent); at most two scans at once"},
+	"POST /api/domain-blacklist/import":            {auth: true, desc: "Retired: answers 410 Gone naming POST /api/blacklists/import"},
+	"POST /api/ip-blacklist/import":                {auth: true, desc: "Retired: answers 410 Gone naming POST /api/blacklists/import"},
+	"GET /api/egress-allowlist":                    {auth: true, desc: "The manual entries of the default-deny allowlist (limit, offset, search), newest first; meta.total"},
+	"POST /api/egress-allowlist":                   {auth: true, desc: "Add a destination to the default-deny allowlist ({entry}: an IP, a CIDR or a domain; include_subdomains for a domain; description), after a configuration snapshot"},
+	"DELETE /api/egress-allowlist/{id}":            {auth: true, desc: "Remove one destination from the default-deny allowlist, after a configuration snapshot"},
+	"GET /api/ready":                               {auth: false, desc: "Readiness: 200 when the database answers within a short deadline, 503 otherwise"},
+	"GET /readyz":                                  {auth: false, desc: "Readiness: 200 when the database answers within a short deadline, 503 otherwise"},
+	"GET /livez":                                   {auth: false, desc: "Liveness: 200 while the process serves; it does not touch the database"},
+	"GET /metrics":                                 {auth: false, desc: "Prometheus metrics of the backend"},
+	"PUT /api/settings/{name}":                     {auth: true, desc: "Set one setting ({value}) through the same validation, secret handling and proxy files as POST /api/settings"},
+	"GET /api/waf/categories":                      {auth: true, desc: "The WAF rule categories with their state, as the WAF reports them"},
+	"POST /api/waf/categories/toggle":              {auth: true, desc: "Switch one WAF rule category on or off, as the WAF answers; the dashboard changes categories through the WAF policy instead"},
+	"POST /api/waf/test-rule":                      {auth: true, desc: "Test a regular expression against the URLs of recent requests in the log: what it matches, not what the WAF would block"},
 	"POST /api/egress-allowlist/bulk-delete":       {auth: true, desc: "Remove the entries with these ids ({ids}, 1 to 1000): data.removed is how many went; one audit event with the count, after a configuration snapshot"},
 	"DELETE /api/egress-allowlist/clear-all":       {auth: true, desc: "Remove every entry of the list: data.removed is how many went; one audit event with the count, after a configuration snapshot"},
 	"POST /api/domain-whitelist/bulk-delete":       {auth: true, desc: "Remove the entries with these ids ({ids}, 1 to 1000): data.removed is how many went; one audit event with the count"},

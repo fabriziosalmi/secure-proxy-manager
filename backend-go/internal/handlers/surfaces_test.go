@@ -44,3 +44,16 @@ func TestEveryOperationSaysWhereItIsReached(t *testing.T) {
 		t.Fatalf("only %d operations: the document was not built from the full router", len(seen))
 	}
 }
+
+// Every operation says what it does: the published document had 17 without a
+// summary, which the command and the MCP server would show as nothing.
+func TestEveryOperationHasASummary(t *testing.T) {
+	doc := OpenAPIDocument(publishedRouter(t))
+	for path, item := range doc["paths"].(map[string]any) {
+		for method, op := range item.(map[string]any) {
+			if s, _ := op.(map[string]any)["summary"].(string); strings.TrimSpace(s) == "" {
+				t.Errorf("%s %s has no summary: describe it in routeDocs (api_docs.go)", strings.ToUpper(method), path)
+			}
+		}
+	}
+}
