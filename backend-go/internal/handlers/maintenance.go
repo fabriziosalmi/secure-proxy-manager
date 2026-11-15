@@ -199,6 +199,10 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusBadRequest, "no configuration data provided")
 		return
 	}
+	dry, ok := dryRun(w, r)
+	if !ok {
+		return
+	}
 	// Apply the whole restore atomically: either every valid setting lands or
 	// none do, so a mid-restore failure can't leave config half-applied while
 	// still reporting success.
@@ -251,6 +255,26 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 	settingsRestored := restored
 	skippedEntries += provSkipped
 	restored += listsRestored + provRestored + groupsRestored
+
+	if dry {
+		// What the restore would do, from the restore itself: every statement
+		// ran in tx, which the deferred Rollback undoes. Nothing past this
+		// point (proxy files, the WAF policy, the audit) has happened.
+		var waf any
+		if body.WAFPolicy != nil {
+			waf = "the WAF would check the policy, and it would be written if it passes"
+		}
+		writeDryRun(w, map[string]any{
+			"restored": restored, "skipped": skipped,
+			"restored_settings": settingsRestored, "restored_entries": listsRestored,
+			"restored_egress_providers": provRestored, "restored_groups": groupsRestored,
+			"skipped_settings": skippedSettings, "skipped_entries": skippedEntries,
+			"skipped_groups": skippedGroups, "skipped_sources": sr.skipped,
+			"waf_policy":    waf,
+			"not_in_backup": notInBackup(body.Sources != nil, body.ClientGroups != nil, body.WAFPolicy != nil),
+		})
+		return
+	}
 
 	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to commit configuration")
@@ -791,6 +815,14 @@ func (h *MaintenanceHandlers) ReloadDNS(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *MaintenanceHandlers) ClearCache(w http.ResponseWriter, r *http.Request) {
+	dry, ok := dryRun(w, r)
+	if !ok {
+		return
+	}
+	if dry {
+		writeDryRun(w, map[string]any{"would": "stop the proxy, delete every object in its disk cache, and start it again; connections in progress are cut for a few seconds"})
+		return
+	}
 	username, _ := r.Context().Value(middleware.CtxUsername).(string)
 	database.Audit(h.db, username, "clear_cache", "proxy", "")
 

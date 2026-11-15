@@ -191,7 +191,10 @@ var snapshotState atomic.Pointer[SnapshotHandlers]
 func snapshotBefore(reason string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if sh := snapshotState.Load(); sh != nil {
+			// A preview changes nothing, and neither does a dry_run the handler
+			// refuses: only a call that runs for real is snapshotted.
+			if v := r.URL.Query().Get("dry_run"); (v == "" || v == "false") && snapshotState.Load() != nil {
+				sh := snapshotState.Load()
 				user, _ := r.Context().Value(middleware.CtxUsername).(string)
 				if _, _, err := takeSnapshot(sh.db, sh.cfg, user, "before "+reason); err != nil {
 					log.Warn().Err(err).Str("reason", reason).Msg("configuration snapshot not taken")

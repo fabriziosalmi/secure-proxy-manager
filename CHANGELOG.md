@@ -25,6 +25,16 @@ for at least one minor release before disappearing.
   middleware answers carry it too, and a read token refused a write says
   `token_scope`. The OpenAPI `Error` schema requires it and enumerates the
   list.
+- **`?dry_run=true` on the 21 operations that remove or reset something**
+  (clear-all and bulk-delete on every list, source removal, log clearing,
+  counter reset, restore-config, clear-cache, client group delete, token
+  revoke): the answer is `200` with `data.dry_run: true` and what the call
+  would do (`removed`, `kept`, `revoked`, the restore's counts), and nothing
+  changes. A test runs each one on a seeded database and compares every row
+  of every table and every file under the configuration directory before and
+  after, then makes the real call, which must change them and answer the same
+  counts. Any other `dry_run` value answers `400`, and neither it nor a
+  preview takes a configuration snapshot.
 
 ### Changed
 

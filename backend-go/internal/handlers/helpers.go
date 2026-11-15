@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -54,6 +55,29 @@ func countRows(db *sql.DB, query database.SQLText, args ...any) (int, error) {
 		return 0, err
 	}
 	return n, nil
+}
+
+// dryRun reads ?dry_run= on a destructive operation: "true" asks what the
+// operation would do, "false" or no value runs it. Any other value answers
+// 400 and ok is false: dry_run=1 must not run the deletion its caller meant to
+// preview.
+func dryRun(w http.ResponseWriter, r *http.Request) (dry, ok bool) {
+	switch v := r.URL.Query().Get("dry_run"); v {
+	case "true":
+		return true, true
+	case "", "false":
+		return false, true
+	default:
+		writeError(w, http.StatusBadRequest, "dry_run is true or false, not "+strconv.Quote(v))
+		return false, false
+	}
+}
+
+// writeDryRun answers a preview: data says what the operation would do, and
+// dry_run says nothing was done.
+func writeDryRun(w http.ResponseWriter, data map[string]any) {
+	data["dry_run"] = true
+	writeOK(w, data)
 }
 
 func writeInternalError(w http.ResponseWriter, op string, err error) {

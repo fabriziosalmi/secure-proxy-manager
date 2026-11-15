@@ -298,6 +298,27 @@ type routeSchema struct {
 	query             []oaParam
 }
 
+// dryRunOps are the destructive operations that take ?dry_run=true and then
+// answer what they would do, doing nothing (TestADryRunChangesNothing).
+var dryRunOps = map[string]bool{
+	"DELETE /api/ip-blacklist/clear-all": true, "DELETE /api/ip-whitelist/clear-all": true,
+	"DELETE /api/domain-blacklist/clear-all": true, "DELETE /api/domain-whitelist/clear-all": true,
+	"DELETE /api/egress-allowlist/clear-all": true,
+	"POST /api/ip-blacklist/bulk-delete":     true, "POST /api/ip-whitelist/bulk-delete": true,
+	"POST /api/domain-blacklist/bulk-delete": true, "POST /api/domain-whitelist/bulk-delete": true,
+	"POST /api/egress-allowlist/bulk-delete": true,
+	"DELETE /api/ip-blacklist/sources/{id}":  true, "DELETE /api/ip-whitelist/sources/{id}": true,
+	"DELETE /api/domain-blacklist/sources/{id}": true, "DELETE /api/domain-whitelist/sources/{id}": true,
+	"POST /api/logs/clear": true, "POST /api/logs/clear-old": true, "POST /api/counters/reset": true,
+	"POST /api/maintenance/restore-config": true, "POST /api/maintenance/clear-cache": true,
+	"DELETE /api/client-groups/{id}": true, "DELETE /api/tokens/{id}": true,
+}
+
+var dryRunParam = oaParam{
+	name: "dry_run", schema: map[string]any{"type": "boolean", "default": false},
+	desc: "true: answer what the operation would do (data.dry_run is true) and do nothing; any value but true or false answers 400",
+}
+
 // oaParam is a query parameter an operation reads.
 type oaParam struct {
 	name     string
@@ -452,7 +473,11 @@ func OpenAPIDocument(r chi.Router) map[string]any {
 			// Said, not left out: a client can tell "takes nothing" from "not described".
 			op["x-spm-body"] = "none"
 		}
-		for _, q := range s.query {
+		query := s.query
+		if dryRunOps[d.Method+" "+path] {
+			query = append(append([]oaParam{}, query...), dryRunParam)
+		}
+		for _, q := range query {
 			p := map[string]any{"name": q.name, "in": "query", "required": q.required, "schema": q.schema}
 			if q.desc != "" {
 				p["description"] = q.desc

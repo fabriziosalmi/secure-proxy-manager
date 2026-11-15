@@ -126,6 +126,24 @@ func (h *TokenHandlers) Create(w http.ResponseWriter, r *http.Request) {
 // Revoke answers DELETE /api/tokens/{id}: the token stops working at once.
 func (h *TokenHandlers) Revoke(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	dry, ok := dryRun(w, r)
+	if !ok {
+		return
+	}
+	if dry {
+		var name string
+		err := h.db.QueryRow("SELECT name FROM api_tokens WHERE id = ? AND revoked_at IS NULL", id).Scan(&name)
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "no token in use has this id")
+			return
+		}
+		if err != nil {
+			writeInternalError(w, "revoke_api_token_preview", err)
+			return
+		}
+		writeDryRun(w, map[string]any{"revoked": name})
+		return
+	}
 	name, found, err := database.RevokeAPIToken(h.db, id, time.Now())
 	if err != nil {
 		writeInternalError(w, "revoke API token", err)

@@ -2147,6 +2147,16 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "true: answer what the operation would do (data.dry_run is true) and do nothing; any value but true or false answers 400",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -2672,6 +2682,18 @@
     "/api/counters/reset": {
       "post": {
         "operationId": "post_api_counters_reset",
+        "parameters": [
+          {
+            "description": "true: answer what the operation would do (data.dry_run is true) and do nothing; any value but true or false answers 400",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -3150,6 +3172,18 @@
     "/api/domain-blacklist/bulk-delete": {
       "post": {
         "operationId": "post_api_domain_blacklist_bulk_delete",
+        "parameters": [
+          {
+            "description": "true: answer what the operation would do (data.dry_run is true) and do nothing; any value but true or false answers 400",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -3199,6 +3233,18 @@
     "/api/domain-blacklist/clear-all": {
       "delete": {
         "operationId": "delete_api_domain_blacklist_clear_all",
+        "parameters": [
+          {
+            "description": "true: answer what the operation would do (data.dry_run is true) and do nothing; any value but true or false answers 400",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -3455,6 +3501,16 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "description": "true: answer what the operation would do (data.dry_run is true) and do nothing; any value but true or false answers 400",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
             }
           }
         ],
@@ -3718,6 +3774,18 @@
     "/api/domain-whitelist/bulk-delete": {
       "post": {
         "operationId": "post_api_domain_whitelist_bulk_delete",
+        "parameters": [
+          {
+            "description": "true: answer what the operation would do (data.dry_run is true) and do nothing; any value but true or false answers 400",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -3767,6 +3835,18 @@
     "/api/domain-whitelist/clear-all": {
       "delete": {
         "operationId": "delete_api_domain_whitelist_clear_all",
+        "parameters": [
+          {
+            "description": "true: answer what the operation would do (data.dry_run is true) and do nothing; any value but true or false answers 400",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -4035,6 +4115,16 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "true: answer what the operation would do (data.dry_run is true) and do nothing; any value but true or false answers 400",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -4277,6 +4367,18 @@
     "/api/egress-allowlist/bulk-delete": {
       "post": {
         "operationId": "post_api_egress_allowlist_bulk_delete",
+        "parameters": [
+          {
+            "description": "true: answer what the operation would do (data.dry_run is true) and do nothing; any value but true or false answers 400",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -4326,6 +4428,18 @@
     "/api/egress-allowlist/clear-all": {
       "delete": {
         "operationId": "delete_api_egress_allowlist_clear_all",
+        "parameters": [
+          {
+            "description": "true: answer what the operation would do (data.dry_run is true) and do nothing; any value but true or false answers 400",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -4914,6 +5028,18 @@
     "/api/ip-blacklist/bulk-delete": {
       "post": {
         "operationId": "post_api_ip_blacklist_bulk_delete",
+        "parameters": [
+          {
+            "description": "true: answer what the operation would do (data.dry_run is true) and do nothing; any value but true or false answers 400",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -4963,6 +5089,18 @@
     "/api/ip-blacklist/clear-all": {
       "delete": {
         "operationId": "delete_api_ip_blacklist_clear_all",
+        "parameters": [
+          {
+            "description": "true: answer what the operation would do (data.dry_run is true) and do nothing; any value but true or false answers 400",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -5130,6 +5268,16 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "description": "true: answer what the operation would do (data.dry_run is true) and do nothing; any value but true or false answers 400",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
             }
           }
         ],
@@ -5392,6 +5540,18 @@
     "/api/ip-whitelist/bulk-delete": {
       "post": {
         "operationId": "post_api_ip_whitelist_bulk_delete",
+        "parameters": [
+          {
+            "description": "true: answer what the operation would do (data.dry_run is true) and do nothing; any value but true or false answers 400",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -5441,6 +5601,18 @@
     "/api/ip-whitelist/clear-all": {
       "delete": {
         "operationId": "delete_api_ip_whitelist_clear_all",
+        "parameters": [
+          {
+            "description": "true: answer what the operation would do (data.dry_run is true) and do nothing; any value but true or false answers 400",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -5619,6 +5791,16 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "description": "true: answer what the operation would do (data.dry_run is true) and do nothing; any value but true or false answers 400",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
             }
           }
         ],
@@ -5848,6 +6030,18 @@
     "/api/logs/clear": {
       "post": {
         "operationId": "post_api_logs_clear",
+        "parameters": [
+          {
+            "description": "true: answer what the operation would do (data.dry_run is true) and do nothing; any value but true or false answers 400",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -5899,6 +6093,16 @@
               "maximum": 3650,
               "minimum": 1,
               "type": "integer"
+            }
+          },
+          {
+            "description": "true: answer what the operation would do (data.dry_run is true) and do nothing; any value but true or false answers 400",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
             }
           }
         ],
@@ -6144,6 +6348,18 @@
     "/api/maintenance/clear-cache": {
       "post": {
         "operationId": "post_api_maintenance_clear_cache",
+        "parameters": [
+          {
+            "description": "true: answer what the operation would do (data.dry_run is true) and do nothing; any value but true or false answers 400",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -6265,6 +6481,18 @@
     "/api/maintenance/restore-config": {
       "post": {
         "operationId": "post_api_maintenance_restore_config",
+        "parameters": [
+          {
+            "description": "true: answer what the operation would do (data.dry_run is true) and do nothing; any value but true or false answers 400",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -7000,6 +7228,16 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "description": "true: answer what the operation would do (data.dry_run is true) and do nothing; any value but true or false answers 400",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
             }
           }
         ],

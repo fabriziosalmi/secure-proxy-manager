@@ -76,6 +76,28 @@ A few errors carry more: `errors` (the refused fields of a settings save),
 `data` (a failed reload's exit codes) or `waf_status`. The `Error` schema of
 the OpenAPI document lists every field and code.
 
+### Dry run
+
+The 21 operations that remove or reset something take `?dry_run=true`: they
+answer `200` with `data.dry_run: true` and what they would do, and change
+nothing (no row, no list export, no audit line, no configuration snapshot).
+Any `dry_run` but `true` or `false` answers `400 invalid_request`.
+
+| Operation | The preview says |
+|---|---|
+| `DELETE /api/{list}/clear-all`, `POST /api/{list}/bulk-delete` | `removed`: the entries that would go |
+| `DELETE /api/{list}/sources/{id}` | `removed` and `kept`: the entries that would go, and those another source lists too |
+| `POST /api/logs/clear`, `POST /api/logs/clear-old` | `removed`: the log lines that would go |
+| `POST /api/counters/reset` | `logs_cleared`, and `waf_reset`: what the WAF would be asked |
+| `POST /api/maintenance/restore-config` | the counts of the restore (`restored`, `skipped`, `restored_settings`, ...) and `not_in_backup` |
+| `POST /api/maintenance/clear-cache` | `would`: what the proxy would do |
+| `DELETE /api/client-groups/{id}` | `removed` (the group's name), `members`, `lists` |
+| `DELETE /api/tokens/{id}` | `revoked`: the token's name; `404` for one not in use |
+
+The counts are the ones the real call would answer: the source removal and
+the restore run their own statements in a transaction that is rolled back.
+The OpenAPI document declares the parameter on each of these operations.
+
 ### Collections
 
 Endpoints that return a collection put it under `data` and the pagination

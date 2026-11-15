@@ -95,6 +95,17 @@ it. A method and path that are no operation of its release, a body that is not
 JSON, or a body sent to an operation that reads none, is refused before
 anything is sent. `--dry-run` prints the request and sends nothing.
 
+To ask the server what an operation that removes or resets something would
+do, without doing it, add `?dry_run=true` to its path:
+
+```bash
+spm api POST '/api/logs/clear-old?days=30&dry_run=true'
+spm api DELETE '/api/ip-blacklist/sources/7?dry_run=true'
+```
+
+The answer says what would go (`removed`, `kept`, ...) and nothing changes; the
+API reference lists the 21 operations that take it.
+
 Every command takes `--url` and `--token` (or `SPM_URL` and `SPM_TOKEN`), which
 take precedence over the config file, and `--insecure`, which does not check
 the certificate at all.

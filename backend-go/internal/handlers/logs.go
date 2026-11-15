@@ -264,6 +264,19 @@ func (h *LogHandlers) Timeline(w http.ResponseWriter, r *http.Request) {
 // goes. A database failure is an error; it used to answer "All logs cleared"
 // whatever the DELETE did. The answer says how many requests went.
 func (h *LogHandlers) Clear(w http.ResponseWriter, r *http.Request) {
+	dry, ok := dryRun(w, r)
+	if !ok {
+		return
+	}
+	if dry {
+		var n int64
+		if err := h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs").Scan(&n); err != nil {
+			writeInternalError(w, "clear_logs_preview", err)
+			return
+		}
+		writeDryRun(w, map[string]any{"removed": n})
+		return
+	}
 	res, err := h.db.Exec("DELETE FROM proxy_logs")
 	if err != nil {
 		writeInternalError(w, "clear_logs", err)
@@ -291,6 +304,19 @@ func (h *LogHandlers) ClearOld(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		days = n
+	}
+	dry, ok := dryRun(w, r)
+	if !ok {
+		return
+	}
+	if dry {
+		var n int64
+		if err := h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE timestamp < datetime('now', ?)", "-"+strconv.Itoa(days)+" days").Scan(&n); err != nil { // slopless-disable-line VBC-004 -- the concatenation builds a bound argument, not the statement
+			writeInternalError(w, "clear_old_logs_preview", err)
+			return
+		}
+		writeDryRun(w, map[string]any{"removed": n, "days": days})
+		return
 	}
 	res, err := h.db.Exec("DELETE FROM proxy_logs WHERE timestamp < datetime('now', ?)", "-"+strconv.Itoa(days)+" days") // slopless-disable-line VBC-004 -- the concatenation builds a bound argument, not the statement
 	if err != nil {
