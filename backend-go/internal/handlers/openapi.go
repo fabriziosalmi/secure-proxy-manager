@@ -162,6 +162,49 @@ var openAPISchemas = map[string]any{
 		"enabled":        oaBool,
 		"confirm_shared": map[string]any{"type": "boolean", "description": "required to enable a provider whose network other people's workloads share"},
 	}, "enabled"),
+	// Closed (oaObject) where the handler decodes strictly and refuses a field
+	// it does not know: the client groups and the WAF policy.
+	"ClientGroupInput": oaObject(map[string]any{
+		"id":          map[string]any{"type": "integer", "description": "ignored: the path names the group"},
+		"name":        map[string]any{"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}$"},
+		"description": map[string]any{"type": "string", "maxLength": 200, "description": "one line"},
+		"members":     map[string]any{"type": "array", "items": oaStr, "maxItems": 1000, "description": "IP addresses and networks"},
+		"lists":       map[string]any{"type": "array", "items": oaInt, "maxItems": 50, "description": "source ids of the blacklists the group adds"},
+		"schedule": map[string]any{"oneOf": []any{
+			map[string]any{"type": "null"},
+			oaObject(map[string]any{
+				"days":  map[string]any{"type": "string", "pattern": "^[SMTWHFA]+$", "description": "S M T W H F A, Sunday to Saturday"},
+				"start": map[string]any{"type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"},
+				"end":   map[string]any{"type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$", "description": "after start, the same day"},
+			}, "days", "start", "end"),
+		}},
+		"allowlist_only": map[string]any{"type": "boolean", "description": "the group reaches only the default-deny allowlist"},
+	}, "name"),
+	"SnapshotNote": oaRequest(map[string]any{"note": map[string]any{"type": "string", "maxLength": 200, "description": "one line"}}),
+	"WafException": func() map[string]any {
+		o := oaObject(map[string]any{
+			"rule": oaStr, "host": oaStr, "path": oaStr, "target": oaStr, "comment": oaStr,
+		}, "rule")
+		o["anyOf"] = []any{map[string]any{"required": []string{"host"}}, map[string]any{"required": []string{"path"}}, map[string]any{"required": []string{"target"}}}
+		return o
+	}(),
+	"WafPolicyFile": oaObject(map[string]any{
+		"version":            oaInt,
+		"mode":               map[string]any{"enum": []string{"block", "observe"}, "description": "block when absent"},
+		"observe_rules":      map[string]any{"type": "array", "items": oaStr},
+		"observe_categories": map[string]any{"type": "array", "items": oaStr},
+		"exceptions":         map[string]any{"type": "array", "items": oaRef("WafException")},
+	}),
+	"WafPolicyUpdate": oaObject(map[string]any{
+		"policy": oaRef("WafPolicyFile"),
+		"sha256": map[string]any{"type": "string", "description": "the sha256 GET /api/waf/policy returned, \"\" when there was no file"},
+	}, "policy", "sha256"),
+	"WafObserveRule":    oaObject(map[string]any{"rule": oaStr}, "rule"),
+	"WafCategoryToggle": oaRequest(map[string]any{"category": oaStr, "enabled": oaBool}, "category"),
+	"WafTestRule": oaRequest(map[string]any{
+		"regex": map[string]any{"type": "string", "maxLength": 1024},
+		"hours": map[string]any{"type": "integer", "description": "1 to 168; another value is read as 24"},
+	}, "regex"),
 	"ImportGeo": oaRequest(map[string]any{
 		"countries": map[string]any{"type": "array", "items": oaStr, "minItems": 1, "maxItems": 50, "description": "ISO 3166-1 alpha-2 codes"},
 	}, "countries"),
@@ -181,7 +224,7 @@ var openAPISchemas = map[string]any{
 		"status": map[string]any{"const": "success"}, "message": oaStr,
 		"data": oaObject(map[string]any{"kept": map[string]any{"type": "array", "items": oaStr}}, "kept"),
 	}, "status", "message", "data"),
-	"SettingValue": oaObject(map[string]any{"value": oaStr}, "value"),
+	"SettingValue": oaRequest(map[string]any{"value": oaStr}, "value"),
 
 	"LogRow": oaObject(map[string]any{
 		"id": oaInt, "timestamp": oaStr, "source_ip": oaStr, "method": oaStr, "destination": oaStr,
@@ -204,6 +247,7 @@ var openAPISchemas = map[string]any{
 type routeSchema struct {
 	request, response string
 	noBody            bool
+	optionalBody      bool // the body may be left out
 	query             []oaParam
 }
 
@@ -268,6 +312,18 @@ var routeSchemas = map[string]routeSchema{
 	"PUT /api/egress-providers/{name}":             {request: "EgressProviderSet"},
 	"POST /api/egress-providers/{name}/refresh":    {noBody: true},
 	"POST /api/egress-providers/{name}/apply-held": {noBody: true},
+
+	// WAF policy, configuration history, client groups.
+	"PUT /api/waf/policy":                     {request: "WafPolicyUpdate"},
+	"POST /api/waf/policy/exceptions":         {request: "WafException"},
+	"POST /api/waf/policy/observe-rules":      {request: "WafObserveRule"},
+	"POST /api/waf/categories/toggle":         {request: "WafCategoryToggle"},
+	"POST /api/waf/test-rule":                 {request: "WafTestRule"},
+	"POST /api/config/snapshots":              {request: "SnapshotNote", optionalBody: true},
+	"POST /api/config/snapshots/{id}/restore": {noBody: true},
+	"POST /api/client-groups":                 {request: "ClientGroupInput"},
+	"PUT /api/client-groups/{id}":             {request: "ClientGroupInput"},
+	"DELETE /api/client-groups/{id}":          {noBody: true},
 }
 
 // chiParam matches a path parameter, with chi's optional regexp ({id:[0-9]+}).
@@ -321,7 +377,7 @@ func OpenAPIDocument(r chi.Router) map[string]any {
 		}
 		if s.request != "" {
 			op["requestBody"] = map[string]any{
-				"required": true,
+				"required": !s.optionalBody,
 				"content":  map[string]any{"application/json": map[string]any{"schema": oaRef(s.request)}},
 			}
 		}

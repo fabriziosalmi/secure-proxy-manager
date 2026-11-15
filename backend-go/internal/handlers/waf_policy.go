@@ -294,6 +294,13 @@ func (h *WAFPolicyHandlers) AddException(w http.ResponseWriter, r *http.Request)
 	}
 	e.Rule, e.Host, e.Path, e.Target = strings.TrimSpace(e.Rule), strings.TrimSpace(e.Host), strings.TrimSpace(e.Path), strings.TrimSpace(e.Target)
 	e.Comment = strings.TrimSpace(e.Comment)
+	// Checked here, not only by the WAF: with the WAF down an exception
+	// without a rule or a scope was answered 503, and the message above
+	// already said what one needs. 422 is what the WAF answers for it.
+	if e.Rule == "" || (e.Host == "" && e.Path == "" && e.Target == "") {
+		writeError(w, http.StatusUnprocessableEntity, "send one exception: rule, and at least one of host, path and target")
+		return
+	}
 	wafPolicyMu.Lock()
 	defer wafPolicyMu.Unlock()
 	f, _, _, err := h.readPolicy()
