@@ -65,6 +65,38 @@ jobs:
             go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
             for m in backend-go waf-go; do echo "── $m"; (cd /src/$m && /tmp/gopath/bin/govulncheck ./...); done'
 
+  # The spm command for every platform, built in the pinned golang image as
+  # the backend is, with SHA256SUMS. On a release the checksums are signed
+  # keyless into a sigstore bundle that verifies against this workflow's tag
+  # identity; a dry run builds and sums, and signs nothing. The files leave as
+  # a workflow artifact that the release attaches: this workflow never writes
+  # to the repository.
+  cli-assets:
+    name: spm binaries
+    needs: preflight
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC token for cosign keyless signing of SHA256SUMS
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build spm for every platform
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: bash scripts/build-cli-assets.sh "$VERSION" dist/spm "${GITHUB_SHA::12}"
+      - name: Install cosign
+        if: ${{ env.RELEASE == 'true' }}
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Sign SHA256SUMS (keyless)
+        if: ${{ env.RELEASE == 'true' }}
+        run: bash scripts/cosign-sign-blob.sh dist/spm/SHA256SUMS
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: spm-${{ needs.preflight.outputs.version }}
+          path: dist/spm/
+          if-no-files-found: error
+          retention-days: 90
+
   build-and-push:
     name: Build ${{ matrix.image }}
     needs: preflight

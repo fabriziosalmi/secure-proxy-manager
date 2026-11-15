@@ -6,15 +6,21 @@ release from the OpenAPI document it is built with, and it pins the certificate
 of a server whose certificate no public authority signed, such as the
 self-signed one the `web` service makes.
 
-## Build it
+## Get it
 
-From a checkout of the release you run:
+- **In the backend container**, with nothing to install:
+  `docker compose exec backend spm status --url http://127.0.0.1:5000 --token spm_...`
+  (inside the container the backend answers on plain HTTP, so there is no
+  certificate to pin).
+- **A release binary**, for Linux, macOS and Windows on amd64 and arm64
+  (Windows amd64 only), attached to each release after 3.38.0 as
+  `spm_vX.Y.Z_<os>_<arch>`, with `SHA256SUMS` and its keyless signature. Verify
+  them as [SECURITY.md](https://github.com/fabriziosalmi/secure-proxy-manager/blob/main/SECURITY.md#verifying-the-spm-binaries)
+  shows, then make the binary executable.
+- **From a checkout**: `cd backend-go && go build -o spm ./cmd/spm`.
 
-```bash
-cd backend-go
-go build -o spm ./cmd/spm
-./spm version
-```
+`spm version` names the release, the API version and the commit it was built
+from.
 
 ## Sign in
 

@@ -15,6 +15,10 @@ ARG GIT_SHA=unknown
 RUN go build -trimpath \
     -ldflags="-s -w -X github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config.GitCommit=${GIT_SHA}" \
     -o /bin/server ./cmd/server
+# spm, the API from a terminal (internal/cli): `docker compose exec backend spm`.
+RUN go build -trimpath \
+    -ldflags="-s -w -X github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config.GitCommit=${GIT_SHA}" \
+    -o /bin/spm ./cmd/spm
 
 # ── stage 2: runtime ──────────────────────────────────────────────────────────
 FROM alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
@@ -37,6 +41,7 @@ FROM alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c03
 RUN apk add --no-cache ca-certificates
 
 COPY --from=builder /bin/server /server
+COPY --from=builder /bin/spm /usr/local/bin/spm
 
 RUN mkdir -p /data /config /logs
 

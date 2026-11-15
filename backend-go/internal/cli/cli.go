@@ -59,7 +59,7 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	switch args[0] {
 	case "version":
-		fmt.Fprintf(stdout, "spm %s (API %s)\n", config.AppVersion, config.APIVersion)
+		fmt.Fprintf(stdout, "spm %s (API %s, commit %s)\n", config.AppVersion, config.APIVersion, config.GitCommit)
 		return exitOK
 	case "login":
 		return runLogin(args[1:], stdin, stdout, stderr)
