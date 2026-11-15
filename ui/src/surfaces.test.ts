@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { extractApiCalls, matchScore } from './lib/apiCalls'
 import { LISTS } from './components/blacklists/lists'
-import spec from '../../docs/public/openapi.json'
 
 // The operations docs/public/openapi.json marks as reachable from the UI
 // (x-spm-surfaces contains "ui", from backend-go/internal/handlers/surfaces.go)
@@ -15,8 +14,14 @@ const sources = import.meta.glob<string>(['./**/*.{ts,tsx}', '!./**/*.test.{ts,t
 })
 
 type Op = { 'x-spm-surfaces'?: string[] }
+// Read through Vite, not imported: the web image builds ui/ alone, without
+// docs/, and the build type-checks the tests too.
+const specs = Object.values(
+  import.meta.glob<{ paths: Record<string, Record<string, Op>> }>('../../docs/public/openapi.json', { import: 'default', eager: true }),
+)
+const spec = specs[0] ?? { paths: {} }
 const operations: { key: string; method: string; path: string; ui: boolean }[] = []
-for (const [path, item] of Object.entries(spec.paths as Record<string, Record<string, Op>>)) {
+for (const [path, item] of Object.entries(spec.paths)) {
   for (const [method, op] of Object.entries(item)) {
     operations.push({ key: `${method.toUpperCase()} ${path}`, method: method.toUpperCase(), path, ui: !!op['x-spm-surfaces']?.includes('ui') })
   }
@@ -52,6 +57,7 @@ function called() {
 
 describe('UI surface', () => {
   it('reads every call', () => {
+    expect(specs.length).toBe(1)
     expect(PRESET_LISTS.length).toBeGreaterThan(0)
     expect(called().unresolved).toEqual([])
   })
