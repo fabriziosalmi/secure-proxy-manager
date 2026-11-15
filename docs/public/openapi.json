@@ -1024,13 +1024,14 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "The 20 hosts the clients asked for most in the last 7 days, internal sources left out: host, requests, blocked",
+        "summary": "The 20 hosts the clients asked for most in the last 7 days, internal sources left out: host, requests, blocked, and on_blocklist when the proxy enforces the name from the domain blacklist now",
         "tags": [
           "analytics"
         ],
         "x-spm-surfaces": [
           "api",
-          "ui"
+          "ui",
+          "mcp"
         ],
         "x-spm-token-scope": "read"
       }
@@ -1063,13 +1064,13 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "Top 50 accessed domains (for word cloud)",
+        "summary": "Retired: answers 410 Gone naming GET /api/analytics/top-destinations",
         "tags": [
           "analytics"
         ],
+        "x-spm-api-only": "retired: it answers 410 Gone",
         "x-spm-surfaces": [
-          "api",
-          "mcp"
+          "api"
         ],
         "x-spm-token-scope": "read"
       }
@@ -3351,10 +3352,11 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "Top 50 domains with blocked/allowed status",
+        "summary": "Retired: answers 410 Gone naming GET /api/analytics/top-destinations",
         "tags": [
           "domains"
         ],
+        "x-spm-api-only": "retired: it answers 410 Gone",
         "x-spm-surfaces": [
           "api"
         ],
@@ -6024,10 +6026,11 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "Traffic statistics by time period",
+        "summary": "Retired: answers 410 Gone naming GET /api/logs/timeline and GET /api/analytics/blocked-by-day",
         "tags": [
           "traffic"
         ],
+        "x-spm-api-only": "retired: it answers 410 Gone",
         "x-spm-surfaces": [
           "api"
         ],

@@ -132,3 +132,23 @@ def test_a_refused_token_says_why(monkeypatch, status, hint):
     import httpx
     server = _load(monkeypatch, token="spm_x_y", api=lambda r: httpx.Response(status, json={"status": "error"}))
     assert hint in server.spm_status()["hint"]
+
+
+def test_top_domains_reads_the_top_destinations_and_keeps_the_first_limit(monkeypatch):
+    """GET /api/analytics/top-domains ignored the limit the tool sent; the tool
+    now reads GET /api/analytics/top-destinations (20 hosts) and keeps the
+    first limit of them."""
+    import httpx
+
+    class Top(StubAPI):
+        def __call__(self, request):
+            self.calls.append(request)
+            rows = [{"host": f"h{i}.test", "requests": 30 - i, "blocked": 0, "on_blocklist": False} for i in range(20)]
+            return httpx.Response(200, json={"status": "success", "data": rows})
+
+    api = Top()
+    server = _load(monkeypatch, token="spm_x_y", api=api)
+    out = server.spm_top_domains(limit=3)
+    assert [c.url.path for c in api.calls] == ["/api/analytics/top-destinations"]
+    assert "h0.test" in str(out) and "h2.test" in str(out) and "h3.test" not in str(out)
+    assert "h19.test" in str(server.spm_top_domains(limit=99))

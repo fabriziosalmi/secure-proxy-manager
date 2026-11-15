@@ -216,13 +216,6 @@ func TestAnalyticsHandlers_MoreStats(t *testing.T) {
 		t.Errorf("FileExtensions failed: %d", w.Code)
 	}
 
-	// 4. TopDomains
-	r = httptest.NewRequest("GET", "/api/analytics/top-domains", nil)
-	w = httptest.NewRecorder()
-	h.TopDomains(w, r)
-	if w.Code != http.StatusOK {
-		t.Errorf("TopDomains failed: %d", w.Code)
-	}
 }
 
 func TestAnalyticsHandlers_TestRule_Extra(t *testing.T) {

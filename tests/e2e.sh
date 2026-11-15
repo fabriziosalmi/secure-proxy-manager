@@ -213,7 +213,8 @@ expect_api "Log stats"           GET "/api/logs/stats"              "200"
 expect_api "Shadow IT"           GET "/api/analytics/shadow-it"     "200"
 expect_api "File extensions"     GET "/api/analytics/file-extensions" "200"
 expect_api "User agents"         GET "/api/analytics/user-agents"   "200"
-expect_api "Top domains"         GET "/api/analytics/top-domains"   "200"
+expect_api "Top destinations"    GET "/api/analytics/top-destinations" "200"
+expect_api "Top domains retired" GET "/api/analytics/top-domains"   "410"
 
 section "B4. BLACKLISTS — CRUD"
 

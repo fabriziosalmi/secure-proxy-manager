@@ -7,13 +7,14 @@ import (
 	"time"
 )
 
-// A destination's status on the domain statistics is what the proxy enforces:
-// the blocklist is applied to the exact name (EnforcedDomain: lower case, a
-// leading "*." or "." dropped), and a name on the allowed list is not blocked.
-// The handler used to load the whole blocklist into memory every 30 seconds,
-// compare it with the raw destination (a URL or host:port, so it rarely
-// matched), and treat "*.x" as covering every name that merely ends in x.
-func TestDomainStatsReportsTheStatusTheProxyEnforces(t *testing.T) {
+// on_blocklist on a top destination is what the proxy enforces: the blocklist
+// is applied to the exact name (EnforcedDomain: lower case, a leading "*." or
+// "." dropped), and a name on the allowed list is not blocked. It carries over
+// the status of the retired GET /api/domains/statistics, whose handler once
+// loaded the whole blocklist into memory every 30 seconds, compared it with the
+// raw destination (a URL or host:port, so it rarely matched), and treated "*.x"
+// as covering every name that merely ends in x.
+func TestTopDestinationsSayWhatTheBlocklistEnforces(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
 	for _, d := range []string{"*.example.com", "Mixed.Test", "allowed.test", "plain.test"} {
@@ -39,27 +40,33 @@ func TestDomainStatsReportsTheStatusTheProxyEnforces(t *testing.T) {
 
 	var resp struct {
 		Data []struct {
-			Domain string `json:"domain_name"`
-			Status string `json:"status"`
+			Host        string `json:"host"`
+			OnBlocklist *bool  `json:"on_blocklist"`
 		} `json:"data"`
 	}
-	getJSON(t, NewAnalyticsHandlers(db, cfg).DomainStats, "/api/domains/statistics", &resp)
-	got := map[string]string{}
+	getJSON(t, NewAnalyticsHandlers(db, cfg).TopDestinations, "/api/analytics/top-destinations", &resp)
+	got := map[string]bool{}
 	for _, d := range resp.Data {
-		got[d.Domain] = d.Status
+		if d.OnBlocklist == nil {
+			t.Fatalf("%s has no on_blocklist", d.Host)
+		}
+		got[d.Host] = *d.OnBlocklist
 	}
-	want := map[string]string{
-		"example.com:443":          "Blocked",
-		"http://api.example.com/x": "Allowed",
-		"notexample.com:443":       "Allowed",
-		"mixed.test:443":           "Blocked",
-		"allowed.test:443":         "Allowed",
-		"http://plain.test/path":   "Blocked",
-		"unlisted.test:443":        "Allowed",
+	want := map[string]bool{
+		"example.com":     true,
+		"api.example.com": false,
+		"notexample.com":  false,
+		"mixed.test":      true,
+		"allowed.test":    false,
+		"plain.test":      true,
+		"unlisted.test":   false,
 	}
-	for dest, status := range want {
-		if got[dest] != status {
-			t.Errorf("%s: status %q, want %q", dest, got[dest], status)
+	if len(got) != len(want) {
+		t.Errorf("hosts %v, want the %d of %v", got, len(want), want)
+	}
+	for host, on := range want {
+		if v, ok := got[host]; !ok || v != on {
+			t.Errorf("%s: on_blocklist %v (listed %v), want %v", host, v, ok, on)
 		}
 	}
 }

@@ -13,7 +13,7 @@ authenticates to the backend API with an SPM API token.
 |---|---|---|
 | `spm_status` | `GET /api/status` | always |
 | `spm_dashboard` | `GET /api/dashboard/summary` | always |
-| `spm_top_domains` | `GET /api/analytics/top-domains` | always |
+| `spm_top_domains` | `GET /api/analytics/top-destinations` (the first `limit`, at most 20) | always |
 | `spm_shadow_it` | `GET /api/analytics/shadow-it` | always |
 | `spm_user_agents` | `GET /api/analytics/user-agents` | always |
 | `spm_recent_logs` | `GET /api/logs?limit=<n>` (default 50) | always |
