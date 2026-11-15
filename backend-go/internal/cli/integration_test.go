@@ -217,3 +217,61 @@ func TestSpmAgainstTheRealBackend(t *testing.T) {
 		t.Fatalf("other certificate: exit %d, %q", code, stderr)
 	}
 }
+
+// The curated commands, by the dashboard's names, against the backend the
+// release ships: each list's add, list, remove, clear (refused without
+// --yes), import and export; the default-deny allowlist with subdomains; the
+// configuration history; settings; sign-in limits; the access log.
+func TestCuratedCommandsAgainstTheRealBackend(t *testing.T) {
+	isolate(t)
+	backend, password := realBackend(t)
+	t.Setenv("SPM_URL", backend)
+	t.Setenv("SPM_TOKEN", newToken(t, backend, password, "cli-curated", "write"))
+	expect := func(want int, contains string, args ...string) string {
+		t.Helper()
+		code, out, stderr := run(t, "", args...)
+		if code != want || (contains != "" && !strings.Contains(out+stderr, contains)) {
+			t.Fatalf("spm %s: exit %d, %q %q; want %d and %q", strings.Join(args, " "), code, out, stderr, want, contains)
+		}
+		return out
+	}
+	expect(exitOK, "", "blocked-ips", "add", "203.0.113.9", "--note", "scanner")
+	expect(exitOK, "scanner", "blocked-ips", "list", "--search", "203.0.113")
+	expect(exitOK, "Removed 203.0.113.9 from Blocked IPs", "blocked-ips", "remove", "203.0.113.9")
+	expect(exitRefused, "is not on Blocked IPs", "blocked-ips", "remove", "203.0.113.9")
+	expect(exitOK, "", "blocked-ips", "add", "203.0.113.10")
+	expect(exitUsage, "add --yes", "blocked-ips", "clear")
+	expect(exitOK, "Removed 1 entries from Blocked IPs", "blocked-ips", "clear", "--yes")
+
+	f := filepath.Join(t.TempDir(), "domains.txt")
+	if err := os.WriteFile(f, []byte("ads.example.com\ntracker.example.net\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	expect(exitOK, "", "blocked-domains", "import", f)
+	out := expect(exitOK, "", "blocked-domains", "export")
+	if !strings.Contains(out, "ads.example.com") || !strings.Contains(out, "tracker.example.net") {
+		t.Fatalf("export after import: %q", out)
+	}
+	expect(exitOK, "paste", "blocked-domains", "sources")
+	expect(exitOK, "", "ip-exceptions", "add", "198.51.100.5")
+	expect(exitOK, "198.51.100.5", "ip-exceptions", "list")
+
+	expect(exitOK, "", "allowlist", "add", "example.com", "--subdomains")
+	expect(exitOK, ".example.com", "allowlist", "list")
+	expect(exitOK, "Removed example.com from Default-deny allowlist", "allowlist", "remove", "example.com")
+	expect(exitUsage, "has no import", "allowlist", "import", f)
+
+	expect(exitOK, "", "settings", "set", "log_retention_days", "45")
+	expect(exitOK, "45", "settings", "get", "log_retention_days")
+	expect(exitRefused, "no setting", "settings", "get", "no_such_setting")
+
+	expect(exitOK, "", "history", "take", "--note", "from spm")
+	expect(exitOK, "from spm", "history", "list")
+	expect(exitUsage, "add --yes", "history", "restore", "1")
+	expect(exitOK, "", "history", "diff", "1")
+
+	expect(exitOK, "", "sign-in-limits", "list")
+	expect(exitRefused, "404", "sign-in-limits", "clear", "192.0.2.1")
+	expect(exitOK, "", "logs", "--limit", "5")
+	expect(exitUsage, "no verb", "blocked-ips", "frobnicate")
+}

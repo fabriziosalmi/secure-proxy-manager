@@ -32,6 +32,12 @@ for at least one minor release before disappearing.
   and as release binaries for Linux, macOS and Windows built in the pinned
   golang image, with `SHA256SUMS` signed keyless by the release workflow (see
   SECURITY.md for `cosign verify-blob`). `spm version` names its commit.
+- **`spm` commands under the dashboard's names**: `blocked-ips`,
+  `blocked-domains`, `ip-exceptions`, `domain-exceptions` (list, add,
+  remove by value, clear with `--yes`, import, export, sources), `allowlist`,
+  `history` (list, take, diff, restore with `--yes`), `sign-in-limits`,
+  `settings` and `logs`. The 41 operations they call are marked `cli` in
+  `x-spm-surfaces`, and a test holds the registry to the commands both ways.
 
 ## [3.38.0] - 2026-11-15
 

@@ -41,6 +41,8 @@ const usage = `spm: the Secure Proxy Manager API from a terminal.
       Every operation, with the token scope it needs.
   spm version
 
+The dashboard's lists and pages, by their names there:
+` + nounUsage + `
 Every command takes --url, --token (or SPM_URL, SPM_TOKEN), --insecure (do
 not check the certificate at all), and --config (or SPM_CONFIG).
 
@@ -67,6 +69,17 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runStatus(args[1:], stdout, stderr)
 	case "api":
 		return runAPI(args[1:], stdin, stdout, stderr)
+	case "history":
+		return runHistory(args[1:], stdout, stderr)
+	case "sign-in-limits":
+		return runSignInLimits(args[1:], stdout, stderr)
+	case "settings":
+		return runSettings(args[1:], stdout, stderr)
+	case "logs":
+		return runLogs(args[1:], stdout, stderr)
+	}
+	if l, ok := listByNoun(args[0]); ok {
+		return runList(l, args[1:], stdin, stdout, stderr)
 	}
 	fmt.Fprintf(stderr, "spm: no command %q\n\n%s", args[0], usage)
 	return exitUsage
