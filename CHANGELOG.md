@@ -22,6 +22,10 @@ for at least one minor release before disappearing.
   source scope, the imports) or `x-spm-body: none` (removals, clear-all,
   presets). A test holds each schema to its handler both ways. The add of
   the default-deny allowlist now lists `include_subdomains`.
+- **The egress provider writes describe their requests**: a custom list
+  (`url`, `label`), enabling a provider (`enabled`, and `confirm_shared` for a
+  shared network), and the removal, refresh and apply-held, which read no
+  body.
 
 ### Changed
 

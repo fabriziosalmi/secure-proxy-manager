@@ -17,39 +17,34 @@ import (
 // yet. It may only shrink: an operation described since must leave it, and a
 // new write operation must be described, not added here.
 var requestPending = map[string]bool{
-	"POST /api/auth/login":                         true,
-	"POST /api/change-password":                    true,
-	"POST /api/client-groups":                      true,
-	"DELETE /api/client-groups/{id}":               true,
-	"PUT /api/client-groups/{id}":                  true,
-	"POST /api/config/snapshots":                   true,
-	"POST /api/config/snapshots/{id}/restore":      true,
-	"POST /api/counters/reset":                     true,
-	"POST /api/database/optimize":                  true,
-	"POST /api/database/reset":                     true,
-	"POST /api/dns/detect":                         true,
-	"POST /api/egress-providers/url":               true,
-	"DELETE /api/egress-providers/url/{id}":        true,
-	"PUT /api/egress-providers/{name}":             true,
-	"POST /api/egress-providers/{name}/apply-held": true,
-	"POST /api/egress-providers/{name}/refresh":    true,
-	"POST /api/log-forward/test":                   true,
-	"POST /api/logout":                             true,
-	"POST /api/logs/clear":                         true,
-	"POST /api/logs/clear-old":                     true,
-	"POST /api/maintenance/clear-cache":            true,
-	"POST /api/maintenance/reload-config":          true,
-	"POST /api/maintenance/reload-dns":             true,
-	"POST /api/maintenance/restore-config":         true,
-	"POST /api/notifications/test":                 true,
-	"DELETE /api/security/rate-limits/{ip}":        true,
-	"POST /api/tokens":                             true,
-	"DELETE /api/tokens/{id}":                      true,
-	"POST /api/waf/categories/toggle":              true,
-	"PUT /api/waf/policy":                          true,
-	"POST /api/waf/policy/exceptions":              true,
-	"POST /api/waf/policy/observe-rules":           true,
-	"POST /api/waf/test-rule":                      true,
+	"POST /api/auth/login":                    true,
+	"POST /api/change-password":               true,
+	"POST /api/client-groups":                 true,
+	"DELETE /api/client-groups/{id}":          true,
+	"PUT /api/client-groups/{id}":             true,
+	"POST /api/config/snapshots":              true,
+	"POST /api/config/snapshots/{id}/restore": true,
+	"POST /api/counters/reset":                true,
+	"POST /api/database/optimize":             true,
+	"POST /api/database/reset":                true,
+	"POST /api/dns/detect":                    true,
+	"POST /api/log-forward/test":              true,
+	"POST /api/logout":                        true,
+	"POST /api/logs/clear":                    true,
+	"POST /api/logs/clear-old":                true,
+	"POST /api/maintenance/clear-cache":       true,
+	"POST /api/maintenance/reload-config":     true,
+	"POST /api/maintenance/reload-dns":        true,
+	"POST /api/maintenance/restore-config":    true,
+	"POST /api/notifications/test":            true,
+	"DELETE /api/security/rate-limits/{ip}":   true,
+	"POST /api/tokens":                        true,
+	"DELETE /api/tokens/{id}":                 true,
+	"POST /api/waf/categories/toggle":         true,
+	"PUT /api/waf/policy":                     true,
+	"POST /api/waf/policy/exceptions":         true,
+	"POST /api/waf/policy/observe-rules":      true,
+	"POST /api/waf/test-rule":                 true,
 }
 
 // writeOperations is every operation of the published document that is not a
@@ -98,11 +93,33 @@ func TestEveryWriteSaysWhatItReads(t *testing.T) {
 }
 
 // requestCase is how to call one write operation: the path with its
-// parameters ({source} is a source the seed made) and a body valid by its
-// schema. Each call runs on a fresh database with entries on every list.
+// parameters ({source} is a source the seed made), a body valid by its schema
+// ({feed} is the fake provider feed's address), and what to set up first.
+// Each call runs on a fresh database with entries on every list.
 type requestCase struct {
-	path string
-	body string
+	path  string
+	body  string
+	setup func(t *testing.T, r http.Handler, feed *fakeProviderFeedServer)
+}
+
+// heldUpdate leaves the facebook provider with a held update: enabled at
+// 1000 addresses, then a feed that grew by more than 25%.
+func heldUpdate(t *testing.T, r http.Handler, feed *fakeProviderFeedServer) {
+	t.Helper()
+	feed.mu.Lock()
+	feed.sha = "d03d319a255c0000000000000000000000000020"
+	feed.mu.Unlock()
+	feed.setCatalog("facebook", buildExactIPv4List(1000), "")
+	if code, out := call(t, r, "PUT", "/api/egress-providers/facebook", `{"enabled":true}`); code != http.StatusOK {
+		t.Fatalf("enable facebook: %d %v", code, out)
+	}
+	feed.mu.Lock()
+	feed.sha = "d03d319a255c0000000000000000000000000021"
+	feed.mu.Unlock()
+	feed.setCatalog("facebook", buildExactIPv4List(1300), "")
+	if code, out := call(t, r, "POST", "/api/egress-providers/facebook/refresh", ""); code != http.StatusOK {
+		t.Fatalf("refresh facebook: %d %v", code, out)
+	}
 }
 
 func seedSourceID(t *testing.T, db *sql.DB, list string) string {
@@ -151,6 +168,12 @@ var requestCases = map[string]requestCase{
 	"DELETE /api/domain-whitelist/sources/{id}":   {path: "/api/domain-whitelist/sources/unrecorded"},
 	"POST /api/domain-blacklist/presets/{preset}": {path: "/api/domain-blacklist/presets/doh"},
 	"POST /api/domain-whitelist/presets/{preset}": {path: "/api/domain-whitelist/presets/github"},
+
+	"POST /api/egress-providers/url":               {path: "/api/egress-providers/url", body: `{"url":"{feed}/custom.txt","label":"partner-feed"}`},
+	"DELETE /api/egress-providers/url/{id}":        {path: "/api/egress-providers/url/1"},
+	"PUT /api/egress-providers/{name}":             {path: "/api/egress-providers/telegram", body: `{"enabled":true}`},
+	"POST /api/egress-providers/{name}/refresh":    {path: "/api/egress-providers/telegram/refresh"},
+	"POST /api/egress-providers/{name}/apply-held": {path: "/api/egress-providers/facebook/apply-held", setup: heldUpdate},
 }
 
 // The request schemas say what the handlers accept, both ways: a body valid by
@@ -174,7 +197,9 @@ func TestRequestSchemasAgreeWithTheHandlers(t *testing.T) {
 	}
 	sort.Strings(keys)
 
-	call := func(t *testing.T, method, path, body string) (int, string) {
+	feed, feedSrv := newFakeProviderFeedServer(t, "d03d319a255c0000000000000000000000000001")
+	feed.setCatalog("telegram", "149.154.160.0/20\n", "")
+	call := func(t *testing.T, c requestCase, method, path, body string) (int, string) {
 		t.Helper()
 		db, svc, cfg, cleanup := setupTestDB(t)
 		defer cleanup()
@@ -197,6 +222,10 @@ func TestRequestSchemasAgreeWithTheHandlers(t *testing.T) {
 				t.Fatalf("seed %s: %d %s", q.path, w.Code, w.Body.String())
 			}
 		}
+		if c.setup != nil {
+			c.setup(t, r, feed)
+		}
+		body = strings.ReplaceAll(body, "{feed}", feedSrv.URL)
 		if strings.Contains(path, "{source}") {
 			list := "ip_blacklist"
 			if strings.Contains(path, "domain-blacklist") {
@@ -223,7 +252,7 @@ func TestRequestSchemasAgreeWithTheHandlers(t *testing.T) {
 		method, _, _ := strings.Cut(key, " ")
 		t.Run(key, func(t *testing.T) {
 			if op["x-spm-body"] == "none" {
-				if code, out := call(t, method, c.path, ""); code == http.StatusBadRequest {
+				if code, out := call(t, c, method, c.path, ""); code == http.StatusBadRequest {
 					t.Errorf("says it reads no body, and sent none it answers 400: %s", out)
 				}
 				return
@@ -240,7 +269,7 @@ func TestRequestSchemasAgreeWithTheHandlers(t *testing.T) {
 			if err := sch.Validate(inst); err != nil {
 				t.Fatalf("the case body does not match %s: %v", name, err)
 			}
-			if code, out := call(t, method, c.path, c.body); code == http.StatusBadRequest {
+			if code, out := call(t, c, method, c.path, c.body); code == http.StatusBadRequest {
 				t.Errorf("a body valid by %s is refused as malformed: %s", name, out)
 			}
 			var body map[string]any
@@ -255,7 +284,7 @@ func TestRequestSchemasAgreeWithTheHandlers(t *testing.T) {
 					}
 				}
 				b, _ := json.Marshal(without)
-				if code, out := call(t, method, c.path, string(b)); code != http.StatusBadRequest {
+				if code, out := call(t, c, method, c.path, string(b)); code != http.StatusBadRequest {
 					t.Errorf("without %s, which %s requires, it answers %d, want 400: %s", field, name, code, out)
 				}
 			}
@@ -273,7 +302,7 @@ func TestRequestSchemasAgreeWithTheHandlers(t *testing.T) {
 					}
 				}
 				b, _ := json.Marshal(without)
-				if code, out := call(t, method, c.path, string(b)); code != http.StatusBadRequest {
+				if code, out := call(t, c, method, c.path, string(b)); code != http.StatusBadRequest {
 					t.Errorf("with none of the fields %s needs one of, it answers %d, want 400: %s", name, code, out)
 				}
 			}
