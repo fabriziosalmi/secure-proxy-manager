@@ -88,6 +88,35 @@ func TestASaveIsPrecededByASnapshot(t *testing.T) {
 	}
 }
 
+// Closing the setup wizard records the dashboard's own state, not the
+// configuration: a snapshot never holds the flag, so after it a save that
+// changes nothing adds no snapshot. With the flag in the snapshot, that save
+// took one "before a settings save" that differed only by the wizard.
+func TestClosingTheWizardIsNotAConfigurationChange(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	r := snapRouter(t, db, cfg)
+	snapCall(t, r, "POST", "/api/settings", map[string]string{"log_retention_days": "45"})
+	if code, out := snapCall(t, r, "POST", "/api/config/snapshots", map[string]string{"note": "now"}); code != http.StatusOK {
+		t.Fatalf("snapshot: %d %v", code, out)
+	}
+	before := snapshotCount(t, db)
+	if code, out := snapCall(t, r, "POST", "/api/settings", map[string]string{"wizard_completed": "true"}); code != http.StatusOK {
+		t.Fatalf("wizard save: %d %v", code, out)
+	}
+	snapCall(t, r, "POST", "/api/settings", map[string]string{"log_retention_days": "45"})
+	if n := snapshotCount(t, db); n != before {
+		t.Errorf("%d snapshots after closing the wizard and a save that changed nothing, want %d", n, before)
+	}
+	snap, err := captureSnapshot(db, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := snap.Settings["wizard_completed"]; ok {
+		t.Error("a snapshot holds wizard_completed")
+	}
+}
+
 // Restoring a snapshot makes the configuration its own exactly: a setting
 // changed since goes back, a group added since goes, a group removed since
 // comes back with its list, an allowlist entry added since goes. The

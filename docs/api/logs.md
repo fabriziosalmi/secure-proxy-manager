@@ -214,12 +214,13 @@ The hours are those of `tz`: `time` is the hour as that zone's clock reads it,
 POST /api/logs/clear
 ```
 
-Deletes every row in `proxy_logs` and records the action in the audit log.
-The UI offers it as "Clear the access log" in Settings, Maintenance, beside
-"Reset statistics", which is `POST /api/counters/reset`.
+Deletes every row in `proxy_logs` and records the action in the audit log
+with the count. A database failure answers `500`. The UI offers it as "Clear
+the access log" in Settings, Maintenance, beside "Reset statistics", which is
+`POST /api/counters/reset`.
 
 ```json
-{ "status": "success", "message": "All logs cleared" }
+{ "status": "success", "message": "All logs cleared", "data": { "removed": 1234 } }
 ```
 
 `POST /api/counters/reset` also deletes every row, and resets the WAF's

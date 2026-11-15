@@ -23,7 +23,7 @@ export const SECTIONS: SectionDef[] = [
   { id: 'inspection', label: 'Inspection', purpose: 'HTTPS inspection, WAF heuristics and the WAF policy.', keywords: ['waf', 'heuristic', 'https', 'ssl', 'bump', 'certificate', 'ca', 'regex', 'pattern', 'rule'] },
   { id: 'alerts', label: 'Alerts', purpose: 'Where block alerts go, and proof that they arrive.', keywords: ['notification', 'telegram', 'gotify', 'ntfy', 'teams', 'webhook', 'token', 'test'] },
   { id: 'logs', label: 'Logs and privacy', purpose: 'How long logs are kept and what the log view shows.', keywords: ['retention', 'gdpr', 'privacy', 'mask'] },
-  { id: 'admin', label: 'Admin and backup', purpose: 'Password, backup and restore, maintenance.', keywords: ['password', 'backup', 'restore', 'cache', 'reload', 'maintenance'] },
+  { id: 'admin', label: 'Admin and backup', purpose: 'Password, API tokens, sign-in limits, backup and restore, configuration history, maintenance.', keywords: ['password', 'token', 'sign-in', 'lockout', 'backup', 'restore', 'snapshot', 'history', 'undo', 'cache', 'reload', 'maintenance'] },
   { id: 'engine', label: 'Proxy engine', purpose: 'Rarely touched: a mistake here can stop every client.', keywords: ['port', 'cache', 'memory', 'ssl ports', 'offline', 'hit ratio', 'bypass'] },
   // A preference of this browser, not a setting of the proxy: last.
   { id: 'appearance', label: 'Appearance', purpose: 'How this dashboard looks in this browser.', keywords: ['theme', 'dark', 'light', 'colour', 'color'] },

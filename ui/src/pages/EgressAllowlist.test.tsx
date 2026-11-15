@@ -90,7 +90,7 @@ describe('EgressAllowlist', () => {
     expect(screen.getByText('With default deny on, clients may reach only the destinations listed here.')).toBeInTheDocument()
     const table = await screen.findByRole('table', { name: 'Allowed destinations' })
     expect(screen.getAllByRole('heading').map((h) => `${h.tagName}:${h.textContent}`)).toEqual([
-      'H1:Default-deny allowlist', 'H2:Add a destination', 'H2:Provider lists', 'H2:Allowed destinations',
+      'H1:Default-deny allowlist', 'H2:Add a destination', 'H2:Allowed destinations', 'H2:Provider lists',
       'H2:Remove every destination on this list',
     ])
     // Labels on every field.

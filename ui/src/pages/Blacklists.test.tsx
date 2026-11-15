@@ -394,7 +394,9 @@ describe('Blacklists', () => {
     renderWithProviders(<Blacklists />)
     fireEvent.click(await screen.findByRole('checkbox', { name: 'Select 10.0.0.1' }))
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select 203.0.113.0/24' }))
-    expect(screen.getByText('2 blocked IPs and networks selected on this page')).toBeInTheDocument()
+    const bar = screen.getByText('2 blocked IPs and networks selected on this page')
+    // Above the table, in view while the top rows are checked; it sat under the pagination.
+    expect(bar.compareDocumentPosition(screen.getByRole('table', { name: 'Blocked IPs entries' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect((screen.getByRole('checkbox', { name: 'Select every blocked IP or network on this page' }) as HTMLInputElement).indeterminate).toBe(true)
     fireEvent.click(screen.getByRole('button', { name: 'Remove 2' }))
     const dialog = await screen.findByRole('alertdialog')
@@ -402,6 +404,15 @@ describe('Blacklists', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Remove 2' }))
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('ip-blacklist/bulk-delete', { ids: [1, 3] }))
     await waitFor(() => expect(screen.queryByText(/selected on this page/)).not.toBeInTheDocument())
+  })
+
+  it('keeps the selection bar in place with a hint before a row is checked, so the table does not move under the pointer', async () => {
+    renderWithProviders(<Blacklists />)
+    await screen.findByRole('checkbox', { name: 'Select 10.0.0.1' })
+    expect(screen.getByText('Check blocked IPs and networks to remove several at once.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select 10.0.0.1' }))
+    expect(screen.queryByText('Check blocked IPs and networks to remove several at once.')).not.toBeInTheDocument()
+    expect(screen.getByText('1 blocked IP or network selected on this page')).toBeInTheDocument()
   })
 
   it('checks every row of the page from the header, and a search starts with none checked', async () => {
