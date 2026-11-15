@@ -32,6 +32,10 @@ type DetectedDNS struct {
 
 // dnsDetectGate caps concurrent scan requests so an authenticated user
 // cannot turn this endpoint into an outbound traffic amplifier.
+// probeDNS asks one address whether it runs Pi-hole or AdGuard Home; a test
+// replaces it so a scan does not reach the network.
+var probeDNS = checkDNSProvider
+
 var dnsDetectGate = make(chan struct{}, 2)
 
 func (h *DNSDetectHandlers) Detect(w http.ResponseWriter, r *http.Request) {
@@ -96,7 +100,7 @@ func (h *DNSDetectHandlers) Detect(w http.ResponseWriter, r *http.Request) {
 		wg.Add(1)
 		go func(ip string) {
 			defer wg.Done()
-			if result := checkDNSProvider(ip); result != nil {
+			if result := probeDNS(ip); result != nil {
 				mu.Lock()
 				found = append(found, *result)
 				mu.Unlock()

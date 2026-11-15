@@ -36,8 +36,12 @@ type MaintenanceHandlers struct {
 	clearAckTimeout time.Duration
 }
 
+// defaultAckTimeouts are the waits NewMaintenanceHandlers gives a handler; a
+// test that builds the whole router shortens them, since no watchdog answers.
+var defaultAckTimeouts = struct{ reload, clear time.Duration }{8 * time.Second, 45 * time.Second}
+
 func NewMaintenanceHandlers(db *sql.DB, cfg *config.Config) *MaintenanceHandlers {
-	return &MaintenanceHandlers{db: db, cfg: cfg, reloadAckTimeout: 8 * time.Second, clearAckTimeout: 45 * time.Second}
+	return &MaintenanceHandlers{db: db, cfg: cfg, reloadAckTimeout: defaultAckTimeouts.reload, clearAckTimeout: defaultAckTimeouts.clear}
 }
 
 func (h *MaintenanceHandlers) Register(r chi.Router, authMW func(http.Handler) http.Handler) {

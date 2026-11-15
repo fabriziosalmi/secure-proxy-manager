@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
@@ -16,26 +18,7 @@ import (
 // requestPending lists the write operations whose request is not described
 // yet. It may only shrink: an operation described since must leave it, and a
 // new write operation must be described, not added here.
-var requestPending = map[string]bool{
-	"POST /api/auth/login":                  true,
-	"POST /api/change-password":             true,
-	"POST /api/counters/reset":              true,
-	"POST /api/database/optimize":           true,
-	"POST /api/database/reset":              true,
-	"POST /api/dns/detect":                  true,
-	"POST /api/log-forward/test":            true,
-	"POST /api/logout":                      true,
-	"POST /api/logs/clear":                  true,
-	"POST /api/logs/clear-old":              true,
-	"POST /api/maintenance/clear-cache":     true,
-	"POST /api/maintenance/reload-config":   true,
-	"POST /api/maintenance/reload-dns":      true,
-	"POST /api/maintenance/restore-config":  true,
-	"POST /api/notifications/test":          true,
-	"DELETE /api/security/rate-limits/{ip}": true,
-	"POST /api/tokens":                      true,
-	"DELETE /api/tokens/{id}":               true,
-}
+var requestPending = map[string]bool{}
 
 // writeOperations is every operation of the published document that is not a
 // GET and not api-only, with the operation object.
@@ -90,6 +73,23 @@ type requestCase struct {
 	path  string
 	body  string
 	setup func(t *testing.T, r http.Handler, feed *fakeProviderFeedServer)
+	// asAdmin signs the request in with the test admin's password, for a route
+	// the auth service guards itself (it is not given the test's pass-through).
+	asAdmin bool
+}
+
+// aLogTarget saves a log forwarding target, a UDP socket on loopback.
+func aLogTarget(t *testing.T, r http.Handler, _ *fakeProviderFeedServer) {
+	t.Helper()
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { pc.Close() })
+	_, port, _ := net.SplitHostPort(pc.LocalAddr().String())
+	if code, out := call(t, r, "POST", "/api/settings", `{"log_forward_host":"127.0.0.1","log_forward_port":"`+port+`"}`); code != http.StatusOK {
+		t.Fatalf("save a log target: %d %v", code, out)
+	}
 }
 
 // aGroup makes client group 1.
@@ -205,6 +205,25 @@ var requestCases = map[string]requestCase{
 	"POST /api/client-groups":                 {path: "/api/client-groups", body: `{"name":"office","members":["10.0.0.0/24"],"schedule":{"days":"MTWHF","start":"08:00","end":"18:00"}}`},
 	"PUT /api/client-groups/{id}":             {path: "/api/client-groups/1", body: `{"name":"office2","members":["10.0.0.0/24"],"schedule":null}`, setup: aGroup},
 	"DELETE /api/client-groups/{id}":          {path: "/api/client-groups/1", setup: aGroup},
+
+	"POST /api/auth/login":                  {path: "/api/auth/login", body: `{"username":"admin","password":"admin-12345"}`},
+	"POST /api/logout":                      {path: "/api/logout", asAdmin: true},
+	"POST /api/change-password":             {path: "/api/change-password", body: `{"current_password":"admin-12345","new_password":"N3w-passw0rd!"}`, asAdmin: true},
+	"POST /api/tokens":                      {path: "/api/tokens", body: `{"name":"grafana","scope":"read","expires_in_days":30}`},
+	"DELETE /api/tokens/{id}":               {path: "/api/tokens/1"},
+	"DELETE /api/security/rate-limits/{ip}": {path: "/api/security/rate-limits/192.0.2.7"},
+	"POST /api/dns/detect":                  {path: "/api/dns/detect", body: `{"subnet":"127.0.0"}`},
+	"POST /api/maintenance/restore-config":  {path: "/api/maintenance/restore-config", body: `{"backup_version":3,"settings":{"cache_size":"2000"}}`},
+	"POST /api/maintenance/reload-config":   {path: "/api/maintenance/reload-config"},
+	"POST /api/maintenance/reload-dns":      {path: "/api/maintenance/reload-dns"},
+	"POST /api/maintenance/clear-cache":     {path: "/api/maintenance/clear-cache"},
+	"POST /api/logs/clear":                  {path: "/api/logs/clear"},
+	"POST /api/logs/clear-old":              {path: "/api/logs/clear-old?days=30"},
+	"POST /api/counters/reset":              {path: "/api/counters/reset"},
+	"POST /api/database/optimize":           {path: "/api/database/optimize"},
+	"POST /api/database/reset":              {path: "/api/database/reset"},
+	"POST /api/log-forward/test":            {path: "/api/log-forward/test", setup: aLogTarget},
+	"POST /api/notifications/test":          {path: "/api/notifications/test"},
 }
 
 // The request schemas say what the handlers accept, both ways: a body valid by
@@ -228,6 +247,14 @@ func TestRequestSchemasAgreeWithTheHandlers(t *testing.T) {
 	}
 	sort.Strings(keys)
 
+	// No address is probed: the DNS scan answers nothing at once.
+	savedProbe := probeDNS
+	probeDNS = func(string) *DetectedDNS { return nil }
+	t.Cleanup(func() { probeDNS = savedProbe })
+	// No watchdog answers here: the reload and cache-clear waits are cut short.
+	saved := defaultAckTimeouts
+	defaultAckTimeouts.reload, defaultAckTimeouts.clear = 50*time.Millisecond, 50*time.Millisecond
+	t.Cleanup(func() { defaultAckTimeouts = saved })
 	feed, feedSrv := newFakeProviderFeedServer(t, "d03d319a255c0000000000000000000000000001")
 	feed.setCatalog("telegram", "149.154.160.0/20\n", "")
 	call := func(t *testing.T, c requestCase, method, path, body string) (int, string) {
@@ -272,6 +299,9 @@ func TestRequestSchemasAgreeWithTheHandlers(t *testing.T) {
 		}
 		req := withUserContext(httptest.NewRequest(method, path, rdr), "admin")
 		req.Header.Set("Content-Type", "application/json")
+		if c.asAdmin {
+			req.SetBasicAuth("admin", "admin-12345")
+		}
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)
 		return w.Code, w.Body.String()
@@ -285,6 +315,8 @@ func TestRequestSchemasAgreeWithTheHandlers(t *testing.T) {
 			if op["x-spm-body"] == "none" {
 				if code, out := call(t, c, method, c.path, ""); code == http.StatusBadRequest {
 					t.Errorf("says it reads no body, and sent none it answers 400: %s", out)
+				} else if code == http.StatusUnauthorized || code == http.StatusForbidden {
+					t.Errorf("answered %d before the handler reads it: the case proves nothing: %s", code, out)
 				}
 				return
 			}
@@ -302,6 +334,9 @@ func TestRequestSchemasAgreeWithTheHandlers(t *testing.T) {
 			}
 			if code, out := call(t, c, method, c.path, c.body); refused(code) {
 				t.Errorf("a body valid by %s is refused (%d): %s", name, code, out)
+			} else if code == http.StatusUnauthorized || code == http.StatusForbidden {
+				// The request never reached the handler: the case proves nothing.
+				t.Errorf("the valid case is answered %d before the handler reads it: %s", code, out)
 			}
 			if why, ok := checkedElsewhere[key]; ok {
 				t.Logf("required fields not checked here: %s", why)

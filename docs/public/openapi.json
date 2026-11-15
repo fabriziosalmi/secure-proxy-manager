@@ -1,6 +1,90 @@
 {
   "components": {
     "schemas": {
+      "BackupFile": {
+        "anyOf": [
+          {
+            "required": [
+              "settings"
+            ]
+          },
+          {
+            "required": [
+              "config"
+            ]
+          },
+          {
+            "required": [
+              "lists"
+            ]
+          },
+          {
+            "required": [
+              "egress_providers"
+            ]
+          },
+          {
+            "required": [
+              "client_groups"
+            ]
+          },
+          {
+            "required": [
+              "waf_policy"
+            ]
+          }
+        ],
+        "description": "a file GET /api/database/export or the dashboard's backup wrote",
+        "properties": {
+          "backup_version": {
+            "type": "integer"
+          },
+          "client_groups": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "config": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "the settings of a backup before version 2",
+            "type": "object"
+          },
+          "egress_providers": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "list_sources": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "lists": {
+            "additionalProperties": {
+              "items": {
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "type": "object"
+          },
+          "settings": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "waf_policy": {
+            "$ref": "#/components/schemas/WafPolicyFile"
+          }
+        },
+        "type": "object"
+      },
       "BulkDelete": {
         "properties": {
           "ids": {
@@ -14,6 +98,23 @@
         },
         "required": [
           "ids"
+        ],
+        "type": "object"
+      },
+      "ChangePassword": {
+        "properties": {
+          "current_password": {
+            "type": "string"
+          },
+          "new_password": {
+            "description": "at least 8 characters, with a number and a special character",
+            "minLength": 8,
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_password",
+          "new_password"
         ],
         "type": "object"
       },
@@ -150,6 +251,15 @@
           "status",
           "data"
         ],
+        "type": "object"
+      },
+      "DNSDetect": {
+        "properties": {
+          "subnet": {
+            "description": "a private or loopback /24 written as its first three numbers (192.168.1); the backend's own when absent",
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "DomainEntry": {
@@ -810,6 +920,25 @@
         ],
         "type": "object"
       },
+      "Login": {
+        "properties": {
+          "password": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "username": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "type": "object"
+      },
       "Message": {
         "properties": {
           "message": {
@@ -874,6 +1003,35 @@
         },
         "required": [
           "ip"
+        ],
+        "type": "object"
+      },
+      "NewToken": {
+        "properties": {
+          "expires_in_days": {
+            "description": "90 when absent; not with no_expiry",
+            "maximum": 3650,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "name": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$",
+            "type": "string"
+          },
+          "no_expiry": {
+            "description": "a token that does not expire; not with expires_in_days",
+            "type": "boolean"
+          },
+          "scope": {
+            "enum": [
+              "read",
+              "write"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "scope"
         ],
         "type": "object"
       },
@@ -1517,6 +1675,16 @@
     "/api/auth/login": {
       "post": {
         "operationId": "post_api_auth_login",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Login"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Success"
@@ -1788,6 +1956,16 @@
     "/api/change-password": {
       "post": {
         "operationId": "post_api_change_password",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePassword"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Success"
@@ -2471,6 +2649,7 @@
         "tags": [
           "counters"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -2589,6 +2768,7 @@
         "tags": [
           "database"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -2628,6 +2808,7 @@
         "tags": [
           "database"
         ],
+        "x-spm-body": "none",
         "x-spm-not-in-ui": "deletes every list, setting and log at once; the dashboard restores a backup or a snapshot instead",
         "x-spm-surfaces": [
           "api"
@@ -2716,6 +2897,16 @@
     "/api/dns/detect": {
       "post": {
         "operationId": "post_api_dns_detect",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DNSDetect"
+              }
+            }
+          },
+          "required": false
+        },
         "responses": {
           "200": {
             "description": "Success"
@@ -5467,6 +5658,7 @@
         "tags": [
           "log-forward"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -5506,6 +5698,7 @@
         "tags": [
           "logout"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -5592,6 +5785,7 @@
         "tags": [
           "logs"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -5602,6 +5796,20 @@
     "/api/logs/clear-old": {
       "post": {
         "operationId": "post_api_logs_clear_old",
+        "parameters": [
+          {
+            "description": "delete the rows older than this many days",
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 3650,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -5631,6 +5839,7 @@
         "tags": [
           "logs"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -5872,6 +6081,7 @@
         "tags": [
           "maintenance"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -5911,6 +6121,7 @@
         "tags": [
           "maintenance"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui",
@@ -5951,6 +6162,7 @@
         "tags": [
           "maintenance"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -5961,6 +6173,16 @@
     "/api/maintenance/restore-config": {
       "post": {
         "operationId": "post_api_maintenance_restore_config",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackupFile"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Success"
@@ -6068,6 +6290,7 @@
         "tags": [
           "notifications"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -6292,6 +6515,7 @@
         "tags": [
           "security"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
@@ -6623,6 +6847,16 @@
       },
       "post": {
         "operationId": "post_api_tokens",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewToken"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Success"
@@ -6701,6 +6935,7 @@
         "tags": [
           "tokens"
         ],
+        "x-spm-body": "none",
         "x-spm-surfaces": [
           "api",
           "ui"
