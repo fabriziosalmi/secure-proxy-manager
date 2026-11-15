@@ -112,7 +112,7 @@ func TestSettingsWritersMarkTheNotificationSettingsStale(t *testing.T) {
 	})
 	check("database reset", func() {
 		w := httptest.NewRecorder()
-		NewDatabaseHandlers(db).Reset(w, httptest.NewRequest(http.MethodPost, "/api/database/reset", strings.NewReader("{}")))
+		NewDatabaseHandlers(db).Reset(w, httptest.NewRequest(http.MethodPost, "/api/database/reset", strings.NewReader(`{"confirm":"RESET"}`)))
 		if w.Code != http.StatusOK {
 			t.Fatalf("reset answered %d: %s", w.Code, w.Body.String())
 		}

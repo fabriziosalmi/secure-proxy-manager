@@ -262,6 +262,18 @@
         },
         "type": "object"
       },
+      "DatabaseReset": {
+        "properties": {
+          "confirm": {
+            "const": "RESET",
+            "description": "the reset deletes every list, setting and log, and cannot be undone"
+          }
+        },
+        "required": [
+          "confirm"
+        ],
+        "type": "object"
+      },
       "DomainEntry": {
         "additionalProperties": false,
         "properties": {
@@ -2779,6 +2791,16 @@
     "/api/database/reset": {
       "post": {
         "operationId": "post_api_database_reset",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DatabaseReset"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Success"
@@ -2804,11 +2826,10 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "Reset database to defaults (destructive!)",
+        "summary": "Empty every table except users, settings included ({confirm: \"RESET\"}; anything else answers 400)",
         "tags": [
           "database"
         ],
-        "x-spm-body": "none",
         "x-spm-not-in-ui": "deletes every list, setting and log at once; the dashboard restores a backup or a snapshot instead",
         "x-spm-surfaces": [
           "api"

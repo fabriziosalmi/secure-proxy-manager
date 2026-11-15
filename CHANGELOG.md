@@ -15,6 +15,23 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+**Upgrade notes.** A script that calls `POST /api/database/reset` must send
+`{"confirm": "RESET"}`. A client that reads the status of the egress provider
+routes sees `404` for an unknown provider and `409` for an apply-held with
+nothing held, where it saw `400`.
+
+### Changed
+
+- **BREAKING** (`X-API-Version: 1`): `POST /api/database/reset` takes
+  `{"confirm": "RESET"}` and answers `400` without it. It emptied every table
+  but `users` on a bare POST. API tokens could already not call it.
+- **BREAKING** (`X-API-Version: 1`): the egress provider routes answer `404`
+  for a name that is no provider (`PUT /api/egress-providers/{name}`,
+  `.../refresh`, `.../apply-held`), and apply-held answers `409` when nothing
+  is held or the held update cannot be applied, and `500` on a database
+  failure. Each was `400`. The dashboard reads these as messages and is not
+  affected.
+
 ## [3.37.0] - 2026-11-15
 
 Every write operation in `GET /api/openapi.json` says what it reads, a body

@@ -97,7 +97,7 @@ var routeDocs = map[string]docMeta{
 	"GET /api/dashboard/summary":                   {auth: true, desc: "Aggregated dashboard data (requests, blocks, top clients, threat categories, WAF stats)"},
 	"GET /api/database/export":                     {auth: true, desc: "Export all data as JSON"},
 	"POST /api/database/optimize":                  {auth: true, desc: "Run VACUUM + REINDEX on database"},
-	"POST /api/database/reset":                     {auth: true, desc: "Reset database to defaults (destructive!)"},
+	"POST /api/database/reset":                     {auth: true, desc: "Empty every table except users, settings included ({confirm: \"RESET\"}; anything else answers 400)"},
 	"GET /api/database/size":                       {auth: true, desc: "SQLite database file size"},
 	"GET /api/database/stats":                      {auth: true, desc: "Database table row counts"},
 	"GET /api/docs":                                {auth: true, desc: "This endpoint: API documentation"},

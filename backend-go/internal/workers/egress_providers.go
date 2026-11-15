@@ -731,19 +731,31 @@ func applyValidatedProviderList(db *sql.DB, pid int64, commit string, v *Validat
 }
 
 // ApplyHeldEgressProvider applies the held update stored in held_json for a provider.
+// The reasons ApplyHeldEgressProvider gives, so the API can answer each with
+// its own status (404, 409, 409) instead of one 400 for all of them; any
+// other error is the database's.
+var (
+	ErrProviderNotFound   = errors.New("provider not found")
+	ErrNoHeldUpdate       = errors.New("no held update to apply")
+	ErrHeldUpdateUnusable = errors.New("the held update cannot be applied")
+)
+
 func ApplyHeldEgressProvider(db *sql.DB, configDir, kind, name, user string) (*EgressProviderState, error) {
 	var pid int64
 	var heldRaw string
 	err := db.QueryRow(`SELECT id, COALESCE(held_json,'') FROM egress_providers WHERE kind = ? AND name = ?`, kind, name).Scan(&pid, &heldRaw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("%w: %q", ErrProviderNotFound, name)
+	}
 	if err != nil {
-		return nil, fmt.Errorf("provider %q not found", name)
+		return nil, err
 	}
 	if strings.TrimSpace(heldRaw) == "" {
-		return nil, errors.New("no held update to apply")
+		return nil, ErrNoHeldUpdate
 	}
 	var held HeldUpdate
 	if err := json.Unmarshal([]byte(heldRaw), &held); err != nil {
-		return nil, fmt.Errorf("invalid held update: %w", err)
+		return nil, fmt.Errorf("%w: %v", ErrHeldUpdateUnusable, err)
 	}
 	oldV4, oldV6, oldV4Cov, _, err := loadProviderCoverage(db, pid)
 	if err != nil {
@@ -751,7 +763,7 @@ func ApplyHeldEgressProvider(db *sql.DB, configDir, kind, name, user string) (*E
 	}
 	validated, err := ValidateAndMeasureProviderList(held.EntriesV4, held.EntriesV6)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %v", ErrHeldUpdateUnusable, err)
 	}
 	if err := applyValidatedProviderList(db, pid, held.Commit, validated); err != nil {
 		return nil, err

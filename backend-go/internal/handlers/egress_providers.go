@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -74,7 +75,7 @@ func (h *EgressProviderHandlers) SetEnabled(w http.ResponseWriter, r *http.Reque
 	name := strings.TrimSpace(chi.URLParam(r, "name"))
 	kind, shared, ok := h.resolveProvider(name)
 	if !ok {
-		writeError(w, http.StatusBadRequest, fmt.Sprintf("unknown egress provider %q", name))
+		writeError(w, http.StatusNotFound, fmt.Sprintf("unknown egress provider %q", name))
 		return
 	}
 
@@ -262,7 +263,7 @@ func (h *EgressProviderHandlers) Refresh(w http.ResponseWriter, r *http.Request)
 	name := strings.TrimSpace(chi.URLParam(r, "name"))
 	kind, _, ok := h.resolveProvider(name)
 	if !ok {
-		writeError(w, http.StatusBadRequest, fmt.Sprintf("unknown egress provider %q", name))
+		writeError(w, http.StatusNotFound, fmt.Sprintf("unknown egress provider %q", name))
 		return
 	}
 	cfgDir := ""
@@ -285,7 +286,7 @@ func (h *EgressProviderHandlers) ApplyHeld(w http.ResponseWriter, r *http.Reques
 	name := strings.TrimSpace(chi.URLParam(r, "name"))
 	kind, _, ok := h.resolveProvider(name)
 	if !ok {
-		writeError(w, http.StatusBadRequest, fmt.Sprintf("unknown egress provider %q", name))
+		writeError(w, http.StatusNotFound, fmt.Sprintf("unknown egress provider %q", name))
 		return
 	}
 	cfgDir := ""
@@ -293,8 +294,15 @@ func (h *EgressProviderHandlers) ApplyHeld(w http.ResponseWriter, r *http.Reques
 		cfgDir = h.cfg.ConfigDir
 	}
 	st, err := workers.ApplyHeldEgressProvider(h.db, cfgDir, kind, name, requestUser(r))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	switch {
+	case errors.Is(err, workers.ErrProviderNotFound):
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	case errors.Is(err, workers.ErrNoHeldUpdate), errors.Is(err, workers.ErrHeldUpdateUnusable):
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	case err != nil:
+		writeInternalError(w, "apply_held_egress_provider", err)
 		return
 	}
 	writeOK(w, st)
