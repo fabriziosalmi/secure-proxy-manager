@@ -47,6 +47,7 @@ services:
 EOF
 
 echo "── observability profile (prometheus + grafana) ──"
+TEST_START="$(date +%s)"
 UP_OUT="$(COMPOSE_PROJECT_NAME="$PROJ" GRAFANA_ADMIN_PASSWORD="$ADMIN_PW" \
   docker compose -f docker-compose.yml -f "$OVERRIDE" --profile observability up -d prometheus grafana 2>&1)"
 UP_RC=$?
@@ -89,10 +90,28 @@ done
 grafana_state() {
   docker inspect -f 'OOMKilled={{.State.OOMKilled}} ExitCode={{.State.ExitCode}} Restarts={{.RestartCount}} Status={{.State.Status}}' secure-proxy-manager-grafana 2>&1
 }
+# Why Grafana stopped, when it restarts with exit code 0 and no OOM (seen on
+# one GitHub runner image only, 2026-11-16): what Docker saw happen to the
+# container (die with its exit code, kill with its signal, oom), the lines in
+# which Grafana says it is shutting down or failed, across every restart, and
+# the runner's kernel and Docker.
+grafana_diagnosis() {
+  echo "     runner: kernel $(uname -r), docker $(docker version --format '{{.Server.Version}}' 2>&1), cgroup $(docker info --format '{{.CgroupDriver}} v{{.CgroupVersion}}' 2>&1)"
+  echo "     state: $(docker inspect -f 'StartedAt={{.State.StartedAt}} FinishedAt={{.State.FinishedAt}} Error={{.State.Error}}' secure-proxy-manager-grafana 2>&1)"
+  echo "     docker events (die, kill, oom, stop):"
+  docker events --since "$TEST_START" --until "$(date +%s)" \
+    --filter container=secure-proxy-manager-grafana \
+    --filter event=die --filter event=kill --filter event=oom --filter event=stop \
+    --format '       {{.Action}} exitCode={{index .Actor.Attributes "exitCode"}} signal={{index .Actor.Attributes "signal"}}' 2>&1 | head -40
+  echo "     grafana log, shutdown and errors:"
+  docker logs secure-proxy-manager-grafana 2>&1 \
+    | grep -iE 'shutdown|shutting down|stopp|signal|terminat|level=(error|crit)|panic|fatal' | head -40 | sed 's/^/       /'
+}
 if [ "$graf_ready" -eq 1 ]; then
   ok "grafana is healthy on :3000"
 else
   bad "grafana is healthy on :3000" "$(grafana_state) $(docker logs secure-proxy-manager-grafana 2>&1 | tail -10)"
+  grafana_diagnosis
 fi
 echo "  grafana: $(grafana_state)"
 
