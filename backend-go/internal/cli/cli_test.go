@@ -153,3 +153,69 @@ func TestAnotherAPIVersionIsSaid(t *testing.T) {
 		t.Errorf("exit %d, stderr %q", code, stderr)
 	}
 }
+
+// A server that does not declare dry_run ignores it and runs the call, so the
+// command sends no request asking for a preview to such a server: spm api
+// refuses it, and clear without --yes says what it would do without asking.
+// A server that declares it is asked, and a preview answered without dry_run
+// is reported as a failure, not as a preview.
+func TestAPreviewIsAskedOnlyOfAServerThatTakesIt(t *testing.T) {
+	isolate(t)
+	// The document of a server before dry_run: the parameter is not declared.
+	old := []byte(strings.ReplaceAll(string(openAPIDocument), `"dry_run"`, `"not_dry_run"`))
+	ops, err := parseOperations(old)
+	if err != nil || len(ops) != len(operations) {
+		t.Fatalf("the old document: %d operations (%v), want %d", len(ops), err, len(operations))
+	}
+	declared := 0
+	for _, op := range operations {
+		if op.DryRun {
+			declared++
+		}
+	}
+	if declared != 21 {
+		t.Errorf("%d operations declare dry_run in the embedded document, want 21", declared)
+	}
+	var doc []byte
+	var dryAnswer string
+	var deletes []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-API-Version", "1")
+		switch {
+		case r.URL.Path == "/api/openapi.json":
+			_, _ = w.Write(doc)
+		case r.Method == "DELETE":
+			deletes = append(deletes, r.URL.RequestURI())
+			_, _ = w.Write([]byte(dryAnswer))
+		}
+	}))
+	defer srv.Close()
+
+	doc, deletes = old, nil
+	code, _, stderr := run(t, "", "api", "DELETE", "/api/ip-blacklist/clear-all?dry_run=true", "--url", srv.URL)
+	if code != exitRefused || !strings.Contains(stderr, "does not declare dry_run") || len(deletes) != 0 {
+		t.Errorf("spm api to an old server: exit %d, %q, deletes %v; want 1 and nothing sent", code, stderr, deletes)
+	}
+	deletes = nil
+	code, _, stderr = run(t, "", "blocked-ips", "clear", "--url", srv.URL)
+	if code != exitUsage || !strings.Contains(stderr, "every entry of Blocked IPs") || len(deletes) != 0 {
+		t.Errorf("clear to an old server: exit %d, %q, deletes %v; want 2 and nothing sent", code, stderr, deletes)
+	}
+	// dry_run=false or empty asks for no preview, so nothing is checked.
+	if !asksDryRun("/x?dry_run=true") || !asksDryRun("/x?dry_run=maybe") || asksDryRun("/x?dry_run=false") || asksDryRun("/x?dry_run=") || asksDryRun("/x?days=3") {
+		t.Error("asksDryRun reads the query wrong")
+	}
+
+	doc, deletes, dryAnswer = openAPIDocument, nil, `{"status":"success","data":{"dry_run":true,"removed":7}}`
+	code, _, stderr = run(t, "", "blocked-ips", "clear", "--url", srv.URL)
+	if code != exitUsage || !strings.Contains(stderr, "this removes 7 entries of Blocked IPs") || len(deletes) != 1 || deletes[0] != "/api/ip-blacklist/clear-all?dry_run=true" {
+		t.Errorf("clear to a new server: exit %d, %q, deletes %v; want 2, the count, one preview", code, stderr, deletes)
+	}
+
+	deletes, dryAnswer = nil, `{"status":"success","data":{"removed":7}}`
+	code, _, stderr = run(t, "", "blocked-ips", "clear", "--url", srv.URL)
+	if code != exitFailed || !strings.Contains(stderr, "may have cleared") {
+		t.Errorf("a preview answered without dry_run: exit %d, %q; want 3 and the warning", code, stderr)
+	}
+}

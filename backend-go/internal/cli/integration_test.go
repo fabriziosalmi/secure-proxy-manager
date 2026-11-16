@@ -240,7 +240,10 @@ func TestCuratedCommandsAgainstTheRealBackend(t *testing.T) {
 	expect(exitOK, "Removed 203.0.113.9 from Blocked IPs", "blocked-ips", "remove", "203.0.113.9")
 	expect(exitRefused, "is not on Blocked IPs", "blocked-ips", "remove", "203.0.113.9")
 	expect(exitOK, "", "blocked-ips", "add", "203.0.113.10")
-	expect(exitUsage, "add --yes", "blocked-ips", "clear")
+	// Without --yes the server previews the clear, and nothing goes.
+	expect(exitUsage, "this removes 1 entry of Blocked IPs; add --yes", "blocked-ips", "clear")
+	expect(exitOK, `"dry_run": true`, "api", "DELETE", "/api/ip-blacklist/clear-all?dry_run=true")
+	expect(exitOK, "203.0.113.10", "blocked-ips", "list")
 	expect(exitOK, "Removed 1 entries from Blocked IPs", "blocked-ips", "clear", "--yes")
 
 	f := filepath.Join(t.TempDir(), "domains.txt")

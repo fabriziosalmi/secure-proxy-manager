@@ -240,6 +240,17 @@ func runAPI(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "spm: %v\n", err)
 		return exitUsage
 	}
+	if asksDryRun(path) {
+		previews, err := serverPreviews(cl, method, path)
+		if err != nil {
+			fmt.Fprintf(stderr, "spm api: the server's operations could not be read to check that it takes dry_run (%v); nothing sent\n", err)
+			return exitFailed
+		}
+		if !previews {
+			fmt.Fprintf(stderr, "spm api: the server does not declare dry_run on %s %s, so it would run the call (a server before 3.40.0 ignores the parameter); nothing sent\n", op.Method, op.Path)
+			return exitRefused
+		}
+	}
 	r, err := cl.do(method, path, body)
 	if err != nil {
 		return failure(stderr, err)

@@ -15,6 +15,20 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Added
+
+- **`spm <list> clear` without `--yes` says how many entries would go**,
+  asking the server for a `dry_run` preview, and still removes nothing.
+
+### Fixed
+
+- **`spm api` no longer sends a `dry_run` request to a server that would run
+  it.** A server before 3.40.0 ignores `?dry_run=true` and runs the call, so
+  `spm api` reads the server's OpenAPI document first and, when the operation
+  does not declare `dry_run`, sends nothing and exits 1. The clear preview
+  checks the same way and, against such a server, says what it would do
+  without asking.
+
 ## [3.40.0] - 2026-11-16
 
 One error shape and previews before destructive calls. Every error answer

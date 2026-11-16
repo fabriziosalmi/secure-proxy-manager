@@ -98,6 +98,10 @@ The counts are the ones the real call would answer: the source removal and
 the restore run their own statements in a transaction that is rolled back.
 The OpenAPI document declares the parameter on each of these operations.
 
+A server before 3.40.0 does not know `dry_run`: it ignores the parameter and
+runs the call. Before asking an unknown server for a preview, check that its
+`GET /api/openapi.json` declares `dry_run` on the operation, as `spm` does.
+
 ### Collections
 
 Endpoints that return a collection put it under `data` and the pagination

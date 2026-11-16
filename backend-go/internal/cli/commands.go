@@ -314,7 +314,23 @@ func runList(l listDef, args []string, stdin io.Reader, stdout, stderr io.Writer
 			return exitUsage
 		}
 		if !yes {
-			fmt.Fprintf(stderr, "spm %s clear: this removes every entry of %s; add --yes to do it\n", l.noun, l.label)
+			// The server says how many entries would go, if it can preview
+			// without clearing; otherwise nothing is sent.
+			what := "every entry of " + l.label
+			if previews, err := serverPreviews(s.cl, "DELETE", l.path+"/clear-all"); err == nil && previews {
+				if data, _, code := s.call("DELETE", l.path+"/clear-all?dry_run=true", nil); code == exitOK {
+					var d struct {
+						DryRun  bool `json:"dry_run"`
+						Removed int  `json:"removed"`
+					}
+					if json.Unmarshal(data, &d) != nil || !d.DryRun {
+						fmt.Fprintf(stderr, "spm %s clear: the server answered the preview without dry_run: it may have cleared %s\n", l.noun, l.label)
+						return exitFailed
+					}
+					what = fmt.Sprintf("%d %s of %s", d.Removed, map[bool]string{true: "entry", false: "entries"}[d.Removed == 1], l.label)
+				}
+			}
+			fmt.Fprintf(stderr, "spm %s clear: this removes %s; add --yes to do it\n", l.noun, what)
 			return exitUsage
 		}
 		data, _, code := s.call("DELETE", l.path+"/clear-all", nil)
