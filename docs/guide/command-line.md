@@ -104,7 +104,11 @@ spm api DELETE '/api/ip-blacklist/sources/7?dry_run=true'
 ```
 
 The answer says what would go (`removed`, `kept`, ...) and nothing changes; the
-API reference lists the 21 operations that take it.
+API reference lists the 21 operations that take it. A server before 3.40.0
+ignores `dry_run` and would run the call, so `spm api` first reads the
+server's `GET /api/openapi.json` and sends nothing, with exit status 1, when
+the operation does not declare it. `spm blocked-ips clear` without `--yes`
+asks a server that declares it how many entries would go, and says so.
 
 Every command takes `--url` and `--token` (or `SPM_URL` and `SPM_TOKEN`), which
 take precedence over the config file, and `--insecure`, which does not check
