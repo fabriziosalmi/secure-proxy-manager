@@ -15,6 +15,14 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.40.1] - 2026-11-16
+
+`spm` no longer sends a `dry_run` request to a server that would run it.
+Nothing is **BREAKING** and `X-API-Version` stays 1.
+
+**Upgrade notes.** Replace `spm` 3.40.0 with this release if it talks to a
+server before 3.40.0: that server ignores `?dry_run=true` and runs the call.
+
 ### Added
 
 - **`spm <list> clear` without `--yes` says how many entries would go**,
