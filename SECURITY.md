@@ -108,11 +108,11 @@ any other workflow or on any other ref does not match:
 cosign verify \
   --certificate-identity-regexp '^https://github\.com/fabriziosalmi/secure-proxy-manager/\.github/workflows/multi-arch\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:v3.40.1
+  ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:v3.41.0
 
 # The SBOM and provenance are BuildKit attestations (not cosign artefacts):
-docker buildx imagetools inspect ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:v3.40.1 --format '{{ json .SBOM }}'
-docker buildx imagetools inspect ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:v3.40.1 --format '{{ json .Provenance }}'
+docker buildx imagetools inspect ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:v3.41.0 --format '{{ json .SBOM }}'
+docker buildx imagetools inspect ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:v3.41.0 --format '{{ json .Provenance }}'
 ```
 
 This needs cosign 3 or later; `deploy/install.sh` skips the check with a
@@ -151,5 +151,5 @@ Component advisories and how SPM mitigates them, such as the Squid
 
 | Version | Status |
 |---------|--------|
-| 3.40.x | Current: security fixes are released here |
-| < 3.40 | Not supported: upgrade to the latest 3.40.x |
+| 3.41.x | Current: security fixes are released here |
+| < 3.41 | Not supported: upgrade to the latest 3.41.x |
