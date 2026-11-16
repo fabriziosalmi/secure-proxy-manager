@@ -9,16 +9,27 @@ authenticates to the backend API with an SPM API token.
 
 ## Tools
 
-| Tool | API call | Registered |
+The tools come from the server. At the first request the MCP client makes,
+spm-mcp reads the OpenAPI document of the backend (`GET /api/openapi.json`)
+and offers one tool for each operation the backend marks for MCP
+(`x-spm-mcp-name`): the tool's description is the operation's summary, and its
+arguments are the operation's path parameters, query parameters and request
+body fields, with the API's own schemas. A tool the server does not have is
+never offered. spm-mcp 0.5.0 needs Secure Proxy Manager 3.41.0 or later; an
+older server names no tool, and spm-mcp says so instead of offering none.
+
+With Secure Proxy Manager 3.41.0 the tools are:
+
+| Tool | API call | Offered |
 |---|---|---|
 | `spm_status` | `GET /api/status` | always |
 | `spm_dashboard` | `GET /api/dashboard/summary` | always |
-| `spm_top_domains` | `GET /api/analytics/top-destinations` (the first `limit`, at most 20) | always |
+| `spm_top_domains` | `GET /api/analytics/top-destinations` (20 hosts) | always |
 | `spm_shadow_it` | `GET /api/analytics/shadow-it` | always |
 | `spm_user_agents` | `GET /api/analytics/user-agents` | always |
-| `spm_recent_logs` | `GET /api/logs?limit=<n>` (default 50) | always |
+| `spm_recent_logs` | `GET /api/logs` (`limit`, `outcome`, `q`, `since`, ... as the API reads them) | always |
 | `spm_waf_categories` | `GET /api/waf/categories` | always |
-| `spm_list_domain_blocklist` | `GET /api/domain-blacklist` | always |
+| `spm_list_domain_blocklist` | `GET /api/domain-blacklist` (`limit`, `offset`, `search`) | always |
 | `spm_block_domain` | `POST /api/domain-blacklist` | only with `SPM_MCP_READONLY=false` |
 | `spm_unblock_domain` | `DELETE /api/domain-blacklist/{id}` | only with `SPM_MCP_READONLY=false` |
 | `spm_toggle_waf_category` | `POST /api/waf/categories/toggle` | only with `SPM_MCP_READONLY=false` |
@@ -29,11 +40,13 @@ authenticates to the backend API with an SPM API token.
 that anyone whose requests cross the proxy can shape (URLs, domains, user
 agents), so text in a log row can try to instruct the model; with the mutating
 tools available, an auto-approved call could disable a WAF category or open
-egress. The output of `spm_dashboard`, `spm_top_domains`, `spm_shadow_it`,
-`spm_user_agents` and `spm_recent_logs` is wrapped in
+egress. The output of every operation the backend marks `x-spm-untrusted`
+(today the dashboard, analytics, log and domain blocklist tools) is wrapped in
 `{"untrusted_data_notice": ..., "data": ...}`, and every tool carries MCP
-annotations (`readOnlyHint`, `destructiveHint`) for the client's approval
-prompt. If you enable the mutating tools, do not auto-approve them.
+annotations: `readOnlyHint` for a GET, `destructiveHint` for every write,
+`idempotentHint` for a GET or a PUT. An operation that takes `dry_run` answers
+what it would do unless the call says `confirm: true`. If you enable the
+mutating tools, do not auto-approve them.
 
 ## Authenticate with a token
 

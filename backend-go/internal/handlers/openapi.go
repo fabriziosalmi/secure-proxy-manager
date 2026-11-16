@@ -327,26 +327,49 @@ type oaParam struct {
 	desc     string
 }
 
+// listQuery is what GET on a list reads (listHandler).
+var listQuery = []oaParam{
+	{name: "limit", schema: map[string]any{"type": "integer", "minimum": 1, "maximum": 1000, "default": 100}, desc: "at most this many entries"},
+	{name: "offset", schema: map[string]any{"type": "integer", "minimum": 0, "default": 0}, desc: "skip this many entries"},
+	{name: "search", schema: map[string]any{"type": "string"}, desc: "only entries containing this text"},
+}
+
+// logQuery is what GET /api/logs reads (GetLogs, parseLogFilter).
+var logQuery = []oaParam{
+	{name: "limit", schema: map[string]any{"type": "integer", "minimum": 1, "maximum": 500, "default": 25}, desc: "at most this many rows"},
+	{name: "offset", schema: map[string]any{"type": "integer", "minimum": 0, "default": 0}, desc: "skip this many rows"},
+	{name: "sort", schema: map[string]any{"type": "string", "enum": []string{"timestamp", "source_ip", "destination", "status", "bytes", "method", "id"}, "default": "timestamp"}},
+	{name: "order", schema: map[string]any{"type": "string", "enum": []string{"asc", "desc"}, "default": "desc"}},
+	{name: "source_ip", schema: map[string]any{"type": "string"}, desc: "only the requests of this client"},
+	{name: "outcome", schema: map[string]any{"type": "string", "enum": []string{"all", "allowed", "blocked"}}, desc: "only the allowed or only the blocked requests"},
+	{name: "reason", schema: map[string]any{"type": "string"}, desc: "only the requests blocked for this reason key"},
+	{name: "q", schema: map[string]any{"type": "string"}, desc: "only the rows containing this text"},
+	{name: "include_internal", schema: map[string]any{"type": "boolean", "default": false}, desc: "also the requests of the stack's own services"},
+	{name: "before_id", schema: map[string]any{"type": "integer", "minimum": 1}, desc: "the page after this row id (newest first)"},
+	{name: "since", schema: map[string]any{"type": "integer", "minimum": 1}, desc: "only rows from this time on, in Unix seconds"},
+	{name: "until", schema: map[string]any{"type": "integer", "minimum": 1}, desc: "only rows before this time, in Unix seconds"},
+}
+
 var routeSchemas = map[string]routeSchema{
-	"GET /api/ip-blacklist":             {response: "IPEntryList"},
+	"GET /api/ip-blacklist":             {response: "IPEntryList", query: listQuery},
 	"POST /api/ip-blacklist":            {request: "NewIPEntry", response: "Message"},
 	"DELETE /api/ip-blacklist/{id}":     {response: "Message", noBody: true},
-	"GET /api/ip-whitelist":             {response: "IPEntryList"},
+	"GET /api/ip-whitelist":             {response: "IPEntryList", query: listQuery},
 	"POST /api/ip-whitelist":            {request: "NewIPEntry", response: "Message"},
 	"DELETE /api/ip-whitelist/{id}":     {response: "Message", noBody: true},
-	"GET /api/domain-blacklist":         {response: "DomainEntryList"},
+	"GET /api/domain-blacklist":         {response: "DomainEntryList", query: listQuery},
 	"POST /api/domain-blacklist":        {request: "NewDomainEntry", response: "Message"},
 	"DELETE /api/domain-blacklist/{id}": {response: "Message", noBody: true},
-	"GET /api/domain-whitelist":         {response: "DomainExceptionList"},
+	"GET /api/domain-whitelist":         {response: "DomainExceptionList", query: listQuery},
 	"POST /api/domain-whitelist":        {request: "NewDomainEntry", response: "Message"},
 	"DELETE /api/domain-whitelist/{id}": {response: "Message", noBody: true},
-	"GET /api/egress-allowlist":         {response: "EgressEntryList"},
+	"GET /api/egress-allowlist":         {response: "EgressEntryList", query: listQuery},
 	"POST /api/egress-allowlist":        {request: "NewEgressEntry", response: "Message"},
 	"GET /api/settings":                 {response: "SettingList"},
 	"GET /api/client-setup":             {response: "ClientSetup"},
 	"POST /api/settings":                {request: "SettingsUpdate", response: "SettingsUpdated"},
 	"PUT /api/settings/{name}":          {request: "SettingValue", response: "Message"},
-	"GET /api/logs":                     {response: "LogList"},
+	"GET /api/logs":                     {response: "LogList", query: logQuery},
 	"GET /api/logs/stats":               {response: "LogStats"},
 
 	// The lists: what each write reads.
@@ -508,6 +531,12 @@ func OpenAPIDocument(r chi.Router) map[string]any {
 		}
 		if surf.notInUI != "" {
 			op["x-spm-not-in-ui"] = surf.notInUI
+		}
+		if surf.mcpName != "" {
+			op["x-spm-mcp-name"] = surf.mcpName
+		}
+		if surf.untrusted {
+			op["x-spm-untrusted"] = true
 		}
 		item[strings.ToLower(d.Method)] = op
 	}

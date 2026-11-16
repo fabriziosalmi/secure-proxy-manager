@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -55,5 +56,53 @@ func TestEveryOperationHasASummary(t *testing.T) {
 				t.Errorf("%s %s has no summary: describe it in routeDocs (api_docs.go)", strings.ToUpper(method), path)
 			}
 		}
+	}
+}
+
+// The MCP server builds its tools from the published document: an operation
+// marked mcp carries the tool's name, every name is one tool's, and the 13
+// names the server had before it read the registry are kept, so an assistant
+// configured with them keeps finding them. untrusted is said only of an MCP
+// tool, the one place it changes anything.
+func TestTheMCPToolsAreNamedInTheRegistry(t *testing.T) {
+	nameRE := regexp.MustCompile(`^spm_[a-z][a-z_]*$`)
+	byName := map[string]string{}
+	for key, s := range routeSurfaces {
+		if s.mcp != (s.mcpName != "") {
+			t.Errorf("%s: mcp %v with mcpName %q: a tool has a name, a name is a tool's", key, s.mcp, s.mcpName)
+		}
+		if s.untrusted && !s.mcp {
+			t.Errorf("%s is marked untrusted and is no MCP tool", key)
+		}
+		if s.mcpName == "" {
+			continue
+		}
+		if !nameRE.MatchString(s.mcpName) {
+			t.Errorf("%s: tool name %q is not spm_ and lower case", key, s.mcpName)
+		}
+		if other, dup := byName[s.mcpName]; dup {
+			t.Errorf("%s and %s are both %s", key, other, s.mcpName)
+		}
+		byName[s.mcpName] = key
+	}
+	for _, name := range []string{"spm_status", "spm_dashboard", "spm_top_domains", "spm_shadow_it",
+		"spm_user_agents", "spm_recent_logs", "spm_waf_categories", "spm_list_domain_blocklist",
+		"spm_block_domain", "spm_unblock_domain", "spm_toggle_waf_category", "spm_allow_egress",
+		"spm_reload_config"} {
+		if byName[name] == "" {
+			t.Errorf("the tool %s is gone: an assistant configured with it would not find it", name)
+		}
+	}
+	doc := OpenAPIDocument(publishedRouter(t))
+	published := 0
+	for _, item := range doc["paths"].(map[string]any) {
+		for _, op := range item.(map[string]any) {
+			if n, ok := op.(map[string]any)["x-spm-mcp-name"].(string); ok && byName[n] != "" {
+				published++
+			}
+		}
+	}
+	if published != len(byName) {
+		t.Errorf("%d operations publish x-spm-mcp-name, want %d", published, len(byName))
 	}
 }

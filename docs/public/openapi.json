@@ -1553,12 +1553,14 @@
         "tags": [
           "analytics"
         ],
+        "x-spm-mcp-name": "spm_shadow_it",
         "x-spm-surfaces": [
           "api",
           "ui",
           "mcp"
         ],
-        "x-spm-token-scope": "read"
+        "x-spm-token-scope": "read",
+        "x-spm-untrusted": true
       }
     },
     "/api/analytics/top-destinations": {
@@ -1593,12 +1595,14 @@
         "tags": [
           "analytics"
         ],
+        "x-spm-mcp-name": "spm_top_domains",
         "x-spm-surfaces": [
           "api",
           "ui",
           "mcp"
         ],
-        "x-spm-token-scope": "read"
+        "x-spm-token-scope": "read",
+        "x-spm-untrusted": true
       }
     },
     "/api/analytics/top-domains": {
@@ -1672,12 +1676,14 @@
         "tags": [
           "analytics"
         ],
+        "x-spm-mcp-name": "spm_user_agents",
         "x-spm-surfaces": [
           "api",
           "ui",
           "mcp"
         ],
-        "x-spm-token-scope": "read"
+        "x-spm-token-scope": "read",
+        "x-spm-untrusted": true
       }
     },
     "/api/audit-log": {
@@ -2763,12 +2769,14 @@
         "tags": [
           "dashboard"
         ],
+        "x-spm-mcp-name": "spm_dashboard",
         "x-spm-surfaces": [
           "api",
           "ui",
           "mcp"
         ],
-        "x-spm-token-scope": "read"
+        "x-spm-token-scope": "read",
+        "x-spm-untrusted": true
       }
     },
     "/api/database/export": {
@@ -3068,6 +3076,40 @@
     "/api/domain-blacklist": {
       "get": {
         "operationId": "get_api_domain_blacklist",
+        "parameters": [
+          {
+            "description": "at most this many entries",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "skip this many entries",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "only entries containing this text",
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3100,17 +3142,19 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "List domain blacklist (?page=1\u0026page_size=50\u0026search=...)",
+        "summary": "The domain blacklist (limit, offset, search), newest first; meta.total",
         "tags": [
           "domain-blacklist"
         ],
+        "x-spm-mcp-name": "spm_list_domain_blocklist",
         "x-spm-surfaces": [
           "api",
           "ui",
           "cli",
           "mcp"
         ],
-        "x-spm-token-scope": "read"
+        "x-spm-token-scope": "read",
+        "x-spm-untrusted": true
       },
       "post": {
         "operationId": "post_api_domain_blacklist",
@@ -3160,6 +3204,7 @@
         "tags": [
           "domain-blacklist"
         ],
+        "x-spm-mcp-name": "spm_block_domain",
         "x-spm-surfaces": [
           "api",
           "ui",
@@ -3660,6 +3705,7 @@
           "domain-blacklist"
         ],
         "x-spm-body": "none",
+        "x-spm-mcp-name": "spm_unblock_domain",
         "x-spm-surfaces": [
           "api",
           "ui",
@@ -3672,6 +3718,40 @@
     "/api/domain-whitelist": {
       "get": {
         "operationId": "get_api_domain_whitelist",
+        "parameters": [
+          {
+            "description": "at most this many entries",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "skip this many entries",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "only entries containing this text",
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3704,7 +3784,7 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "List domain whitelist",
+        "summary": "The domain exceptions (limit, offset, search), newest first; meta.total",
         "tags": [
           "domain-whitelist"
         ],
@@ -4264,6 +4344,40 @@
     "/api/egress-allowlist": {
       "get": {
         "operationId": "get_api_egress_allowlist",
+        "parameters": [
+          {
+            "description": "at most this many entries",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "skip this many entries",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "only entries containing this text",
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -4355,6 +4469,7 @@
         "tags": [
           "egress-allowlist"
         ],
+        "x-spm-mcp-name": "spm_allow_egress",
         "x-spm-surfaces": [
           "api",
           "ui",
@@ -4926,6 +5041,40 @@
     "/api/ip-blacklist": {
       "get": {
         "operationId": "get_api_ip_blacklist",
+        "parameters": [
+          {
+            "description": "at most this many entries",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "skip this many entries",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "only entries containing this text",
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -4958,7 +5107,7 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "List IP blacklist (?page=1\u0026page_size=50\u0026search=...)",
+        "summary": "The IP blacklist (limit, offset, search), newest first; meta.total",
         "tags": [
           "ip-blacklist"
         ],
@@ -5438,6 +5587,40 @@
     "/api/ip-whitelist": {
       "get": {
         "operationId": "get_api_ip_whitelist",
+        "parameters": [
+          {
+            "description": "at most this many entries",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "skip this many entries",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "only entries containing this text",
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -5470,7 +5653,7 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "List IP whitelist",
+        "summary": "The IP exceptions (limit, offset, search), newest first; meta.total",
         "tags": [
           "ip-whitelist"
         ],
@@ -5982,6 +6165,143 @@
     "/api/logs": {
       "get": {
         "operationId": "get_api_logs",
+        "parameters": [
+          {
+            "description": "at most this many rows",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "skip this many rows",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "timestamp",
+              "enum": [
+                "timestamp",
+                "source_ip",
+                "destination",
+                "status",
+                "bytes",
+                "method",
+                "id"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "desc",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "only the requests of this client",
+            "in": "query",
+            "name": "source_ip",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "only the allowed or only the blocked requests",
+            "in": "query",
+            "name": "outcome",
+            "required": false,
+            "schema": {
+              "enum": [
+                "all",
+                "allowed",
+                "blocked"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "only the requests blocked for this reason key",
+            "in": "query",
+            "name": "reason",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "only the rows containing this text",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "also the requests of the stack's own services",
+            "in": "query",
+            "name": "include_internal",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "the page after this row id (newest first)",
+            "in": "query",
+            "name": "before_id",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "only rows from this time on, in Unix seconds",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "only rows before this time, in Unix seconds",
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -6014,17 +6334,19 @@
             "description": "An API token whose scope does not allow this call"
           }
         },
-        "summary": "Proxy access logs, internal sources left out by default (?limit=25\u0026offset=0\u0026sort=timestamp\u0026order=desc\u0026source_ip=\u0026outcome=allowed|blocked\u0026reason=\u0026q=\u0026include_internal=false\u0026before_id=\u0026since=\u0026until=, since and until in Unix seconds)",
+        "summary": "Proxy access logs, newest first, internal sources left out by default; the query parameters filter and page them",
         "tags": [
           "logs"
         ],
+        "x-spm-mcp-name": "spm_recent_logs",
         "x-spm-surfaces": [
           "api",
           "ui",
           "cli",
           "mcp"
         ],
-        "x-spm-token-scope": "read"
+        "x-spm-token-scope": "read",
+        "x-spm-untrusted": true
       }
     },
     "/api/logs/clear": {
@@ -6430,6 +6752,7 @@
           "maintenance"
         ],
         "x-spm-body": "none",
+        "x-spm-mcp-name": "spm_reload_config",
         "x-spm-surfaces": [
           "api",
           "ui",
@@ -7123,6 +7446,7 @@
         "tags": [
           "status"
         ],
+        "x-spm-mcp-name": "spm_status",
         "x-spm-surfaces": [
           "api",
           "ui",
@@ -7349,6 +7673,7 @@
         "tags": [
           "waf"
         ],
+        "x-spm-mcp-name": "spm_waf_categories",
         "x-spm-surfaces": [
           "api",
           "ui",
@@ -7399,6 +7724,7 @@
         "tags": [
           "waf"
         ],
+        "x-spm-mcp-name": "spm_toggle_waf_category",
         "x-spm-not-in-ui": "the dashboard changes WAF categories through the WAF policy, which keeps one history (PUT /api/waf/policy)",
         "x-spm-surfaces": [
           "api",

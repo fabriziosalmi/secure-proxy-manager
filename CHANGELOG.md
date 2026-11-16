@@ -15,6 +15,38 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Added
+
+- **The operations offered to MCP are named in the registry.** An operation
+  marked for MCP publishes `x-spm-mcp-name`, and one whose answer carries text
+  others can shape (traffic, third-party feeds) `x-spm-untrusted`. A test
+  holds every MCP operation to one unique name and keeps the 13 existing
+  names.
+- **`GET /api/logs` and `GET` on every list declare their query parameters**
+  in the OpenAPI document (`limit`, `offset`, `search` on the lists; `limit`,
+  `offset`, `sort`, `order`, `outcome`, `q`, `since`, `until` and the rest on
+  the logs). A test checks that each list honours `limit`, `offset` and
+  `search`.
+
+### Changed
+
+- **`spm-mcp` 0.5.0 builds its tools from the server's OpenAPI document**
+  instead of a list in its source: one tool per operation the server names
+  for MCP, with the API's own argument schemas. It needs this release of the
+  server and says so against an older one. The arguments are the API's:
+  `spm_unblock_domain` takes `id` (was `entry_id`), `spm_recent_logs` takes
+  every filter of `GET /api/logs` with its default `limit` of 25 (was 50),
+  `spm_list_domain_blocklist` takes `limit`, `offset` and `search`, and
+  `spm_top_domains` answers the 20 hosts the API answers (its `limit` is
+  gone). The domain blocklist's answer is now marked untrusted, since its
+  entries can come from third-party feeds.
+
+### Fixed
+
+- The summaries of `GET` on the IP and domain lists named `page` and
+  `page_size`, which the handler never read; they now say `limit`, `offset`
+  and `search`.
+
 ## [3.40.1] - 2026-11-16
 
 `spm` no longer sends a `dry_run` request to a server that would run it.
