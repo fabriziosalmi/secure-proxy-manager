@@ -18,8 +18,8 @@ body fields, with the API's own schemas. A tool the server does not have is
 never offered. spm-mcp 0.5.0 needs Secure Proxy Manager 3.41.0 or later; an
 older server names no tool, and spm-mcp says so instead of offering none.
 
-Secure Proxy Manager 3.41.0 names 13 tools. From the next release the
-server names the tools below; a test writes this table from the server's
+Secure Proxy Manager 3.41.0 names 13 tools. From 3.42.0 the server names
+the tools below; a test writes this table from the server's
 registry, so it is the list the server publishes. Reading tools come first.
 Every other operation of the API is kept from MCP: the ones no token may call
 (tokens, password, backup and restore, database export and reset), and the

@@ -15,6 +15,18 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.42.0] - 2026-11-16
+
+The MCP server offers 102 tools instead of 13. Nothing in the API is
+**BREAKING** and `X-API-Version` stays 1.
+
+**Upgrade notes.** `spm-mcp` 0.5.0 picks up the new tools from this release
+with no update. The read-only server (the default) offers 51 reading tools;
+the 51 that change the proxy need `SPM_MCP_READONLY=false` and a write token,
+and the 19 that remove something answer what they would remove unless the
+call says `confirm: true`. An MCP client that auto-approves tools sees the
+new reading tools at once.
+
 ### Added
 
 - **The MCP server offers 102 tools instead of 13.** The registry names 89
