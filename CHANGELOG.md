@@ -15,6 +15,21 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Added
+
+- **The MCP server offers 102 tools instead of 13.** The registry names 89
+  more operations for MCP: 43 reads (status, WAF, settings, client groups,
+  snapshots, traffic analytics, the lists and their sources), offered by the
+  read-only server, and 46 changes, offered only with
+  `SPM_MCP_READONLY=false` and a write token. The 19 that remove something
+  answer what they would remove unless the call says `confirm: true`.
+  `spm-mcp` 0.5.0 picks them up from the server with no update. Kept from MCP
+  on purpose, and held there by a test: one setting or every setting, the
+  WAF policy and its exceptions, a configuration restore, the sign-in rate
+  limit, the DNS server scan and the database optimize. A test also checks
+  that a token can call every MCP tool, and writes the tool table in
+  `mcp/README.md` from the registry.
+
 ## [3.41.0] - 2026-11-16
 
 Every operation offered to MCP is now named in the API's registry, and

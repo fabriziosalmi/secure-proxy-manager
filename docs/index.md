@@ -30,7 +30,7 @@ features:
   - title: DNS sinkhole
     details: "dnsmasq answers 0.0.0.0 and :: for every blocked domain. SafeSearch and YouTube restricted mode are DNS overrides you can switch on."
   - title: MCP server
-    details: An optional Model Context Protocol server (spm-mcp on PyPI) exposes traffic queries as tools; the tools that change the proxy are off unless you enable them.
+    details: An optional Model Context Protocol server (spm-mcp on PyPI) exposes the API's reads as tools; the tools that change the proxy are off unless you enable them.
   - title: Logs and analytics
     details: Access logs with server-side filters and CSV export, a live feed over WebSocket, per-client views, and an audit log of every list change.
   - title: Signed images
@@ -76,9 +76,11 @@ With older versions, use `SPM_USERNAME` and `SPM_PASSWORD`. spm-mcp 0.5.0 builds
 server's OpenAPI document and needs Secure Proxy Manager 3.41.0 or later; with
 an older server, run `uvx spm-mcp==0.4.0`.
 
-Read-only by default; set `SPM_MCP_READONLY=false` to also register the tools
-that block domains, toggle WAF categories, add egress entries and reload the
-proxy.
+Read-only by default; set `SPM_MCP_READONLY=false`, with a write token, to
+also register the tools that change the proxy: the lists, client groups,
+egress providers, snapshots and reloads. A tool that removes something answers
+what it would remove unless the call says `confirm: true`. The tools are
+listed in [mcp/README.md](https://github.com/fabriziosalmi/secure-proxy-manager/blob/main/mcp/README.md#tools).
 
 ## Install
 
