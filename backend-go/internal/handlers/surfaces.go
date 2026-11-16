@@ -22,8 +22,8 @@ package handlers
 //   - uiPlanned: the dashboard is to offer it and does not yet. The UI test
 //     fails once the dashboard calls it, so the flag cannot outlive the work.
 //
-// The published document carries x-spm-surfaces, x-spm-api-only and
-// x-spm-not-in-ui.
+// The published document carries x-spm-surfaces, x-spm-api-only,
+// x-spm-not-in-ui, and for the MCP tools x-spm-mcp-name and x-spm-untrusted.
 
 type surfaceSet struct {
 	ui        bool
@@ -32,6 +32,13 @@ type surfaceSet struct {
 	apiOnly   string
 	notInUI   string
 	uiPlanned bool
+	// mcpName is the MCP tool's name, set exactly when mcp is: the MCP server
+	// builds its tools from the published document (x-spm-mcp-name).
+	mcpName string
+	// untrusted: the answer carries what clients of the proxy can shape
+	// (URLs, hosts, user agents, entries read from third-party feeds), so the
+	// MCP server marks it as data, not instructions (x-spm-untrusted).
+	untrusted bool
 }
 
 // names lists the surfaces besides the API, in a fixed order.
@@ -54,7 +61,7 @@ var routeSurfaces = map[string]surfaceSet{
 	"DELETE /api/client-groups/{id}":               {ui: true},
 	"DELETE /api/domain-blacklist/clear-all":       {ui: true, cli: true},
 	"DELETE /api/domain-blacklist/sources/{id}":    {ui: true},
-	"DELETE /api/domain-blacklist/{id}":            {ui: true, cli: true, mcp: true},
+	"DELETE /api/domain-blacklist/{id}":            {ui: true, cli: true, mcp: true, mcpName: "spm_unblock_domain"},
 	"DELETE /api/domain-whitelist/clear-all":       {ui: true, cli: true},
 	"DELETE /api/domain-whitelist/sources/{id}":    {ui: true},
 	"DELETE /api/domain-whitelist/{id}":            {ui: true, cli: true},
@@ -73,10 +80,10 @@ var routeSurfaces = map[string]surfaceSet{
 	"GET /api/analytics/cache-by-day":              {ui: true},
 	"GET /api/analytics/coverage":                  {ui: true},
 	"GET /api/analytics/file-extensions":           {ui: true},
-	"GET /api/analytics/shadow-it":                 {ui: true, mcp: true},
-	"GET /api/analytics/top-destinations":          {ui: true, mcp: true},
+	"GET /api/analytics/shadow-it":                 {ui: true, mcp: true, mcpName: "spm_shadow_it", untrusted: true},
+	"GET /api/analytics/top-destinations":          {ui: true, mcp: true, mcpName: "spm_top_domains", untrusted: true},
 	"GET /api/analytics/top-domains":               {apiOnly: "retired: it answers 410 Gone"},
-	"GET /api/analytics/user-agents":               {ui: true, mcp: true},
+	"GET /api/analytics/user-agents":               {ui: true, mcp: true, mcpName: "spm_user_agents", untrusted: true},
 	"GET /api/audit-log":                           {ui: true},
 	"GET /api/auth/oidc":                           {ui: true},
 	"GET /api/auth/oidc/callback":                  {apiOnly: "the identity provider sends the browser back to it"},
@@ -92,12 +99,12 @@ var routeSurfaces = map[string]surfaceSet{
 	"GET /api/clients/{ip}/{prefix}/details":       {notInUI: "the same detail as GET /api/clients/{ip}/details for a CIDR written with its slash unencoded; the dashboard encodes it"},
 	"GET /api/config/snapshots":                    {ui: true, cli: true},
 	"GET /api/config/snapshots/{id}/diff":          {ui: true, cli: true},
-	"GET /api/dashboard/summary":                   {ui: true, mcp: true},
+	"GET /api/dashboard/summary":                   {ui: true, mcp: true, mcpName: "spm_dashboard", untrusted: true},
 	"GET /api/database/export":                     {ui: true},
 	"GET /api/database/size":                       {ui: true},
 	"GET /api/database/stats":                      {notInUI: "row counts per table are a maintenance query, not something the dashboard acts on"},
 	"GET /api/docs":                                {apiOnly: "the API describing itself to its clients"},
-	"GET /api/domain-blacklist":                    {ui: true, cli: true, mcp: true},
+	"GET /api/domain-blacklist":                    {ui: true, cli: true, mcp: true, mcpName: "spm_list_domain_blocklist", untrusted: true},
 	"GET /api/domain-blacklist/export":             {ui: true, cli: true},
 	"GET /api/domain-blacklist/presets":            {ui: true},
 	"GET /api/domain-blacklist/sources":            {ui: true, cli: true},
@@ -115,7 +122,7 @@ var routeSurfaces = map[string]surfaceSet{
 	"GET /api/ip-whitelist":                        {ui: true, cli: true},
 	"GET /api/ip-whitelist/export":                 {ui: true, cli: true},
 	"GET /api/ip-whitelist/sources":                {ui: true, cli: true},
-	"GET /api/logs":                                {ui: true, cli: true, mcp: true},
+	"GET /api/logs":                                {ui: true, cli: true, mcp: true, mcpName: "spm_recent_logs", untrusted: true},
 	"GET /api/logs/export":                         {ui: true},
 	"GET /api/logs/stats":                          {ui: true},
 	"GET /api/logs/timeline":                       {ui: true},
@@ -130,10 +137,10 @@ var routeSurfaces = map[string]surfaceSet{
 	"GET /api/security/score":                      {apiOnly: "retired: it answers 410 Gone"},
 	"GET /api/session":                             {ui: true},
 	"GET /api/settings":                            {ui: true, cli: true},
-	"GET /api/status":                              {ui: true, cli: true, mcp: true},
+	"GET /api/status":                              {ui: true, cli: true, mcp: true, mcpName: "spm_status"},
 	"GET /api/tokens":                              {ui: true},
 	"GET /api/traffic/statistics":                  {apiOnly: "retired: it answers 410 Gone"},
-	"GET /api/waf/categories":                      {ui: true, mcp: true},
+	"GET /api/waf/categories":                      {ui: true, mcp: true, mcpName: "spm_waf_categories"},
 	"GET /api/waf/events/{id}":                     {ui: true},
 	"GET /api/waf/heuristics":                      {ui: true},
 	"GET /api/waf/policy":                          {ui: true},
@@ -159,7 +166,7 @@ var routeSurfaces = map[string]surfaceSet{
 	"POST /api/database/optimize":                  {ui: true},
 	"POST /api/database/reset":                     {notInUI: "deletes every list, setting and log at once; the dashboard restores a backup or a snapshot instead"},
 	"POST /api/dns/detect":                         {ui: true},
-	"POST /api/domain-blacklist":                   {ui: true, cli: true, mcp: true},
+	"POST /api/domain-blacklist":                   {ui: true, cli: true, mcp: true, mcpName: "spm_block_domain"},
 	"POST /api/domain-blacklist/bulk-delete":       {ui: true},
 	"POST /api/domain-blacklist/import":            {apiOnly: "retired: it answers 410 Gone"},
 	"POST /api/domain-blacklist/presets/{preset}":  {ui: true},
@@ -167,7 +174,7 @@ var routeSurfaces = map[string]surfaceSet{
 	"POST /api/domain-whitelist/bulk-delete":       {ui: true},
 	"POST /api/domain-whitelist/import":            {ui: true, cli: true},
 	"POST /api/domain-whitelist/presets/{preset}":  {ui: true},
-	"POST /api/egress-allowlist":                   {ui: true, cli: true, mcp: true},
+	"POST /api/egress-allowlist":                   {ui: true, cli: true, mcp: true, mcpName: "spm_allow_egress"},
 	"POST /api/egress-allowlist/bulk-delete":       {ui: true},
 	"POST /api/egress-providers/url":               {ui: true},
 	"POST /api/egress-providers/{name}/apply-held": {ui: true},
@@ -185,13 +192,13 @@ var routeSurfaces = map[string]surfaceSet{
 	"POST /api/logs/clear":                         {ui: true},
 	"POST /api/logs/clear-old":                     {ui: true},
 	"POST /api/maintenance/clear-cache":            {ui: true},
-	"POST /api/maintenance/reload-config":          {ui: true, mcp: true},
+	"POST /api/maintenance/reload-config":          {ui: true, mcp: true, mcpName: "spm_reload_config"},
 	"POST /api/maintenance/reload-dns":             {ui: true},
 	"POST /api/maintenance/restore-config":         {ui: true},
 	"POST /api/notifications/test":                 {ui: true},
 	"POST /api/settings":                           {ui: true},
 	"POST /api/tokens":                             {ui: true},
-	"POST /api/waf/categories/toggle":              {mcp: true, notInUI: "the dashboard changes WAF categories through the WAF policy, which keeps one history (PUT /api/waf/policy)"},
+	"POST /api/waf/categories/toggle":              {mcp: true, mcpName: "spm_toggle_waf_category", notInUI: "the dashboard changes WAF categories through the WAF policy, which keeps one history (PUT /api/waf/policy)"},
 	"POST /api/waf/policy/exceptions":              {ui: true},
 	"POST /api/waf/policy/observe-rules":           {ui: true},
 	"POST /api/waf/test-rule":                      {ui: true},
