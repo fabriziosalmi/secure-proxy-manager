@@ -15,6 +15,17 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.41.0] - 2026-11-16
+
+Every operation offered to MCP is now named in the API's registry, and
+`spm-mcp` 0.5.0 builds its tools from it. Nothing in the API is
+**BREAKING** and `X-API-Version` stays 1.
+
+**Upgrade notes.** `spm-mcp` 0.4.0 keeps working against this release: no
+route it calls changed. `spm-mcp` 0.5.0 needs this release: against an
+older server it answers an error naming 3.41.0 instead of a list of tools.
+Its tool arguments follow the API (see Changed).
+
 ### Added
 
 - **The operations offered to MCP are named in the registry.** An operation
