@@ -255,8 +255,10 @@ installed checkout.
 `spm-mcp`, that exposes part of the API as tools, built from the server's
 OpenAPI document (spm-mcp 0.5.0 needs Secure Proxy Manager 3.41.0 or later;
 with an older server, run `uvx spm-mcp==0.4.0`). It is read-only by default:
-the tools that change the proxy (block a domain, toggle a WAF category, add an
-egress entry, reload) are registered only with `SPM_MCP_READONLY=false`.
+the tools that change the proxy (the lists, client groups, egress providers,
+snapshots, reloads) are registered only with `SPM_MCP_READONLY=false` and a
+write token, and a tool that removes something answers what it would remove
+unless the call says `confirm: true`.
 
 ```bash
 SPM_URL=http://localhost:5001 SPM_TOKEN=spm_... uvx spm-mcp

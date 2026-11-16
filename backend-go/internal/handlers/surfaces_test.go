@@ -1,7 +1,10 @@
 package handlers
 
 import (
+	"fmt"
+	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -104,5 +107,129 @@ func TestTheMCPToolsAreNamedInTheRegistry(t *testing.T) {
 	}
 	if published != len(byName) {
 		t.Errorf("%d operations publish x-spm-mcp-name, want %d", published, len(byName))
+	}
+}
+
+// An MCP tool a token cannot call would be offered and always refused:
+// spm-mcp authenticates with a token. A reading tool needs no more than a
+// read token, so the default read-only server can offer it.
+func TestEveryMCPToolIsReachableWithAToken(t *testing.T) {
+	for key, s := range routeSurfaces {
+		if !s.mcp {
+			continue
+		}
+		method, path, _ := strings.Cut(key, " ")
+		scope := tokenScope(method, path)
+		if scope == "none" {
+			t.Errorf("%s (%s) is an MCP tool no token may call", key, s.mcpName)
+		}
+		if method == "GET" && scope != "read" {
+			t.Errorf("%s (%s) reads and needs a %s token", key, s.mcpName, scope)
+		}
+	}
+}
+
+// These operations are kept from MCP on purpose. A read of a log row can
+// carry text written to steer the model, and with these an obeyed row would
+// switch off inspection, send the logs elsewhere, replace the WAF policy or
+// scan the network. Offering one is a decision: remove it here with the
+// reason it is now safe.
+var keptFromMCP = map[string]string{
+	"PUT /api/settings/{name}":                "one setting can switch off inspection or send the logs to another host",
+	"POST /api/settings":                      "every setting at once",
+	"POST /api/waf/policy/exceptions":         "an exception lets a request past the WAF",
+	"POST /api/waf/policy/observe-rules":      "a rule left to log only stops blocking",
+	"PUT /api/waf/policy":                     "replaces the whole WAF policy",
+	"POST /api/config/snapshots/{id}/restore": "replaces the whole configuration",
+	"DELETE /api/security/rate-limits/{ip}":   "lets an address try sign-ins again",
+	"POST /api/dns/detect":                    "probes a private network from the server",
+	"POST /api/database/optimize":             "locks the database while it runs",
+}
+
+func TestTheOperationsKeptFromMCPStayKept(t *testing.T) {
+	for key, why := range keptFromMCP {
+		s, ok := routeSurfaces[key]
+		if !ok {
+			t.Errorf("%s is kept from MCP and is no operation", key)
+			continue
+		}
+		if s.mcp {
+			t.Errorf("%s is an MCP tool and is kept from MCP: %s", key, why)
+		}
+	}
+}
+
+// mcpReadme is the spm-mcp README, whose tool table is written from the
+// registry between these markers. UPDATE_OPENAPI=1 writes it.
+const mcpReadme = "../../../mcp/README.md"
+
+const mcpTableStart, mcpTableEnd = "<!-- tools:start -->\n", "<!-- tools:end -->\n"
+
+func mcpToolTable(t *testing.T) string {
+	doc := OpenAPIDocument(publishedRouter(t))
+	type row struct{ name, call, offered, notes string }
+	var rows []row
+	for path, item := range doc["paths"].(map[string]any) {
+		for method, v := range item.(map[string]any) {
+			op, ok := v.(map[string]any)
+			if !ok {
+				continue
+			}
+			name, ok := op["x-spm-mcp-name"].(string)
+			if !ok {
+				continue
+			}
+			m := strings.ToUpper(method)
+			offered := "always"
+			if m != "GET" {
+				offered = "with `SPM_MCP_READONLY=false`"
+			}
+			var notes []string
+			if op["x-spm-untrusted"] == true {
+				notes = append(notes, "untrusted")
+			}
+			if params, ok := op["parameters"].([]any); ok {
+				for _, p := range params {
+					if p.(map[string]any)["name"] == "dry_run" {
+						notes = append(notes, "preview unless `confirm: true`")
+					}
+				}
+			}
+			rows = append(rows, row{name, "`" + m + " " + path + "`", offered, strings.Join(notes, ", ")})
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if (rows[i].offered == "always") != (rows[j].offered == "always") {
+			return rows[i].offered == "always"
+		}
+		return rows[i].name < rows[j].name
+	})
+	var b strings.Builder
+	b.WriteString("| Tool | API call | Offered | Notes |\n|---|---|---|---|\n")
+	for _, r := range rows {
+		fmt.Fprintf(&b, "| `%s` | %s | %s | %s |\n", r.name, r.call, r.offered, r.notes)
+	}
+	return b.String()
+}
+
+func TestTheMCPToolTableIsCurrent(t *testing.T) {
+	have, err := os.ReadFile(mcpReadme)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, rest, ok1 := strings.Cut(string(have), mcpTableStart)
+	_, after, ok2 := strings.Cut(rest, mcpTableEnd)
+	if !ok1 || !ok2 {
+		t.Fatalf("%s has no %q ... %q", mcpReadme, mcpTableStart, mcpTableEnd)
+	}
+	want := before + mcpTableStart + mcpToolTable(t) + mcpTableEnd + after
+	if os.Getenv("UPDATE_OPENAPI") == "1" {
+		if err := os.WriteFile(mcpReadme, []byte(want), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	if string(have) != want {
+		t.Errorf("the tool table in %s is not the registry's; run: UPDATE_OPENAPI=1 go test ./internal/handlers -run 'TestThePublishedOpenAPIIsCurrent|TestTheMCPToolTableIsCurrent'", mcpReadme)
 	}
 }

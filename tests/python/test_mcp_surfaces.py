@@ -22,7 +22,7 @@ from test_mcp_server import StubAPI, _load, _tools  # noqa: E402
 
 SPEC = json.loads((Path(__file__).resolve().parents[2] / "docs/public/openapi.json").read_text())
 OPS = [(m.upper(), p, op) for p, item in SPEC["paths"].items() for m, op in item.items()]
-SAMPLE = {"string": "example.com", "integer": 1, "number": 1, "boolean": True}
+SAMPLE = {"string": "example.com", "integer": 1, "number": 1, "boolean": True, "array": [1], "object": {}}
 
 
 def _operation(method, path):

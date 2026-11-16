@@ -22,10 +22,16 @@ REAL_CLIENT = httpx.Client  # before any test replaces it
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "mcp"))
 
 SPEC = json.loads((Path(__file__).resolve().parents[2] / "docs/public/openapi.json").read_text())
-MUTATING = {"spm_block_domain", "spm_unblock_domain", "spm_toggle_waf_category",
-            "spm_allow_egress", "spm_reload_config"}
-READING = {"spm_status", "spm_dashboard", "spm_top_domains", "spm_shadow_it", "spm_user_agents",
-           "spm_recent_logs", "spm_waf_categories", "spm_list_domain_blocklist"}
+NAMED = {op["x-spm-mcp-name"]: (m.upper(), op) for item in SPEC["paths"].values()
+         for m, op in item.items() if isinstance(op, dict) and "x-spm-mcp-name" in op}
+READING = {n for n, (m, _) in NAMED.items() if m == "GET"}
+MUTATING = set(NAMED) - READING
+PREVIEWING = {n for n, (_, op) in NAMED.items()
+              if any(p.get("name") == "dry_run" for p in op.get("parameters", []))}
+# The tools of 0.4.0: an assistant configured with them must still find them.
+FIRST = {"spm_status", "spm_dashboard", "spm_top_domains", "spm_shadow_it", "spm_user_agents",
+         "spm_recent_logs", "spm_waf_categories", "spm_list_domain_blocklist", "spm_block_domain",
+         "spm_unblock_domain", "spm_toggle_waf_category", "spm_allow_egress", "spm_reload_config"}
 
 
 def _load(monkeypatch, readonly=None, token=None, api=None):
@@ -76,6 +82,12 @@ def _tools(server):
 
 def _call(server, name, **args):
     return asyncio.run(server.mcp.call_tool(name, args))
+
+
+def test_the_document_names_the_tools_of_0_4_and_previews_every_removal():
+    assert FIRST <= set(NAMED)
+    assert len(READING) == 51 and len(MUTATING) == 51, (len(READING), len(MUTATING))
+    assert len(PREVIEWING) == 19 and PREVIEWING <= MUTATING
 
 
 def test_default_registers_no_mutating_tool(monkeypatch):
@@ -173,19 +185,23 @@ def test_a_call_with_missing_or_unknown_arguments_sends_nothing(monkeypatch):
 
 
 def test_an_operation_with_dry_run_previews_unless_confirmed(monkeypatch):
-    """No tool marked mcp takes dry_run yet; the rule is held here so the first
-    one that does previews by default."""
-    spec = json.loads(json.dumps(SPEC))
-    spec["paths"]["/api/ip-blacklist/clear-all"]["delete"]["x-spm-mcp-name"] = "spm_clear_blocked_ips"
-    api = StubAPI(scope="write", spec=spec)
+    """Every removal the server previews is sent with dry_run=true unless the
+    call says confirm: true; no tool offers dry_run itself."""
+    api = StubAPI(scope="write")
     server = _load(monkeypatch, readonly="false", token="spm_x_y", api=api)
-    tool = _tools(server)["spm_clear_blocked_ips"]
-    assert "confirm" in tool.input_schema["properties"] and "dry_run" not in tool.input_schema["properties"]
-    assert "confirm: true" in tool.description
+    tools = _tools(server)
+    for name in sorted(PREVIEWING):
+        props = tools[name].input_schema["properties"]
+        assert "confirm" in props and "dry_run" not in props, name
+        assert "confirm: true" in tools[name].description, name
     _call(server, "spm_clear_blocked_ips")
+    assert (api.calls[-1].method, api.calls[-1].url.path) == ("DELETE", "/api/ip-blacklist/clear-all")
     assert dict(api.calls[-1].url.params) == {"dry_run": "true"}
     _call(server, "spm_clear_blocked_ips", confirm=True)
     assert "dry_run" not in dict(api.calls[-1].url.params)
+    _call(server, "spm_unblock_ips", ids=[1, 2])
+    assert dict(api.calls[-1].url.params) == {"dry_run": "true"}
+    assert json.loads(api.calls[-1].content) == {"ids": [1, 2]}, "confirm is not a body field"
 
 
 def test_every_operation_of_the_document_makes_a_tool(monkeypatch):
