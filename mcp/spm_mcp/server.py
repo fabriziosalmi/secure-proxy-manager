@@ -191,18 +191,7 @@ class ToolDef:
             elif p.get("in") == "query":
                 self.query_params.append(p["name"])
                 add(p["name"], schema, bool(p.get("required")))
-        body = (op.get("requestBody") or {}).get("content", {}).get("application/json", {}).get("schema")
-        if body is not None:
-            body = _resolve(body, components)
-            if body.get("type") == "object" and body.get("properties"):
-                for field, schema in body["properties"].items():
-                    if field in self.path_params:
-                        continue  # the path names it (PUT /api/client-groups/{id} ignores a body id)
-                    self.body_fields.append(field)
-                    add(field, schema, field in body.get("required", []))
-            else:
-                self.whole_body = True
-                add("body", body, bool(op["requestBody"].get("required")))
+        self._read_body(op, components, add)
         if self.dry_run:
             add("confirm", {"type": "boolean", "default": False,
                             "description": "true to do it; without it the call only answers what it would do"}, False)
@@ -228,6 +217,22 @@ class ToolDef:
                 open_world_hint=False,
             ),
         )
+
+    def _read_body(self, op: dict[str, Any], components: dict[str, Any], add: Any) -> None:
+        """The request body's fields as arguments, or the whole body as one."""
+        body = (op.get("requestBody") or {}).get("content", {}).get("application/json", {}).get("schema")
+        if body is None:
+            return
+        body = _resolve(body, components)
+        if body.get("type") == "object" and body.get("properties"):
+            for field, schema in body["properties"].items():
+                if field in self.path_params:
+                    continue  # the path names it (PUT /api/client-groups/{id} ignores a body id)
+                self.body_fields.append(field)
+                add(field, schema, field in body.get("required", []))
+        else:
+            self.whole_body = True
+            add("body", body, bool(op["requestBody"].get("required")))
 
     def call(self, args: dict[str, Any]) -> Any:
         path = self.path
