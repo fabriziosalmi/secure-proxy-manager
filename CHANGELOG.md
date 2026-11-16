@@ -15,6 +15,16 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.40.0] - 2026-11-16
+
+One error shape and previews before destructive calls. Every error answer
+carries a `code` from a fixed list, and the 21 operations that remove or reset
+something answer what they would do on `?dry_run=true`, changing nothing.
+Nothing is **BREAKING** and `X-API-Version` stays 1.
+
+**Upgrade notes.** Nothing to do. A client that read `detail` keeps working;
+`code` is new beside it.
+
 ### Added
 
 - **Every error answer carries a `code`** from a fixed list (`invalid_request`,
