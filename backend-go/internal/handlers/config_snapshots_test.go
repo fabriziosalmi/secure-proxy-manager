@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 
@@ -314,5 +315,44 @@ func TestAnUnknownSnapshotIs404(t *testing.T) {
 	}
 	if code, _ := snapCall(t, r, "POST", "/api/config/snapshots/999/restore", nil); code != http.StatusNotFound {
 		t.Errorf("restore 999: %d", code)
+	}
+}
+
+// A restore passes only the settings that differ. A snapshot that differs
+// only in the time window or the bandwidth limit, with the toggles unchanged,
+// was written to the database while time_restrictions.conf and
+// bandwidth_limits.conf kept the values the proxy enforced before.
+func TestARestoredTimeWindowAndBandwidthReachTheirFiles(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	r := snapRouter(t, db, cfg)
+	save := func(start, mbps string) {
+		t.Helper()
+		if code, out := snapCall(t, r, "POST", "/api/settings", map[string]string{
+			"enable_time_restrictions": "true", "time_restriction_start": start, "time_restriction_end": "18:00",
+			"enable_bandwidth_limits": "true", "bandwidth_limit_mbps": mbps,
+		}); code != http.StatusOK {
+			t.Fatalf("save: %d %v", code, out)
+		}
+	}
+	save("08:00", "100")
+	code, out := snapCall(t, r, "POST", "/api/config/snapshots", map[string]string{"note": "08:00, 100"})
+	if code != http.StatusOK {
+		t.Fatalf("take: %d %v", code, out)
+	}
+	id := strconv.FormatInt(int64(out["data"].(map[string]any)["id"].(float64)), 10)
+	save("10:00", "50")
+
+	if code, out := snapCall(t, r, "POST", "/api/config/snapshots/"+id+"/restore", nil); code != http.StatusOK {
+		t.Fatalf("restore: %d %v", code, out)
+	}
+	for file, want := range map[string]string{
+		"time_restrictions.conf": "TIME_START=08:00\nTIME_END=18:00\n",
+		"bandwidth_limits.conf":  "BW_LIMIT_MBPS=100\nBW_PER_USER_KBPS=0\n",
+	} {
+		got, err := os.ReadFile(filepath.Join(cfg.ConfigDir, file))
+		if err != nil || string(got) != want {
+			t.Errorf("after the restore %s = %q (%v), want %q", file, got, err, want)
+		}
 	}
 }

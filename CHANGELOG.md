@@ -29,6 +29,12 @@ for at least one minor release before disappearing.
   restore that changed a `waf_h_*` setting, no longer leaves the WAF on its
   `WAF_H_*` compose defaults. A WAF that matches gets no writes; a WAF whose
   running heuristics cannot be read gets every stored value.
+- **Saving or restoring only the time window or the bandwidth limits reaches
+  the proxy.** `time_restrictions.conf` and `bandwidth_limits.conf` are
+  rewritten when a request carries any of their settings, not only the
+  toggle, so `PUT /api/settings/{name}` (`spm settings set
+  time_restriction_start 09:00`) and a snapshot restore that changes only a
+  time or a limit no longer leave the proxy on the old values.
 
 ## [3.42.0] - 2026-11-16
 
