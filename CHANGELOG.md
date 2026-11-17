@@ -35,6 +35,11 @@ for at least one minor release before disappearing.
   toggle, so `PUT /api/settings/{name}` (`spm settings set
   time_restriction_start 09:00`) and a snapshot restore that changes only a
   time or a limit no longer leave the proxy on the old values.
+- **Changing one setting takes a configuration snapshot first.**
+  `PUT /api/settings/{name}` (`spm settings set`) is preceded by a snapshot,
+  as `POST /api/settings` is, with the reason "before a change to setting
+  {name}", so the configuration history can undo it and tells it apart from a
+  settings save.
 
 ## [3.42.0] - 2026-11-16
 

@@ -45,7 +45,7 @@ PUT /api/settings/{setting_name}
 
 The key in the path must consist of letters, digits and underscores, at most 100 characters, and must not be an internally managed or retired setting (`400` otherwise). The value is capped at 10,000 characters and checked with the same rules as the bulk endpoint; a secret is encrypted before it is stored.
 
-It applies the value as `POST /api/settings` does: the marker, list or env file the proxy reads is written, and WAF heuristics are pushed to the running WAF. A secret sent with an empty value is cleared. The answer is `{"status": "success", "message": "Setting updated", "data": {...}}`, with `data.waf` when the value is a WAF heuristic, or `status: "partial"` and `data.failed` naming the proxy files that could not be written. As with the bulk endpoint, a proxy setting takes effect when the proxy reloads (`POST /api/maintenance/reload-config`).
+As with `POST /api/settings`, a [configuration snapshot](../guide/configuration.md#configuration-history) is taken first; its reason names the setting. It applies the value as `POST /api/settings` does: the marker, list, time, bandwidth or env file the proxy reads is written, and WAF heuristics are pushed to the running WAF. A secret sent with an empty value is cleared. The answer is `{"status": "success", "message": "Setting updated", "data": {...}}`, with `data.waf` when the value is a WAF heuristic, or `status: "partial"` and `data.failed` naming the proxy files that could not be written. As with the bulk endpoint, a proxy setting takes effect when the proxy reloads (`POST /api/maintenance/reload-config`).
 
 ---
 

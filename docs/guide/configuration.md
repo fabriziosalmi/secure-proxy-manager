@@ -246,10 +246,12 @@ connected then.
 Settings > Admin and backup > Configuration history. A snapshot of the
 configuration an operator sets (the settings, the client groups, the WAF
 policy and the egress allowlist) is taken before every change to them made
-through the dashboard or the API: a settings save, a client group added,
-edited or removed, a WAF policy edit, exception or log-only rule, an egress
-allowlist addition or removal, and a restore from a file. *Take a snapshot
-now* takes one on demand, with an optional note.
+through the dashboard or the API: a settings save, a single setting changed
+(`PUT /api/settings/{name}`, `spm settings set`; the snapshot names the
+setting), a client group added, edited or removed, a WAF policy edit,
+exception or log-only rule, an egress allowlist addition or removal, and a
+restore from a file. *Take a snapshot now* takes one on demand, with an
+optional note.
 
 - A snapshot identical to the newest is not stored again, so a save that
   changes nothing adds none. The newest 200 are kept.

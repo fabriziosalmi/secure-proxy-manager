@@ -89,6 +89,49 @@ func TestASaveIsPrecededByASnapshot(t *testing.T) {
 	}
 }
 
+// PUT /api/settings/{name} (spm settings set) is a configuration change like
+// a settings save and is preceded by a snapshot that names the setting, so
+// the history tells it from a save and can undo it. The route had no
+// snapshot: the state just before it was in no snapshot unless something
+// else had taken one.
+func TestASingleSettingChangeIsPrecededByASnapshot(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	r := snapRouter(t, db, cfg)
+	if code, out := snapCall(t, r, "POST", "/api/settings", map[string]string{"log_retention_days": "45"}); code != http.StatusOK {
+		t.Fatalf("save: %d %v", code, out)
+	}
+	before := snapshotCount(t, db)
+	if code, out := snapCall(t, r, "PUT", "/api/settings/log_retention_days", map[string]string{"value": "60"}); code != http.StatusOK {
+		t.Fatalf("put: %d %v", code, out)
+	}
+	if n := snapshotCount(t, db); n != before+1 {
+		t.Fatalf("%d snapshots after the PUT, want %d", n, before+1)
+	}
+	var id int64
+	var reason, data string
+	_ = db.QueryRow("SELECT id, reason, data FROM config_snapshots ORDER BY id DESC LIMIT 1").Scan(&id, &reason, &data)
+	var s configSnapshot
+	_ = json.Unmarshal([]byte(data), &s)
+	if reason != "before a change to setting log_retention_days" || s.Settings["log_retention_days"] != "45" {
+		t.Errorf("newest snapshot %q holds log_retention_days=%q, want the PUT named and 45", reason, s.Settings["log_retention_days"])
+	}
+	if code, out := snapCall(t, r, "POST", "/api/config/snapshots/"+strconv.FormatInt(id, 10)+"/restore", nil); code != http.StatusOK {
+		t.Fatalf("restore: %d %v", code, out)
+	}
+	if v := settingValue(t, db, "log_retention_days"); v != "45" {
+		t.Errorf("restoring the snapshot before the PUT left log_retention_days = %q, want 45", v)
+	}
+
+	// A name the route refuses is not written into the history.
+	snapCall(t, r, "POST", "/api/settings", map[string]string{"log_retention_days": "50"})
+	snapCall(t, r, "PUT", "/api/settings/no%20such", map[string]string{"value": "x"})
+	_ = db.QueryRow("SELECT reason FROM config_snapshots ORDER BY id DESC LIMIT 1").Scan(&reason)
+	if reason != "before a change to a setting" {
+		t.Errorf("a refused name gave the snapshot reason %q", reason)
+	}
+}
+
 // Closing the setup wizard records the dashboard's own state, not the
 // configuration: a snapshot never holds the flag, so after it a save that
 // changes nothing adds no snapshot. With the flag in the snapshot, that save
