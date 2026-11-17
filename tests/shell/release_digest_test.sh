@@ -90,7 +90,8 @@ out=$(sel dns 5); rc=$?
 [ "$rc" -ne 0 ] && [ -z "$out" ] && grep -q 'no scanned digest for dns' "$T/err" && ok "a leg with no digest of its own fails" || bad "own digest missing" "rc=$rc out=$out err=$(cat "$T/err")"
 
 # An artifact name without an attempt is not guessed at.
-fresh; for i in web backend waf proxy; do put "$T/dl" "$i" 1 "a1$i"; done; mkdir -p "$T/dl/digest-dns"; d a1dns > "$T/dl/digest-dns/digest"
+# All five images have an attempt, so only the name check can refuse it.
+fresh; for i in $IMAGES; do put "$T/dl" "$i" 1 "a1$i"; done; mkdir -p "$T/dl/digest-dns"; d a1dns > "$T/dl/digest-dns/digest"
 out=$(sel web 5); rc=$?
 [ "$rc" -ne 0 ] && [ -z "$out" ] && ok "an artifact named without its attempt fails" || bad "unnamed attempt fails" "rc=$rc out=$out"
 
@@ -103,6 +104,23 @@ out=$(sel web 5); rc=$?
 fresh; for i in $IMAGES; do put "$T/dl" "$i" 1 "a1$i"; done; put "$T/dl" web 2 "a2web"; rm "$T/dl/digest-web-2/digest"
 out=$(sel web 5); rc=$?
 [ "$rc" -ne 0 ] && [ -z "$out" ] && ok "the newest attempt's artifact without a digest file fails, not falls back" || bad "empty newest artifact" "rc=$rc out=$out"
+
+# The choice must not depend on the order the directory lists its
+# artifacts: the attempt-order cases run again with find's output sorted one
+# way and then the other, so "the first one found" fails in at least one.
+realfind=$(command -v find)
+for order in "" r; do
+  mkdir -p "$T/bin$order"
+  printf '#!/usr/bin/env bash\n"%s" "$@" | LC_ALL=C sort -z%s\n' "$realfind" "$order" > "$T/bin$order/find"
+  chmod +x "$T/bin$order/find"
+  how="listing sorted${order:+ in reverse}"
+  fresh; for i in $IMAGES; do put "$T/dl" "$i" 1 "a1$i"; put "$T/dl" "$i" 2 "a2$i"; done
+  out=$(PATH="$T/bin$order:$PATH" sel backend 5); rc=$?
+  [ "$rc" -eq 0 ] && [ "$out" = "$(d a2backend)" ] && ok "a full rerun publishes attempt 2's digest ($how)" || bad "full rerun ($how)" "rc=$rc out=$out err=$(cat "$T/err")"
+  fresh; for i in $IMAGES; do put "$T/dl" "$i" 1 "a1$i"; done; put "$T/dl" web 9 "a9web"; put "$T/dl" web 10 "a10web"
+  out=$(PATH="$T/bin$order:$PATH" sel web 5); rc=$?
+  [ "$rc" -eq 0 ] && [ "$out" = "$(d a10web)" ] && ok "attempt 10 wins over attempt 9 ($how)" || bad "attempt 10 over 9 ($how)" "rc=$rc out=$out err=$(cat "$T/err")"
+done
 
 # The workflow uploads one artifact per image and attempt, and publish reads
 # it through this script, with the job total as the expected count.
