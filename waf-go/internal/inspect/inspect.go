@@ -185,6 +185,21 @@ func (in *Inspection) Blocked() bool {
 	return in.WouldBlock() && (in.Policy == nil || !in.Policy.Observe())
 }
 
+// DropBody lets go of every copy of r's body the inspection holds, for a
+// request that will not be forwarded (a block): the normalized and raw copies,
+// the bytes Scan or RunCRS put back in front of r.Body, and what CRS kept of
+// the body (target keys and explanations can be substrings of the body CRS
+// parsed). The verdict stays: Score, Matches, BodySize, CRS's rules and score.
+func (in *Inspection) DropBody(r *http.Request) {
+	in.BodyStr, in.bodyRaw = "", nil
+	if r != nil && r.Body != nil {
+		r.Body = http.NoBody
+	}
+	if in.CRS != nil {
+		in.CRS.Targets, in.CRS.Explain = nil, nil
+	}
+}
+
 // filter is the policy as it applies to this request, nil with no policy or
 // one that changes no single rule.
 func (in *Inspection) filter(r *http.Request) *policy.Applied {
