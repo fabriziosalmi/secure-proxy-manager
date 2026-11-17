@@ -15,7 +15,29 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Changed
+
+- CI: a newer push to a pull request cancels the CI run of the commit it
+  replaces, so a superseded run no longer holds runners the new head waits
+  for. Runs on main, in the merge queue, the nightly run and manual runs each
+  get a group of their own and are never cancelled or queued behind another
+  run.
+
 ### Fixed
+
+- **The installer installs the newest release whose images are published.**
+  It took the newest `vX.Y.Z` git tag, which exists from the moment it is
+  pushed, while the images are published only at the end of the release run
+  and never when a gate fails: an install or update in that window, or on a
+  release whose images were never published, stopped at the image pull with
+  `manifest unknown`. `deploy/install.sh` now asks `ghcr.io` anonymously
+  whether the five images (web, backend, waf, proxy, dns) of the tag exist
+  before it clones or moves the installation. A tag without them is skipped,
+  with a `[WARN]` naming it and the missing images, at most twice; then it
+  stops. When the registry cannot be asked it stops with an error and changes
+  nothing, rather than install an older release. An explicit `SPM_VERSION`
+  is checked the same way and never falls back. `scripts/canary.sh` follows
+  the same rule on its `release` track, using the installer's own check.
 
 - **The blacklist auto-refresh refuses a feed above 32 MB, the cap the import
   already used.** It read up to 200 MiB of a feed into memory, in a backend
