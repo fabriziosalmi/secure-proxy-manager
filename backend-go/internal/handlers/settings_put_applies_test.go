@@ -92,3 +92,37 @@ func TestPutSettingRefusesAndClearsAsBefore(t *testing.T) {
 		t.Errorf("the secret was not cleared: %q", stored)
 	}
 }
+
+// A time window or a bandwidth value set by PUT, without its toggle, reaches
+// the file the proxy reads. The files were rewritten only when the request
+// carried enable_time_restrictions or enable_bandwidth_limits, so
+// "spm settings set time_restriction_start 09:00" answered "Setting updated"
+// and the proxy kept the old window.
+func TestPutSettingRewritesTheTimeAndBandwidthFiles(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	h := NewSettingsHandlers(db, cfg)
+	for _, kv := range [][2]string{
+		{"time_restriction_start", "08:00"}, {"time_restriction_end", "18:00"}, {"enable_time_restrictions", "true"},
+		{"bandwidth_limit_mbps", "100"}, {"bandwidth_limit_per_user_kbps", "0"}, {"enable_bandwidth_limits", "true"},
+	} {
+		if w := putSetting(t, h, kv[0], kv[1]); w.Code != http.StatusOK {
+			t.Fatalf("PUT %s = %d %s", kv[0], w.Code, w.Body.String())
+		}
+	}
+
+	for _, c := range []struct{ key, value, file, want string }{
+		{"time_restriction_start", "09:00", "time_restrictions.conf", "TIME_START=09:00\nTIME_END=18:00\n"},
+		{"time_restriction_end", "17:30", "time_restrictions.conf", "TIME_START=09:00\nTIME_END=17:30\n"},
+		{"bandwidth_limit_mbps", "50", "bandwidth_limits.conf", "BW_LIMIT_MBPS=50\nBW_PER_USER_KBPS=0\n"},
+		{"bandwidth_limit_per_user_kbps", "512", "bandwidth_limits.conf", "BW_LIMIT_MBPS=50\nBW_PER_USER_KBPS=512\n"},
+	} {
+		if w := putSetting(t, h, c.key, c.value); w.Code != http.StatusOK {
+			t.Fatalf("PUT %s = %d %s", c.key, w.Code, w.Body.String())
+		}
+		got, err := os.ReadFile(filepath.Join(cfg.ConfigDir, c.file))
+		if err != nil || string(got) != c.want {
+			t.Errorf("after PUT %s=%s, %s = %q (%v), want %q", c.key, c.value, c.file, got, err, c.want)
+		}
+	}
+}

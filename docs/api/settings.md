@@ -45,7 +45,7 @@ PUT /api/settings/{setting_name}
 
 The key in the path must consist of letters, digits and underscores, at most 100 characters, and must not be an internally managed or retired setting (`400` otherwise). The value is capped at 10,000 characters and checked with the same rules as the bulk endpoint; a secret is encrypted before it is stored.
 
-It applies the value as `POST /api/settings` does: the marker, list or env file the proxy reads is written, and WAF heuristics are pushed to the running WAF. A secret sent with an empty value is cleared. The answer is `{"status": "success", "message": "Setting updated", "data": {...}}`, with `data.waf` when the value is a WAF heuristic, or `status: "partial"` and `data.failed` naming the proxy files that could not be written. As with the bulk endpoint, a proxy setting takes effect when the proxy reloads (`POST /api/maintenance/reload-config`).
+As with `POST /api/settings`, a [configuration snapshot](../guide/configuration.md#configuration-history) is taken first; its reason names the setting. It applies the value as `POST /api/settings` does: the marker, list, time, bandwidth or env file the proxy reads is written, and WAF heuristics are pushed to the running WAF. A secret sent with an empty value is cleared. The answer is `{"status": "success", "message": "Setting updated", "data": {...}}`, with `data.waf` when the value is a WAF heuristic, or `status: "partial"` and `data.failed` naming the proxy files that could not be written. As with the bulk endpoint, a proxy setting takes effect when the proxy reloads (`POST /api/maintenance/reload-config`).
 
 ---
 
@@ -280,17 +280,17 @@ current lists, marker files and settings files and reload.
 
 **This call blocks.** It writes a trigger file and then waits up to **8 seconds**
 for the proxy's watchdog to acknowledge what it did, so a client should allow at
-least that. There are three outcomes, and a `200` does not on its own mean the
-reload was applied:
+least that. A `200` does not on its own mean the reload was applied:
 
 | HTTP | `status` | Meaning |
 |---|---|---|
-| `200` | `success` | The generator ran, squid accepted the config, and it is live |
+| `200` | `success` | The lists were exported, the generator ran, squid accepted the config, and it is live |
+| `200` | `partial` (`code: export_failed`) | The proxy reloaded, but the lists could not be exported: it enforces the list files already on disk, without the last list changes. The backend log says why |
 | `500` | `error` (`code: reload_failed`) | The proxy refused the new config and **kept the previous one**. `data.generator_rc` and `data.reconfigure_rc` say which step failed |
-| `500` | `error` (`code: trigger_write_failed`) | The lists were exported, but `/config/.reload-squid` could not be written |
-| `200` | `pending` | Nothing acknowledged within the timeout; check that the proxy container is running |
+| `500` | `error` (`code: trigger_write_failed`) | `/config/.reload-squid` could not be written; `message` says whether the lists were exported |
+| `200` | `pending` | Nothing acknowledged within the timeout; check that the proxy container is running. `message` also says when the lists could not be exported |
 
-A caller that treats any `200` as success will read `pending` as applied.
+A caller that treats any `200` as success will read `pending` and `partial` as applied.
 
 ---
 
