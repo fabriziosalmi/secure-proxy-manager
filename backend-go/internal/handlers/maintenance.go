@@ -694,9 +694,16 @@ func (h *MaintenanceHandlers) CheckCertSecurity(w http.ResponseWriter, r *http.R
 	})
 }
 
+// exportFailedDetail says what a reload after a failed list export applied.
+const exportFailedDetail = "the lists could not be exported, so the proxy reloaded with the list files already on disk; " +
+	"the last list changes are not enforced"
+
 func (h *MaintenanceHandlers) ReloadConfig(w http.ResponseWriter, r *http.Request) {
-	if err := database.ExportBlacklistsToFiles(h.db, h.cfg.ConfigDir); err != nil {
-		log.Warn().Err(err).Msg("export blacklists failed during reload")
+	// The reload goes ahead when the export fails: the proxy may still need
+	// the other files. The answer says so instead of "Proxy reloaded".
+	exportErr := database.ExportBlacklistsToFiles(h.db, h.cfg.ConfigDir)
+	if exportErr != nil {
+		log.Warn().Err(exportErr).Msg("export blacklists failed during reload")
 	}
 	username, _ := r.Context().Value(middleware.CtxUsername).(string)
 	database.Audit(h.db, username, "reload_config", "proxy", "")
@@ -706,11 +713,15 @@ func (h *MaintenanceHandlers) ReloadConfig(w http.ResponseWriter, r *http.Reques
 	// #nosec G306 — reload trigger, must be readable by the proxy/dns container
 	if err := os.WriteFile(reloadFile, []byte(strconv.FormatInt(stamp, 10)), 0644); err != nil {
 		log.Warn().Err(err).Msg("proxy reload file trigger failed")
+		msg := "Lists exported, but the reload trigger could not be written; apply manually"
+		if exportErr != nil {
+			msg = "The lists could not be exported and the reload trigger could not be written; apply manually"
+		}
 		writeJSON(w, http.StatusInternalServerError, map[string]string{
 			"status":  "error",
 			"code":    "trigger_write_failed",
-			"message": "Config exported, but the reload trigger could not be written; apply manually",
-			"detail":  "Config exported, but the reload trigger could not be written; apply manually",
+			"message": msg,
+			"detail":  msg,
 		})
 		return
 	}
@@ -723,9 +734,13 @@ func (h *MaintenanceHandlers) ReloadConfig(w http.ResponseWriter, r *http.Reques
 	res, err := awaitReloadResult(filepath.Join(h.cfg.ConfigDir, ".reload-squid.result"), stamp, h.reloadAckTimeout)
 	switch {
 	case err != nil:
+		msg := "reload requested, but the proxy did not acknowledge it in time; check that the proxy container is running"
+		if exportErr != nil {
+			msg += "; the lists could not be exported either"
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"status":  "pending",
-			"message": "reload requested, but the proxy did not acknowledge it in time; check that the proxy container is running",
+			"message": msg,
 		})
 	case !res.Applied:
 		writeJSON(w, http.StatusInternalServerError, map[string]any{
@@ -733,6 +748,13 @@ func (h *MaintenanceHandlers) ReloadConfig(w http.ResponseWriter, r *http.Reques
 			"code":   "reload_failed",
 			"detail": "the proxy refused the new configuration and kept the previous one",
 			"data":   map[string]any{"generator_rc": res.GeneratorRC, "reconfigure_rc": res.ReconfigureRC},
+		})
+	case exportErr != nil:
+		writeJSON(w, http.StatusOK, map[string]string{
+			"status":  "partial",
+			"code":    "export_failed",
+			"message": "Proxy reloaded, but " + exportFailedDetail,
+			"detail":  exportFailedDetail,
 		})
 	default:
 		writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Proxy reloaded"})

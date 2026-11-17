@@ -2,8 +2,10 @@ package workers
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -12,27 +14,59 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/metrics"
 )
 
-// fakeWAF answers /health and records /heuristics/toggle pushes; toggleStatus
-// is what the toggle endpoint returns.
+// fakeWAF answers /health, serves its running heuristics on GET /heuristics
+// and records /heuristics/toggle pushes; toggleStatus is what the toggle
+// endpoint returns, and an accepted toggle changes the running state, as the
+// WAF does. heuristicsStatus is what GET /heuristics answers (200 with the
+// state by default).
 type fakeWAF struct {
-	srv          *httptest.Server
-	toggleStatus atomic.Int32
-	mu           sync.Mutex
-	pushes       []string
+	srv              *httptest.Server
+	toggleStatus     atomic.Int32
+	heuristicsStatus atomic.Int32
+	mu               sync.Mutex
+	pushes           []string
+	state            map[string]bool
+}
+
+// wafComposeDefaults is what a freshly started WAF runs: the WAF_H_* values
+// docker-compose.yml gives it.
+func wafComposeDefaults() map[string]bool {
+	return map[string]bool{
+		"waf_h_entropy": true, "waf_h_beaconing": true, "waf_h_pii": true,
+		"waf_h_sharding": true, "waf_h_ghosting": true, "waf_h_sequence": false,
+	}
 }
 
 func newFakeWAF(t *testing.T) *fakeWAF {
-	f := &fakeWAF{}
+	f := &fakeWAF{state: wafComposeDefaults()}
 	f.toggleStatus.Store(200)
+	f.heuristicsStatus.Store(200)
 	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/health":
 			w.WriteHeader(200)
-		case "/heuristics/toggle":
+		case "/heuristics":
+			if st := int(f.heuristicsStatus.Load()); st != 200 {
+				w.WriteHeader(st)
+				return
+			}
 			f.mu.Lock()
-			f.pushes = append(f.pushes, r.URL.Path)
+			defer f.mu.Unlock()
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok", "data": f.state})
+		case "/heuristics/toggle":
+			var b struct {
+				Heuristic string `json:"heuristic"`
+				Enabled   bool   `json:"enabled"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&b)
+			st := int(f.toggleStatus.Load())
+			f.mu.Lock()
+			f.pushes = append(f.pushes, b.Heuristic)
+			if st == 200 {
+				f.state[b.Heuristic] = b.Enabled
+			}
 			f.mu.Unlock()
-			w.WriteHeader(int(f.toggleStatus.Load()))
+			w.WriteHeader(st)
 		default:
 			w.WriteHeader(404)
 		}
@@ -42,6 +76,18 @@ func newFakeWAF(t *testing.T) *fakeWAF {
 }
 
 func (f *fakeWAF) pushCount() int { f.mu.Lock(); defer f.mu.Unlock(); return len(f.pushes) }
+
+// pushedSince names the heuristics pushed after the first n pushes, sorted.
+func (f *fakeWAF) pushedSince(n int) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := append([]string(nil), f.pushes[n:]...)
+	slices.Sort(out)
+	return out
+}
+
+// restart puts the WAF back on its compose defaults, as a restart does.
+func (f *fakeWAF) restart() { f.mu.Lock(); f.state = wafComposeDefaults(); f.mu.Unlock() }
 
 func TestReconcilePassOutcomes(t *testing.T) {
 	db, cleanup := setupTestDB(t)
@@ -161,5 +207,54 @@ func TestHeartbeatIsReportedWhenTheWAFIsUnreachable(t *testing.T) {
 	}
 	if metrics.WorkerHeartbeatSeconds("waf_reconciler") <= before {
 		t.Error("no heartbeat while the WAF is unreachable: the staleness alert cannot tell this worker is alive")
+	}
+}
+
+// A WAF that restarts between two passes comes back on its compose defaults
+// and answers /health as before. The reconciler used to push only after it had
+// itself seen the WAF unreachable, so the restart went unnoticed and the WAF
+// stayed on WAF_H_* while the Settings page showed the stored values. Every
+// pass now compares the WAF's running heuristics with the stored ones and
+// pushes the ones that differ; a WAF that matches gets no writes, and a WAF
+// whose running state cannot be read gets every stored value.
+func TestReconcilerPushesWhatAWAFRestartReverted(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	_, _ = db.Exec("DELETE FROM settings WHERE setting_name LIKE 'waf_h_%'")
+	_, _ = db.Exec("INSERT OR REPLACE INTO settings(setting_name,setting_value) VALUES('waf_h_sequence','true'),('waf_h_pii','false')")
+	waf := newFakeWAF(t)
+	ctx := context.Background()
+	auth := WAFAuth{Token: "svc-token"}
+
+	if got := reconcileWAF(ctx, db, waf.srv.URL, auth, true); got != reconcileOK || waf.pushCount() != 2 {
+		t.Fatalf("first pass: outcome %v, %d pushes; want ok, 2", got, waf.pushCount())
+	}
+	if got := reconcileWAF(ctx, db, waf.srv.URL, auth, false); got != reconcileOK || waf.pushCount() != 2 {
+		t.Fatalf("matching WAF: outcome %v, %d pushes; want ok and no new push", got, waf.pushCount())
+	}
+
+	waf.restart()
+	before := waf.pushCount()
+	if got := reconcileWAF(ctx, db, waf.srv.URL, auth, false); got != reconcileOK {
+		t.Fatalf("pass after a restart: outcome %v, want ok", got)
+	}
+	if pushed := waf.pushedSince(before); !slices.Equal(pushed, []string{"waf_h_pii", "waf_h_sequence"}) {
+		t.Fatalf("after a restart the reconciler pushed %v, want [waf_h_pii waf_h_sequence]", pushed)
+	}
+	waf.mu.Lock()
+	seq, pii := waf.state["waf_h_sequence"], waf.state["waf_h_pii"]
+	waf.mu.Unlock()
+	if !seq || pii {
+		t.Errorf("the WAF runs waf_h_sequence=%v waf_h_pii=%v, want true, false as stored", seq, pii)
+	}
+	if got := reconcileWAF(ctx, db, waf.srv.URL, auth, false); got != reconcileOK || waf.pushCount() != before+2 {
+		t.Errorf("matching again: outcome %v, %d pushes; want ok, %d", got, waf.pushCount(), before+2)
+	}
+
+	// A WAF whose running state cannot be read is not taken as matching.
+	waf.heuristicsStatus.Store(500)
+	before = waf.pushCount()
+	if got := reconcileWAF(ctx, db, waf.srv.URL, auth, false); got != reconcileOK || waf.pushCount() != before+2 {
+		t.Errorf("unreadable heuristics: outcome %v, %d pushes; want ok and every stored value pushed (%d)", got, waf.pushCount(), before+2)
 	}
 }

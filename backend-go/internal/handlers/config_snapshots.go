@@ -189,6 +189,22 @@ var snapshotState atomic.Pointer[SnapshotHandlers]
 // for a route that changes the configuration. A snapshot that cannot be
 // taken is logged and the change goes ahead: history must not block a fix.
 func snapshotBefore(reason string) func(http.Handler) http.Handler {
+	return snapshotBeforeFunc(func(*http.Request) string { return reason })
+}
+
+// settingChangeReason names the setting a PUT /api/settings/{name} changes,
+// so the history tells it from a settings save. A name the route refuses is
+// not written into the history.
+func settingChangeReason(r *http.Request) string {
+	if name := chi.URLParam(r, "name"); isWritableSettingKey(name) {
+		return "a change to setting " + name
+	}
+	return "a change to a setting"
+}
+
+// snapshotBeforeFunc is snapshotBefore with a reason that depends on the
+// request.
+func snapshotBeforeFunc(reasonOf func(*http.Request) string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// A preview changes nothing, and neither does a dry_run the handler
@@ -196,6 +212,7 @@ func snapshotBefore(reason string) func(http.Handler) http.Handler {
 			if v := r.URL.Query().Get("dry_run"); (v == "" || v == "false") && snapshotState.Load() != nil {
 				sh := snapshotState.Load()
 				user, _ := r.Context().Value(middleware.CtxUsername).(string)
+				reason := reasonOf(r)
 				if _, _, err := takeSnapshot(sh.db, sh.cfg, user, "before "+reason); err != nil {
 					log.Warn().Err(err).Str("reason", reason).Msg("configuration snapshot not taken")
 				}

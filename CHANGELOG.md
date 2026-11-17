@@ -17,6 +17,14 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- **The blacklist auto-refresh refuses a feed above 32 MB, the cap the import
+  already used.** It read up to 200 MiB of a feed into memory, in a backend
+  limited to 128M, and cut a larger feed short with no error, so the entries
+  past the cut were handled as dropped. A feed above the cap now counts as
+  failed: its entries stay, nothing of that list is removed in that run, and
+  its source reads "not downloaded: larger than the 32 MB cap". A custom feed
+  between 32 MB and 200 MiB that refreshed before now fails the same way; the
+  import and the refresh share one constant, so the two caps cannot drift.
 - **A tar-pitted block no longer holds the shared inspection budget.** A
   client blocked more than three times in a minute still waits 10 seconds for
   each further block page, but its request now gives back the inspection
@@ -55,6 +63,36 @@ for at least one minor release before disappearing.
   checks the certificate, then failed with exit status 3 against the default
   self-signed one. It now exits 2 with nothing sent, and the message names
   `--fingerprint` as the way to pin without the question.
+- An extra HTTPS port set in Settings opens HTTPS tunnels to it even below
+  1025 (993, 465, 636, 853): the proxy used to refuse those tunnels as
+  `port_policy`, because the `Safe_ports` rule ran before the `CONNECT` rule.
+  Plain HTTP to such a port is still refused. Ports such as 44, 8 and 844 are
+  now added too: they were taken as already present because 443 and 8443
+  contain them.
+- **The WAF reconciler notices a WAF restart it did not see.** Every 30
+  seconds it reads the heuristics the WAF runs and pushes the stored value of
+  each one that differs, so a WAF that restarted between two passes, or a
+  restore that changed a `waf_h_*` setting, no longer leaves the WAF on its
+  `WAF_H_*` compose defaults. A WAF that matches gets no writes; a WAF whose
+  running heuristics cannot be read gets every stored value.
+- **Saving or restoring only the time window or the bandwidth limits reaches
+  the proxy.** `time_restrictions.conf` and `bandwidth_limits.conf` are
+  rewritten when a request carries any of their settings, not only the
+  toggle, so `PUT /api/settings/{name}` (`spm settings set
+  time_restriction_start 09:00`) and a snapshot restore that changes only a
+  time or a limit no longer leave the proxy on the old values.
+- **Changing one setting takes a configuration snapshot first.**
+  `PUT /api/settings/{name}` (`spm settings set`) is preceded by a snapshot,
+  as `POST /api/settings` is, with the reason "before a change to setting
+  {name}", so the configuration history can undo it and tells it apart from a
+  settings save.
+- **`POST /api/maintenance/reload-config` no longer answers "Proxy reloaded"
+  when exporting the lists failed.** The proxy still reloads, and the answer
+  is `200` with `status: "partial"` and `code: "export_failed"`, saying the
+  proxy enforces the list files already on disk. The dashboard shows it as a
+  warning, not as applied and not as a reload that could not be requested. A
+  `trigger_write_failed` answer no longer claims the lists were exported when
+  they were not.
 
 ## [3.42.0] - 2026-11-16
 
