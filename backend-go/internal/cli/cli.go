@@ -25,7 +25,7 @@ const (
 	exitOK      = 0 // the API answered 2xx
 	exitRefused = 1 // the API answered 4xx, or the person declined
 	exitUsage   = 2 // the command line or the config file is wrong; nothing was sent
-	exitFailed  = 3 // the server could not be reached, its certificate did not match, or it answered 5xx
+	exitFailed  = 3 // the server could not be reached, its certificate did not match, it redirected, or it answered 5xx
 )
 
 const usage = `spm: the Secure Proxy Manager API from a terminal.
@@ -47,7 +47,8 @@ Every command takes --url, --token (or SPM_URL, SPM_TOKEN), --insecure (do
 not check the certificate at all), and --config (or SPM_CONFIG).
 
 Exit status: 0 done, 1 refused (4xx) or declined, 2 usage or config error
-(nothing sent), 3 unreachable, certificate mismatch, or server error (5xx).
+(nothing sent), 3 unreachable, certificate mismatch, a redirect (not
+followed), or server error (5xx).
 `
 
 // Run is the spm command. It returns the exit status.

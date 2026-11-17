@@ -23,6 +23,13 @@ for at least one minor release before disappearing.
   budget and lets go of its body before that wait, not after. One client's
   repeated blocked uploads can no longer make other clients' requests wait for
   the budget and fail with a 503.
+- **`spm` stops at a redirect and names where it points.** The `web`
+  service's plain HTTP ports answer every `/api/` path with a 301 to its
+  https address. `spm` followed it, so a `POST` or `DELETE` arrived there as a
+  `GET` with the token. When the https certificate passed (`--insecure`, or a
+  certificate an authority signed), its 200 read as done, and
+  `spm blocked-ips add` printed "Added" and exited 0 with nothing added. A redirect is now an error that
+  names its target, nothing is sent there, and the exit status is 3.
 
 ## [3.42.0] - 2026-11-16
 

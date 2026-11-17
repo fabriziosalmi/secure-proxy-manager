@@ -140,6 +140,38 @@ func TestTheExitStatusFollowsTheAnswer(t *testing.T) {
 	}
 }
 
+// A redirect is not followed: a POST sent to the web service's plain HTTP
+// port, which answers 301 to its https address, would come back from there as
+// a GET of the list, a 200, and "Added". spm stops at the redirect, names its
+// target, exits 3, and sends nothing to the address it was redirected to.
+func TestARedirectIsAFailureThatNamesItsTarget(t *testing.T) {
+	isolate(t)
+	var reached atomic.Int32
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		reached.Add(1)
+		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
+	}))
+	defer target.Close()
+	front := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+r.URL.RequestURI(), http.StatusMovedPermanently)
+	}))
+	defer front.Close()
+	for _, args := range [][]string{
+		{"blocked-ips", "add", "203.0.113.7"},
+		{"api", "POST", "/api/ip-blacklist", "-d", `{"ip":"203.0.113.7"}`},
+		{"status"},
+	} {
+		code, out, stderr := run(t, "", append(args, "--url", front.URL, "--token", "spm_x_y")...)
+		if code != exitFailed || !strings.Contains(stderr, "redirected to \""+target.URL+"/api/") || strings.Contains(out, "Added") {
+			t.Errorf("%v: exit %d, out %q, stderr %q; want 3 and the redirect's target named", args, code, out, stderr)
+		}
+		t.Logf("%v: exit %d, %s", args, code, strings.TrimSpace(stderr))
+	}
+	if n := reached.Load(); n != 0 {
+		t.Errorf("%d requests reached the address the server redirected to", n)
+	}
+}
+
 // A server that speaks another API version is named on standard error.
 func TestAnotherAPIVersionIsSaid(t *testing.T) {
 	isolate(t)

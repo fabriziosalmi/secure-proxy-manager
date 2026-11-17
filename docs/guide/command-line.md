@@ -121,7 +121,13 @@ the certificate at all.
 | 0 | The API answered 2xx |
 | 1 | The API answered 4xx (refused, not found, a token whose scope does not allow it), or you declined to pin the certificate |
 | 2 | The command line or the config file is wrong; nothing was sent |
-| 3 | The server could not be reached, its certificate is not the pinned one, or it answered 5xx |
+| 3 | The server could not be reached, its certificate is not the pinned one, it answered 5xx, or it answered a redirect |
+
+`spm` does not follow a redirect. The `web` service's plain HTTP ports (80 and
+8011) answer every `/api/` path with a redirect to `https://HOST:8443`, and a
+`POST` or `DELETE` that followed it would arrive there as a `GET`, so
+`spm` names the address it was redirected to, sends nothing there, and exits
+with status 3. Give that address with `--url`.
 
 When the server speaks another API version than the `spm` build
 (`X-API-Version`), `spm` says so on standard error.
