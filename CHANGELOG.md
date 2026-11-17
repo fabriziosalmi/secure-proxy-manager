@@ -52,6 +52,12 @@ for at least one minor release before disappearing.
   IPv6 and a pasted list already added it. The form now checks IPv6 the way
   the backend does and refuses only what the backend refuses, saying "not
   an IP address or network".
+- **After Reset statistics, Clear the log or Delete older logs, the pages
+  show the emptied figures.** Reset statistics marked no cached figure out
+  of date, and the other two only the Logs page, so for up to a minute
+  Logs, Clients, Overview and Analytics could show the numbers from before
+  the deletion. Every figure counted from the request log or the WAF is now
+  fetched again.
 
 ## [3.42.0] - 2026-11-16
 

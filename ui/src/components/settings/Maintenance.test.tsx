@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { screen, fireEvent, waitFor, within } from '@testing-library/react'
-import { QueryClient } from '@tanstack/react-query'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { BrowserRouter } from 'react-router'
 import { renderWithProviders } from '../../test/helpers'
+import { ThemeProvider } from '../ThemeProvider'
 import { expectNoAxeViolations } from '../../test/axe'
 import { AxiosError, AxiosHeaders } from 'axios'
 import { api } from '../../lib/api'
@@ -254,6 +256,40 @@ describe('Maintenance', () => {
     fireEvent.click(within(ask).getByRole('button', { name: 'Delete older than 90 days' }))
     expect(await screen.findByText('Deleted 1,234 logged requests older than 90 days.')).toBeInTheDocument()
     expect(api.post).toHaveBeenCalledWith('logs/clear-old', null, { params: { days: 90 } })
+  })
+
+  // The three deletions empty what the Logs, Clients, Overview and Analytics
+  // pages count. Their cached answers must not be shown again as current.
+  describe('marks the figures from the log as out of date', () => {
+    const figures = [
+      ['logs', 'page', 'outcome=blocked'], ['logs', 'stats'], ['clients', 'statistics'], ['client-details', '192.168.1.10', '24h'],
+      ['dashboard'], ['timeline', 'Europe/Rome'], ['analytics', 'top-destinations'], ['waf', 'stats'],
+    ]
+    const seeded = () => {
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity, staleTime: Infinity } } })
+      for (const key of [...figures, ['settings']]) client.setQueryData(key, { seeded: true })
+      render(
+        <QueryClientProvider client={client}>
+          <ThemeProvider><BrowserRouter><Maintenance /></BrowserRouter></ThemeProvider>
+        </QueryClientProvider>,
+      )
+      return client
+    }
+    const stale = (client: QueryClient) => figures.filter((k) => client.getQueryState(k)?.isInvalidated).map((k) => k.join('/'))
+
+    it.each([
+      ['Reset statistics', 'Delete every logged request?', 'Delete and reset', 'counters/reset'],
+      ['Clear the log', 'Clear the access log?', 'Clear the log', 'logs/clear'],
+      ['Delete older than 30 days', 'Delete the logged requests older than 30 days?', 'Delete older than 30 days', 'logs/clear-old'],
+    ])('after %s', async (button, title, confirmLabel, path) => {
+      const client = seeded()
+      fireEvent.click(screen.getByRole('button', { name: button }))
+      fireEvent.click(within(await screen.findByRole('alertdialog', { name: title })).getByRole('button', { name: confirmLabel }))
+      await waitFor(() => expect(api.post).toHaveBeenCalledWith(path, ...(path === 'logs/clear-old' ? [null, { params: { days: 30 } }] : [])))
+      await waitFor(() => expect(stale(client)).toEqual(figures.map((k) => k.join('/'))))
+      // The settings do not come from the log and are left alone.
+      expect(client.getQueryState(['settings'])?.isInvalidated).toBe(false)
+    })
   })
 
   it('does nothing destructive when the confirmation is cancelled', async () => {
