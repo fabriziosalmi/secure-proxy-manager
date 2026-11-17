@@ -280,17 +280,17 @@ current lists, marker files and settings files and reload.
 
 **This call blocks.** It writes a trigger file and then waits up to **8 seconds**
 for the proxy's watchdog to acknowledge what it did, so a client should allow at
-least that. There are three outcomes, and a `200` does not on its own mean the
-reload was applied:
+least that. A `200` does not on its own mean the reload was applied:
 
 | HTTP | `status` | Meaning |
 |---|---|---|
-| `200` | `success` | The generator ran, squid accepted the config, and it is live |
+| `200` | `success` | The lists were exported, the generator ran, squid accepted the config, and it is live |
+| `200` | `partial` (`code: export_failed`) | The proxy reloaded, but the lists could not be exported: it enforces the list files already on disk, without the last list changes. The backend log says why |
 | `500` | `error` (`code: reload_failed`) | The proxy refused the new config and **kept the previous one**. `data.generator_rc` and `data.reconfigure_rc` say which step failed |
-| `500` | `error` (`code: trigger_write_failed`) | The lists were exported, but `/config/.reload-squid` could not be written |
-| `200` | `pending` | Nothing acknowledged within the timeout; check that the proxy container is running |
+| `500` | `error` (`code: trigger_write_failed`) | `/config/.reload-squid` could not be written; `message` says whether the lists were exported |
+| `200` | `pending` | Nothing acknowledged within the timeout; check that the proxy container is running. `message` also says when the lists could not be exported |
 
-A caller that treats any `200` as success will read `pending` as applied.
+A caller that treats any `200` as success will read `pending` and `partial` as applied.
 
 ---
 

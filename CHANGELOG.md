@@ -40,6 +40,13 @@ for at least one minor release before disappearing.
   as `POST /api/settings` is, with the reason "before a change to setting
   {name}", so the configuration history can undo it and tells it apart from a
   settings save.
+- **`POST /api/maintenance/reload-config` no longer answers "Proxy reloaded"
+  when exporting the lists failed.** The proxy still reloads, and the answer
+  is `200` with `status: "partial"` and `code: "export_failed"`, saying the
+  proxy enforces the list files already on disk. The dashboard shows it as a
+  warning, not as applied and not as a reload that could not be requested. A
+  `trigger_write_failed` answer no longer claims the lists were exported when
+  they were not.
 
 ## [3.42.0] - 2026-11-16
 
