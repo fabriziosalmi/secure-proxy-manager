@@ -33,6 +33,20 @@ for at least one minor release before disappearing.
   for. Runs on main, in the merge queue, the nightly run and manual runs each
   get a group of their own and are never cancelled or queued behind another
   run.
+- **BREAKING** (`X-API-Version: 1`): **a request that carries `dry_run` to a
+  configuration change that has no preview is refused and changes nothing.**
+  The nine operations that take a configuration snapshot first but do not
+  declare `dry_run` (`PUT /api/settings/{name}`, `POST /api/settings`,
+  `PUT /api/waf/policy`, `POST /api/waf/policy/exceptions`,
+  `POST /api/waf/policy/observe-rules`, `POST /api/egress-allowlist`,
+  `DELETE /api/egress-allowlist/{id}`, `POST /api/client-groups`,
+  `PUT /api/client-groups/{id}`) answer `400 invalid_request` to any
+  `dry_run` but `false`, before their handler runs. They ignored the
+  parameter and applied the change, while the snapshot taken before every
+  change was skipped for a request carrying `dry_run`, so a caller that asked
+  for a preview got the change with no snapshot to restore. `dry_run=false`
+  or no `dry_run` runs them as before. A test lists every route behind the
+  snapshot and holds each to this or to a real preview.
 
 ### Fixed
 
