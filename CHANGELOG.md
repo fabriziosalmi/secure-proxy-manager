@@ -15,6 +15,14 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Changed
+
+- CI: a newer push to a pull request cancels the CI run of the commit it
+  replaces, so a superseded run no longer holds runners the new head waits
+  for. Runs on main, in the merge queue, the nightly run and manual runs each
+  get a group of their own and are never cancelled or queued behind another
+  run.
+
 ### Fixed
 
 - **A tar-pitted block no longer holds the shared inspection budget.** A

@@ -27,6 +27,19 @@ on:
     - cron: "17 5 * * *"
   workflow_dispatch:
 
+# A newer push to a pull request cancels the run of the head it replaces: the
+# superseded run held runners (about eight jobs build images and run docker
+# stacks) that the new head then waited for, and nobody reads its result.
+#
+# Every other run (push to main, merge_group, schedule, workflow_dispatch) gets
+# a group of its own, its run_id, so it is never cancelled and never queued.
+# A shared group would not do: GitHub keeps one running and one pending run per
+# group even with cancel-in-progress false, and a third run cancels the pending
+# one, so a nightly or a merge-queue run could be dropped.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('ci-pr-{0}', github.event.pull_request.number) || format('ci-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
