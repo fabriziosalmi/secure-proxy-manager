@@ -28,15 +28,139 @@ for at least one minor release before disappearing.
   stopped. A failure while publishing is finished by re-running the failed
   jobs of the same run, with the digests that were scanned, without cutting a
   new release.
+- CI: a newer push to a pull request cancels the CI run of the commit it
+  replaces, so a superseded run no longer holds runners the new head waits
+  for. Runs on main, in the merge queue, the nightly run and manual runs each
+  get a group of their own and are never cancelled or queued behind another
+  run.
 
 ### Fixed
 
+- **The installer installs the newest release whose images are published.**
+  It took the newest `vX.Y.Z` git tag, which exists from the moment it is
+  pushed, while the images are published only at the end of the release run
+  and never when a gate fails: an install or update in that window, or on a
+  release whose images were never published, stopped at the image pull with
+  `manifest unknown`. `deploy/install.sh` now asks `ghcr.io` anonymously
+  whether the five images (web, backend, waf, proxy, dns) of the tag exist
+  before it clones or moves the installation. A tag without them is skipped,
+  with a `[WARN]` naming it and the missing images, at most twice; then it
+  stops. When the registry cannot be asked it stops with an error and changes
+  nothing, rather than install an older release. An explicit `SPM_VERSION`
+  is checked the same way and never falls back. `scripts/canary.sh` follows
+  the same rule on its `release` track, using the installer's own check.
+
+- **The blacklist auto-refresh refuses a feed above 32 MB, the cap the import
+  already used.** It read up to 200 MiB of a feed into memory, in a backend
+  limited to 128M, and cut a larger feed short with no error, so the entries
+  past the cut were handled as dropped. A feed above the cap now counts as
+  failed: its entries stay, nothing of that list is removed in that run, and
+  its source reads "not downloaded: larger than the 32 MB cap". A custom feed
+  between 32 MB and 200 MiB that refreshed before now fails the same way; the
+  import and the refresh share one constant, so the two caps cannot drift.
 - **A tar-pitted block no longer holds the shared inspection budget.** A
   client blocked more than three times in a minute still waits 10 seconds for
   each further block page, but its request now gives back the inspection
   budget and lets go of its body before that wait, not after. One client's
   repeated blocked uploads can no longer make other clients' requests wait for
   the budget and fail with a 503.
+- **A page that fails to load after an upgrade offers a reload that works.**
+  A tab left open across an upgrade asks for page files the new build no
+  longer serves. The error screen now says a new version was installed and
+  its button reloads the page. Before, its Try again button brought back the
+  same error every time, because the failed load is kept until the page is
+  reloaded. Other errors keep Try again.
+- **Change password accepts every password the backend accepts.** The form
+  counted only 20 symbols as a special character, so a passphrase such as
+  `correct-horse-9`, whose only symbols are hyphens, kept the button disabled
+  although the API takes it. It now counts any character that is not an
+  ASCII letter or digit, as the backend does, and counts the length in
+  characters, so a 7-character password with an emoji is no longer shown as
+  long enough.
+- **Removing the last rows of a later page moves the table back a page.** On
+  Blacklists and the Egress allowlist, removing every row of page 2 or later
+  left the table on a page past the end. It showed the
+  empty state, as if the list were empty, with no Previous button to go
+  back. The table now moves to the last page that has rows.
+- **A refused access-log search says why.** The Logs search box stops at the
+  256 characters the backend takes. When the backend refuses the filters,
+  for example a longer search that arrives through the global search, the
+  table shows the backend's reason ("q is too long") instead of "logs did
+  not answer", and offers no Retry, which would be refused the same way.
+- **Blocked IPs and IP exceptions accept a single IPv6 address or network.**
+  Add entries, Single entry, refused `2001:db8::1` and `2001:db8::/32` as
+  "not an IPv4 address or network", although the backend and the proxy take
+  IPv6 and a pasted list already added it. The form now checks IPv6 the way
+  the backend does and refuses only what the backend refuses, saying "not
+  an IP address or network".
+- **After Reset statistics, Clear the log or Delete older logs, the pages
+  show the emptied figures.** Reset statistics marked no cached figure out
+  of date, and the other two only the Logs page, so for up to a minute
+  Logs, Clients, Overview and Analytics could show the numbers from before
+  the deletion. Every figure counted from the request log or the WAF is now
+  fetched again.
+- **`spm` stops at a redirect and names where it points.** The `web`
+  service's plain HTTP ports answer every `/api/` path with a 301 to its
+  https address. `spm` followed it, so a `POST` or `DELETE` arrived there as a
+  `GET` with the token. When the https certificate passed (`--insecure`, or a
+  certificate an authority signed), its 200 read as done, and
+  `spm blocked-ips add` printed "Added" and exited 0 with nothing added. A redirect is now an error that
+  names its target, nothing is sent there, and the exit status is 3.
+- **`spm-mcp` reports a redirect as an error that names where it points.** A
+  3xx answer, such as the one the plain HTTP port gives, came back as a
+  successful empty result, and at startup as "not an OpenAPI document". It is
+  now an error naming the `Location`, with the hint to set `SPM_URL` to that
+  server's address.
+- **`spm <list> remove VALUE` removes the entry written as `VALUE`.** With
+  both `example.com` and `.example.com` on the default-deny allowlist and the
+  wider one newer, `spm allowlist remove example.com` removed `.example.com`,
+  printed "Removed example.com" and exited 0, so default-deny then blocked the
+  subdomains. The exact entry now wins. A loose match (`.example.com` for
+  `example.com`) still counts when it is the only one, and one that fits
+  several entries is refused with exit status 1 and nothing removed. The
+  search reads every page, so an entry beyond the first 1000 matches is found
+  instead of reported as not on the list.
+- **`spm login` sends a saved token only to the server it was saved for.**
+  `spm login --url https://OTHER:8443` without `--token` pinned the other
+  server's certificate and then sent it the token saved for the first server,
+  without asking. It now asks for a token for any address other than the
+  saved one, and reuses the saved token for the same address. When the server
+  refuses a reused token, the message says to give a new one with `--token`.
+- **`spm login --insecure` to an https address is refused.** It pinned
+  nothing, printed "Signed in" and exited 0, and every later command, which
+  checks the certificate, then failed with exit status 3 against the default
+  self-signed one. It now exits 2 with nothing sent, and the message names
+  `--fingerprint` as the way to pin without the question.
+- An extra HTTPS port set in Settings opens HTTPS tunnels to it even below
+  1025 (993, 465, 636, 853): the proxy used to refuse those tunnels as
+  `port_policy`, because the `Safe_ports` rule ran before the `CONNECT` rule.
+  Plain HTTP to such a port is still refused. Ports such as 44, 8 and 844 are
+  now added too: they were taken as already present because 443 and 8443
+  contain them.
+- **The WAF reconciler notices a WAF restart it did not see.** Every 30
+  seconds it reads the heuristics the WAF runs and pushes the stored value of
+  each one that differs, so a WAF that restarted between two passes, or a
+  restore that changed a `waf_h_*` setting, no longer leaves the WAF on its
+  `WAF_H_*` compose defaults. A WAF that matches gets no writes; a WAF whose
+  running heuristics cannot be read gets every stored value.
+- **Saving or restoring only the time window or the bandwidth limits reaches
+  the proxy.** `time_restrictions.conf` and `bandwidth_limits.conf` are
+  rewritten when a request carries any of their settings, not only the
+  toggle, so `PUT /api/settings/{name}` (`spm settings set
+  time_restriction_start 09:00`) and a snapshot restore that changes only a
+  time or a limit no longer leave the proxy on the old values.
+- **Changing one setting takes a configuration snapshot first.**
+  `PUT /api/settings/{name}` (`spm settings set`) is preceded by a snapshot,
+  as `POST /api/settings` is, with the reason "before a change to setting
+  {name}", so the configuration history can undo it and tells it apart from a
+  settings save.
+- **`POST /api/maintenance/reload-config` no longer answers "Proxy reloaded"
+  when exporting the lists failed.** The proxy still reloads, and the answer
+  is `200` with `status: "partial"` and `code: "export_failed"`, saying the
+  proxy enforces the list files already on disk. The dashboard shows it as a
+  warning, not as applied and not as a reload that could not be requested. A
+  `trigger_write_failed` answer no longer claims the lists were exported when
+  they were not.
 
 ## [3.42.0] - 2026-11-16
 

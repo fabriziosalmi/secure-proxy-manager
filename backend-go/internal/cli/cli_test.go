@@ -2,10 +2,12 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -138,6 +140,153 @@ func TestTheExitStatusFollowsTheAnswer(t *testing.T) {
 	if code, _, _ := run(t, "", "api", "GET", "/api/status", "--url", srv.URL); code != exitFailed {
 		t.Errorf("server down: exit %d, want %d", code, exitFailed)
 	}
+}
+
+// A redirect is not followed: a POST sent to the web service's plain HTTP
+// port, which answers 301 to its https address, would come back from there as
+// a GET of the list, a 200, and "Added". spm stops at the redirect, names its
+// target, exits 3, and sends nothing to the address it was redirected to.
+func TestARedirectIsAFailureThatNamesItsTarget(t *testing.T) {
+	isolate(t)
+	var reached atomic.Int32
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		reached.Add(1)
+		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
+	}))
+	defer target.Close()
+	front := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+r.URL.RequestURI(), http.StatusMovedPermanently)
+	}))
+	defer front.Close()
+	for _, args := range [][]string{
+		{"blocked-ips", "add", "203.0.113.7"},
+		{"api", "POST", "/api/ip-blacklist", "-d", `{"ip":"203.0.113.7"}`},
+		{"status"},
+	} {
+		code, out, stderr := run(t, "", append(args, "--url", front.URL, "--token", "spm_x_y")...)
+		if code != exitFailed || !strings.Contains(stderr, "redirected to \""+target.URL+"/api/") || strings.Contains(out, "Added") {
+			t.Errorf("%v: exit %d, out %q, stderr %q; want 3 and the redirect's target named", args, code, out, stderr)
+		}
+		t.Logf("%v: exit %d, %s", args, code, strings.TrimSpace(stderr))
+	}
+	if n := reached.Load(); n != 0 {
+		t.Errorf("%d requests reached the address the server redirected to", n)
+	}
+}
+
+// remove VALUE removes the entry written exactly as VALUE when there is one,
+// even when a newer entry matches it loosely (".example.com" for
+// example.com); it reads every page of the search, not only the first; and a
+// loose match that fits more than one entry is refused, with nothing removed.
+func TestRemoveTakesTheEntryWrittenAsGiven(t *testing.T) {
+	isolate(t)
+	var entries []map[string]any // newest first, as the API lists them
+	var deleted []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == "DELETE" {
+			deleted = append(deleted, r.URL.Path)
+			_, _ = w.Write([]byte(`{"status":"success"}`))
+			return
+		}
+		// Two rows a page, whatever limit asks: a server whose cap the
+		// search outgrew.
+		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+		page := []map[string]any{}
+		if offset < len(entries) {
+			page = entries[offset:min(offset+2, len(entries))]
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "data": page, "meta": map[string]any{"total": len(entries), "offset": offset}})
+	}))
+	defer srv.Close()
+	entry := func(id int, v string) map[string]any { return map[string]any{"id": id, "entry": v} }
+	for _, c := range []struct {
+		name    string
+		list    []map[string]any
+		remove  string
+		want    int
+		deleted string
+	}{
+		{"exact beats a newer loose match", []map[string]any{entry(2, ".example.com"), entry(1, "example.com")}, "example.com", exitOK, "/api/egress-allowlist/1"},
+		{"a loose match alone still counts", []map[string]any{entry(2, ".example.com")}, "example.com", exitOK, "/api/egress-allowlist/2"},
+		{"the entry on the second page", []map[string]any{entry(9, "a.example.com"), entry(8, "b.example.com"), entry(7, "example.com")}, "example.com", exitOK, "/api/egress-allowlist/7"},
+		{"two loose matches", []map[string]any{entry(4, ".example.com"), entry(3, "example.com")}, "*.example.com", exitRefused, ""},
+	} {
+		entries, deleted = c.list, nil
+		code, _, stderr := run(t, "", "allowlist", "remove", c.remove, "--url", srv.URL, "--token", "spm_x_y")
+		got := strings.Join(deleted, ",")
+		if code != c.want || got != c.deleted || (c.want == exitRefused && !strings.Contains(stderr, "matches more than one entry")) {
+			t.Errorf("%s: exit %d, deleted %q (%s); want %d and %q", c.name, code, got, strings.TrimSpace(stderr), c.want, c.deleted)
+		}
+		t.Logf("%s: exit %d, deleted %q %s", c.name, code, got, strings.TrimSpace(stderr))
+	}
+}
+
+// spm login reuses the saved token only for the server it was saved for. For
+// another server it asks for one, instead of sending the first server's token
+// to the one it just started to trust; and when the server refuses a reused
+// token, it says to give a new one.
+func TestLoginReusesTheSavedTokenOnlyForItsServer(t *testing.T) {
+	path := isolate(t)
+	server := func(seen *[]string) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			*seen = append(*seen, r.Header.Get("Authorization"))
+			if r.Header.Get("Authorization") == "Bearer revoked" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			_, _ = w.Write([]byte(`{"status":"success","data":{"username":"token:x","scope":"read"}}`))
+		}))
+	}
+	var seen1, seen2 []string
+	one, two := server(&seen1), server(&seen2)
+	defer one.Close()
+	defer two.Close()
+	if err := saveConfig(path, Config{URL: one.URL, Token: "tokenA"}); err != nil {
+		t.Fatal(err)
+	}
+
+	code, out, stderr := run(t, "tokenB\n", "login", "--url", two.URL)
+	saved, _ := loadConfig(path)
+	if code != exitOK || strings.Join(seen2, ",") != "Bearer tokenB" || saved.Token != "tokenB" || saved.URL != two.URL || !strings.Contains(out, "API token") {
+		t.Errorf("login to another server: exit %d, it saw %v, saved %+v, %q %q; want 0, Bearer tokenB asked for and saved", code, seen2, saved, out, stderr)
+	}
+
+	seen2 = nil
+	code, out, _ = run(t, "", "login", "--url", two.URL+"/")
+	if code != exitOK || strings.Join(seen2, ",") != "Bearer tokenB" || strings.Contains(out, "API token") {
+		t.Errorf("login again to the same server: exit %d, it saw %v, %q; want 0 and the saved token, not asked", code, seen2, out)
+	}
+
+	if err := saveConfig(path, Config{URL: two.URL, Token: "revoked"}); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr = run(t, "", "login")
+	if code != exitRefused || !strings.Contains(stderr, "saved token") || !strings.Contains(stderr, "--token") {
+		t.Errorf("a revoked saved token: exit %d, %q; want 1 and to give a new one with --token", code, stderr)
+	}
+	if len(seen1) != 0 {
+		t.Errorf("the first server saw %v", seen1)
+	}
+}
+
+// spm login --insecure to an https address is refused before anything is
+// sent: it pinned nothing, so it saved a config every later command (without
+// --insecure) refused with a certificate error after saying "Signed in".
+func TestLoginRefusesInsecure(t *testing.T) {
+	path := isolate(t)
+	var hits atomic.Int32
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"username":"token:x","scope":"read"}}`))
+	}))
+	defer srv.Close()
+	code, out, stderr := run(t, "", "login", "--url", srv.URL, "--token", "spm_x_y", "--insecure")
+	if _, err := os.Stat(path); code != exitUsage || !strings.Contains(stderr, "--fingerprint") || err == nil || hits.Load() != 0 {
+		t.Fatalf("login --insecure: exit %d, %q %q, config saved %v, %d requests; want 2, --fingerprint named, nothing saved or sent",
+			code, out, stderr, err == nil, hits.Load())
+	}
+	t.Logf("exit %d, %s", code, strings.TrimSpace(stderr))
 }
 
 // A server that speaks another API version is named on standard error.

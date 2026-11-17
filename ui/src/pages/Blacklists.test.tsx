@@ -389,6 +389,32 @@ describe('Blacklists', () => {
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith('ip-blacklist/2'))
   })
 
+  // The backend applies LIMIT/OFFSET as asked: after the only row of page 2
+  // is removed, offset 50 of 50 entries is an empty page. The table moves
+  // back to the last page instead of saying the list is empty.
+  it('moves back a page when a removal empties the page on screen', async () => {
+    let all = Array.from({ length: 51 }, (_, i) => ({ ...ipEntries[0], id: 100 + i, ip: `203.0.113.${i}` }))
+    vi.mocked(api.get).mockImplementation(((url: string) => {
+      const m = url.match(/^ip-blacklist\?limit=50&offset=(\d+)&search=$/)
+      if (!m) return routeGet(url)
+      const off = Number(m[1])
+      return Promise.resolve({ data: listBody(all.slice(off, off + 50), all.length) })
+    }) as never)
+    vi.mocked(api.delete).mockImplementation((async (url: string) => {
+      all = all.filter((e) => `ip-blacklist/${e.id}` !== url)
+      return { data: { status: 'success', data: { removed: 1 } } }
+    }) as never)
+    renderWithProviders(<Blacklists />)
+    expect(await screen.findByText('1 to 50 of 51')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove 203.0.113.50' }))
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Remove' }))
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith('ip-blacklist/150'))
+    expect(await screen.findByText('1 to 50 of 50')).toBeInTheDocument()
+    expect(screen.getByText('203.0.113.0')).toBeInTheDocument()
+    expect(screen.queryByText('No blocked IPs and networks')).not.toBeInTheDocument()
+  })
+
   it('removes the entries checked on the page in one request, after a confirmation naming the count', async () => {
     vi.mocked(api.post).mockResolvedValue({ data: { status: 'success', data: { removed: 2, deleted: 2 } } } as never)
     renderWithProviders(<Blacklists />)
@@ -523,7 +549,31 @@ describe('Blacklists', () => {
       open()
       fireEvent.change(screen.getByLabelText('IP address or network'), { target: { value: '300.1.1.1' } })
       fireEvent.click(screen.getByRole('button', { name: 'Add entry' }))
-      expect(await screen.findByRole('alert')).toHaveTextContent('"300.1.1.1" is not an IPv4 address or network')
+      expect(await screen.findByRole('alert')).toHaveTextContent('"300.1.1.1" is not an IP address or network')
+      expect(api.post).not.toHaveBeenCalled()
+    })
+
+    // The backend (netguard.IsValidCIDR) and the proxy take IPv6 on both IP
+    // lists, and the list already labels IPv6 entries.
+    it.each([
+      ['blocked-ips', 'ip-blacklist', '2001:db8::/32'],
+      ['allowed-ips', 'ip-whitelist', '2001:db8::1'],
+    ])('%s: adds a single IPv6 address or network', async (tab, path, value) => {
+      go(`?tab=${tab}`)
+      renderWithProviders(<Blacklists />)
+      open()
+      fireEvent.change(screen.getByLabelText('IP address or network'), { target: { value } })
+      fireEvent.click(screen.getByRole('button', { name: 'Add entry' }))
+      await waitFor(() => expect(api.post).toHaveBeenCalledWith(path, { ip: value, description: '' }))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('refuses an IPv6 value the backend refuses, and says why', async () => {
+      renderWithProviders(<Blacklists />)
+      open()
+      fireEvent.change(screen.getByLabelText('IP address or network'), { target: { value: '2001:db8:::1' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Add entry' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('"2001:db8:::1" is not an IP address or network')
       expect(api.post).not.toHaveBeenCalled()
     })
 

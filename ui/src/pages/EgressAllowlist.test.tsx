@@ -216,6 +216,32 @@ describe('EgressAllowlist', () => {
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith('egress-allowlist/1'))
   })
 
+  // The backend applies LIMIT/OFFSET as asked: after the only row of page 2
+  // is removed, offset 50 of 50 destinations is an empty page. The table
+  // moves back to the last page instead of saying the list is empty.
+  it('moves back a page when a removal empties the page on screen', async () => {
+    deny = 'true'
+    entries = Array.from({ length: 51 }, (_, i) => ({ id: 100 + i, entry: `203.0.113.${i}`, type: 'ip', description: '', added_date: '2026-07-01 07:00:00' }))
+    vi.mocked(api.get).mockImplementation(((url: string, config?: { params?: Record<string, unknown> }) => {
+      if (url !== 'egress-allowlist' || config?.params?.limit !== 50) return routeGet(url, config)
+      const off = Number(config.params.offset)
+      return Promise.resolve({ data: listBody(entries.slice(off, off + 50), entries.length) })
+    }) as never)
+    vi.mocked(api.delete).mockImplementation((async (url: string) => {
+      entries = entries.filter((e) => `egress-allowlist/${(e as { id: number }).id}` !== url)
+      return { data: { status: 'success' } }
+    }) as never)
+    renderWithProviders(<EgressAllowlist />)
+    expect(await screen.findByText('1 to 50 of 51')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove 203.0.113.50' }))
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Remove' }))
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith('egress-allowlist/150'))
+    expect(await screen.findByText('1 to 50 of 50')).toBeInTheDocument()
+    expect(screen.getByText('203.0.113.0')).toBeInTheDocument()
+    expect(screen.queryByText('No destination yet')).not.toBeInTheDocument()
+  })
+
   it('removes the destinations checked on the page in one request, saying a snapshot makes it undoable', async () => {
     deny = 'true'
     vi.mocked(api.post).mockResolvedValue({ data: { status: 'success', data: { removed: 2, deleted: 2 } } } as never)

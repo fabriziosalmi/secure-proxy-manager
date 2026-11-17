@@ -43,13 +43,30 @@ docker compose exec web openssl x509 -in /etc/nginx/ssl/server.crt -noout -finge
 To pin without the question, give the fingerprint you expect with
 `--fingerprint`; a different one is refused and nothing is saved. A server
 that shows another certificate later is refused (exit status 3) until you run
-`spm login` again. The certificate stays the same across restarts and
-upgrades, because it is kept in the `web-tls` volume.
+`spm login` again.
+
+The `web` service keeps its self-signed certificate in the `web-tls` volume,
+so restarts and upgrades keep it, with one exception: the certificate is
+valid for 365 days, and a start of `web` within 30 days of its expiry makes a
+new one (its log says "expires within 30 days: making a new one"). A pinned
+`spm` keeps working until that start, even past the expiry date while `web`
+runs, because the pin replaces the date check. From that start on, every
+command exits with status 3 ("not the one pinned") until you compare the new
+fingerprint as above and run `spm login` again. A certificate you mount in
+the volume yourself is never replaced, and a Let's Encrypt certificate is
+checked against the system's authorities, not pinned, so its renewals do not
+affect `spm`.
 
 `spm login` checks the token with `GET /api/session` and saves the address,
 the token and the fingerprint to `spm/config.json` in your config directory
 (`SPM_CONFIG` to choose another file), with mode 0600 in a directory of mode
 0700. `spm` refuses to read a config file that other users can read.
+
+Without `--token` or `SPM_TOKEN`, `spm login` reuses the token saved for the
+same address, so signing in again to pin a new certificate does not ask for
+it, and asks for one for any other address: the token saved for one server is
+never sent to another. When the server refuses a saved token (revoked or
+expired), nothing is saved; give a new one with `--token`.
 
 ## The dashboard's lists and pages
 
@@ -73,8 +90,13 @@ spm history diff 12 && spm history restore 12 --yes
 spm logs --blocked --limit 50
 ```
 
-`remove` takes the entry itself, not its id. `clear` and `history restore` do
-nothing without `--yes`. Every command prints a table, or the API's data with
+`remove` takes the entry itself, not its id. An entry written exactly as you
+give it is the one removed: with both `example.com` and `.example.com` (the
+domain and its subdomains) on the allowlist, `remove example.com` removes
+`example.com`. Without an exact entry, `remove example.com` takes
+`.example.com` when it is the only such entry, and refuses (exit status 1,
+nothing removed) when more than one entry matches that way. `clear` and
+`history restore` do nothing without `--yes`. Every command prints a table, or the API's data with
 `--json`. In `GET /api/openapi.json`, `x-spm-surfaces` marks `cli` the
 operations these commands call; a test holds the two to each other.
 
@@ -84,7 +106,7 @@ operations these commands call; a test holds the two to each other.
 spm status                    # the server's version and state
 spm status --json
 spm api --list                # every operation, with the token scope it needs
-spm api GET /api/ip-blacklist?search=203.0.113
+spm api GET '/api/ip-blacklist?search=203.0.113'
 spm api POST /api/ip-blacklist -d '{"ip":"203.0.113.9","description":"scanner"}'
 spm api POST /api/blacklists/import -d @list.json
 spm api DELETE /api/ip-blacklist/42 --dry-run
@@ -112,7 +134,10 @@ asks a server that declares it how many entries would go, and says so.
 
 Every command takes `--url` and `--token` (or `SPM_URL` and `SPM_TOKEN`), which
 take precedence over the config file, and `--insecure`, which does not check
-the certificate at all.
+the certificate at all. `spm login` refuses `--insecure` for an https address
+(exit status 2, nothing sent): it would pin nothing, and every later command,
+which checks the certificate, would refuse the server. To pin without the
+question, give `--fingerprint` instead.
 
 ## Exit status
 
@@ -121,7 +146,13 @@ the certificate at all.
 | 0 | The API answered 2xx |
 | 1 | The API answered 4xx (refused, not found, a token whose scope does not allow it), or you declined to pin the certificate |
 | 2 | The command line or the config file is wrong; nothing was sent |
-| 3 | The server could not be reached, its certificate is not the pinned one, or it answered 5xx |
+| 3 | The server could not be reached, its certificate is not the pinned one, it answered 5xx, or it answered a redirect |
+
+`spm` does not follow a redirect. The `web` service's plain HTTP ports (80 and
+8011) answer every `/api/` path with a redirect to `https://HOST:8443`, and a
+`POST` or `DELETE` that followed it would arrive there as a `GET`, so
+`spm` names the address it was redirected to, sends nothing there, and exits
+with status 3. Give that address with `--url`.
 
 When the server speaks another API version than the `spm` build
 (`X-API-Version`), `spm` says so on standard error.

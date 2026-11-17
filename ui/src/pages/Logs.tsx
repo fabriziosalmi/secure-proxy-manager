@@ -13,6 +13,7 @@ import { createPortal } from 'react-dom';
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import axios from 'axios';
 import { Download, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -51,6 +52,15 @@ export const PAGE_SIZE = 100;
  * page. Older requests are reached by search, the filters or the export.
  */
 export const MAX_LOADED = 1000;
+
+/**
+ * The longest destination search GET /api/logs takes: maxQueryLen in
+ * backend-go/internal/handlers/logs_filter.go, which answers a longer q with
+ * 400 "q is too long". The backend counts bytes and maxLength counts UTF-16
+ * units, so a search with multi-byte characters can still be refused; the
+ * table then shows the backend's reason.
+ */
+const MAX_QUERY_LEN = 256;
 
 /** Live rows kept above the fetched pages. */
 const LIVE_MAX = 200;
@@ -192,6 +202,8 @@ export function Logs() {
       return rows.length < PAGE_SIZE || !id ? undefined : id;
     },
   });
+
+  const refused = axios.isAxiosError(logs.error) && logs.error.response?.status === 400;
 
   const clients = useQuery<ClientsData | null>({
     queryKey: ['clients', 'statistics'],
@@ -557,6 +569,7 @@ export function Logs() {
           placeholder="Search host or URL"
           value={search}
           onChange={(v) => { typed.current = true; setSearch(v); }}
+          maxLength={MAX_QUERY_LEN}
           className="w-full sm:w-auto sm:flex-[1_1_220px] sm:max-w-[320px]"
         />
         <SegmentedControl<Outcome>
@@ -621,8 +634,10 @@ export function Logs() {
           rows={rows}
           rowKey={(r) => r.key}
           loading={logs.isPending && !noRange}
-          error={logs.isError ? 'logs did not answer.' : null}
-          onRetry={() => { void logs.refetch(); }}
+          // The backend's reason when it refused the filters (400, e.g. "q is
+          // too long"): a Retry would be refused the same way, so none.
+          error={logs.isError ? getErrorMessage(logs.error, 'logs did not answer.') : null}
+          onRetry={refused ? undefined : () => { void logs.refetch(); }}
           empty={empty}
           isRowSelected={isDesktop ? (r) => r.key === selectedKey : undefined}
         />

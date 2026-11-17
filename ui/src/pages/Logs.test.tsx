@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { AxiosError, AxiosHeaders } from 'axios'
 import { renderWithProviders, setRomeTimeZone } from '../test/helpers'
 import { expectNoAxeViolations } from '../test/axe'
 import { api } from '../lib/api'
@@ -350,6 +351,42 @@ describe('Logs', () => {
     expect(logCalls().length).toBe(1)
     await waitFor(() => expect(lastLogParams().get('q')).toBe('ads'))
     expect(logCalls().filter((u) => u.includes('q=a&') || u.endsWith('q=a'))).toHaveLength(0)
+  })
+
+  // GET /api/logs refuses a q longer than 256 bytes (maxQueryLen in
+  // backend-go/internal/handlers/logs_filter.go) with 400 "q is too long".
+  it('stops the search box at the 256 characters the backend takes', () => {
+    renderWithProviders(<Logs />)
+    expect(screen.getByRole('searchbox', { name: 'Search destinations' })).toHaveAttribute('maxlength', '256')
+  })
+
+  it('says what the backend refused, and offers no Retry that would fail the same way', async () => {
+    // A search that arrives through the URL (the global search) is not cut.
+    window.history.replaceState({}, '', `/logs?q=${'a'.repeat(300)}`)
+    vi.mocked(api.get).mockImplementation(((url: string) => {
+      if (url.startsWith('logs?')) {
+        return Promise.reject(new AxiosError('400', 'ERR_BAD_REQUEST', undefined, undefined, {
+          status: 400, statusText: 'Bad Request', data: { status: 'error', detail: 'q is too long' }, headers: {}, config: { headers: new AxiosHeaders() },
+        }))
+      }
+      return Promise.resolve({ data: { status: 'success', data: null } })
+    }) as never)
+    renderWithProviders(<Logs />)
+    const alert = await within(table()).findByRole('alert')
+    expect(alert).toHaveTextContent('q is too long')
+    expect(alert).not.toHaveTextContent('did not answer')
+    expect(within(alert).queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+  })
+
+  it('keeps Retry when the backend did not answer', async () => {
+    vi.mocked(api.get).mockImplementation(((url: string) => {
+      if (url.startsWith('logs?')) return Promise.reject(new AxiosError('Network Error', 'ERR_NETWORK'))
+      return Promise.resolve({ data: { status: 'success', data: null } })
+    }) as never)
+    renderWithProviders(<Logs />)
+    const alert = await within(table()).findByRole('alert')
+    expect(alert).toHaveTextContent('logs did not answer.')
+    expect(within(alert).getByRole('button', { name: 'Retry' })).toBeInTheDocument()
   })
 
   it('lists devices only in the client filter until internal traffic is shown', async () => {

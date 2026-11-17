@@ -4,9 +4,9 @@
 # ║  Usage: curl -fsSL https://raw.githubusercontent.com/            ║
 # ║    fabriziosalmi/secure-proxy-manager/main/deploy/install.sh|bash║
 # ╚═══════════════════════════════════════════════════════════════════╝
-# Installs, or updates to, the newest release (vX.Y.Z), not main: the compose
-# file then comes from the same version as the images it pulls. SPM_VERSION=vX.Y.Z
-# installs that release instead.
+# Installs, or updates to, the newest release (vX.Y.Z) whose images are
+# published, not main: the compose file then comes from the same version as the
+# images it pulls. SPM_VERSION=vX.Y.Z installs that release instead.
 set -euo pipefail
 
 REPO="https://github.com/fabriziosalmi/secure-proxy-manager.git"
@@ -99,12 +99,84 @@ PORTS
 # main moves between releases: its compose file can name a mount, a variable
 # or a service that the release images it pulls do not have yet.
 
+# A git tag exists from the moment it is pushed; its images are published only
+# at the end of the release run, and never when a gate in it fails. A release
+# is installed only once all of these are in the registry.
+REGISTRY="ghcr.io"
+IMAGE_PREFIX="fabriziosalmi/secure-proxy-manager"
+RELEASE_IMAGES="web backend waf proxy dns"
+RELEASE_TRIES=3 # the newest release, then at most two older ones
+
+# image_manifest_status image tag: the one place the installer asks the
+# registry. Anonymous, as the pull is: a pull token, then a HEAD of the
+# manifest. Returns 0 when it is published, 1 when the registry says it is not
+# (404), 2 when the registry could not be asked or answered anything else.
+image_manifest_status() { # image tag
+    local repo="$IMAGE_PREFIX-$1" token code
+    token=$(curl -fsS --max-time 15 \
+        "https://$REGISTRY/token?service=$REGISTRY&scope=repository:$repo:pull" 2>/dev/null \
+        | sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p') || token=""
+    if [ -z "$token" ]; then
+        printf '%s\n' "no pull token from $REGISTRY for $repo" >&2
+        return 2
+    fi
+    code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 -I \
+        -H "Authorization: Bearer $token" \
+        -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' \
+        "https://$REGISTRY/v2/$repo/manifests/$2" 2>/dev/null) || code="${code:-000}"
+    case "$code" in
+        200) return 0 ;;
+        404) return 1 ;;
+        *) printf '%s\n' "$REGISTRY answered HTTP ${code:-000} for $repo:$2" >&2; return 2 ;;
+    esac
+}
+
+# published_release tag... (newest first) prints the first of at most
+# RELEASE_TRIES tags whose RELEASE_IMAGES are all published, and names each
+# tag it skips, and why, on stderr. When the registry cannot be asked it stops
+# with an error instead of moving on: a network error must never install an
+# older release, which can lack a security fix. Returns 1 when none of the
+# tags it tried is published, 2 when the registry could not be asked.
+published_release() { # tag...
+    local tag img rc n=0 missing tried=""
+    if ! command -v curl >/dev/null 2>&1; then
+        printf "${R}[FAIL]${N} %s\n" "curl is needed to check that the release images are published. Install curl and re-run." >&2
+        return 2
+    fi
+    for tag in "$@"; do
+        n=$((n+1))
+        [ "$n" -le "$RELEASE_TRIES" ] || break
+        tried="$tried $tag"
+        missing=""
+        for img in $RELEASE_IMAGES; do
+            rc=0; image_manifest_status "$img" "$tag" || rc=$?
+            case "$rc" in
+                0) ;;
+                1) missing="$missing $img" ;;
+                *) printf "${R}[FAIL]${N} %s\n" "Could not ask $REGISTRY whether the $tag images are published ($img), so Secure Proxy Manager was not installed or updated. Re-run when $REGISTRY is reachable." >&2
+                   return 2 ;;
+            esac
+        done
+        if [ -z "$missing" ]; then
+            printf '%s\n' "$tag"
+            return 0
+        fi
+        warn "Skipping $tag: its images are not published in $REGISTRY (missing:$missing). The release may still be building, or it did not pass its gates." >&2
+    done
+    printf "${R}[FAIL]${N} %s\n" "No release to install: the images of${tried} are not all published. Re-run later." >&2
+    return 1
+}
+
 # release_tag prints the release to install: SPM_VERSION when it is set and
 # exists, otherwise the newest vX.Y.Z tag. Tags that are not a release
 # (mcp-v*, release candidates) are skipped, and the order is numeric, so
-# v3.10.0 comes after v3.9.0. Errors go to stderr: it runs in $(...).
+# v3.10.0 comes after v3.9.0. Either way the release's images must be
+# published (published_release): without SPM_VERSION an unpublished tag falls
+# back to the one before, at most twice; SPM_VERSION never falls back. It runs
+# before the clone moves, so a refusal leaves an installation as it was.
+# Errors go to stderr: it runs in $(...).
 release_tag() {
-    local tag
+    local tags
     if [ -n "${SPM_VERSION:-}" ]; then
         if ! printf '%s\n' "$SPM_VERSION" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+'; then
             printf "${R}[FAIL]${N} %s\n" "SPM_VERSION must be a release tag such as v3.29.0, not '$SPM_VERSION'" >&2
@@ -114,17 +186,19 @@ release_tag() {
             printf "${R}[FAIL]${N} %s\n" "Release $SPM_VERSION was not found in $REPO" >&2
             return 1
         fi
-        tag="$SPM_VERSION"
+        published_release "$SPM_VERSION" || return 1
     else
-        tag=$(git ls-remote --tags --refs "$REPO" 2>/dev/null \
+        tags=$(git ls-remote --tags --refs "$REPO" 2>/dev/null \
             | sed -n 's#.*refs/tags/\(v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$#\1#p' \
-            | sort -t. -k1.2,1n -k2,2n -k3,3n | tail -n 1)
-        if [ -z "$tag" ]; then
+            | sort -t. -k1.2,1nr -k2,2nr -k3,3nr)
+        if [ -z "$tags" ]; then
             printf "${R}[FAIL]${N} %s\n" "Could not read the releases from $REPO" >&2
             return 1
         fi
+        # One vX.Y.Z per word, newest first.
+        # shellcheck disable=SC2086
+        published_release $tags || return 1
     fi
-    printf '%s\n' "$tag"
 }
 
 # checkout_release moves the clone in the current directory to the release,

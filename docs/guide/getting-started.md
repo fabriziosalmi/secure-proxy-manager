@@ -14,8 +14,8 @@ curl -fsSL https://raw.githubusercontent.com/fabriziosalmi/secure-proxy-manager/
 `deploy/install.sh` must run as root. It installs Docker (through
 `get.docker.com`) and the Compose plugin and `git` (through `apt-get` or
 `yum`) when they are missing, clones the newest release (the highest
-`vX.Y.Z` tag, not `main`) to `/opt/secure-proxy-manager` whatever directory
-you run it from, and writes a
+`vX.Y.Z` tag whose images are published on `ghcr.io`, not `main`) to
+`/opt/secure-proxy-manager` whatever directory you run it from, and writes a
 `.env` with the user `admin`, a random password, `SECRET_KEY` and
 `INTERNAL_ALERT_TOKEN`. It uses the production compose file
 (`deploy/docker-compose.prod.yml`, copied to `compose.prod.yml`), checks that
@@ -24,6 +24,11 @@ credentials are printed at the end and stay in `/opt/secure-proxy-manager/.env`.
 Read the script before you run it. The script itself is read from `main`; to
 install a given release, run it with `SPM_VERSION`, for example
 `curl -fsSL ... | sudo SPM_VERSION=v3.29.0 bash`.
+
+A tag is pushed before its images are built, and a release whose gates fail
+keeps its tag without images. The installer skips such a tag, printing a
+`[WARN]` that names it, and tries the one before, at most twice. When it
+cannot reach `ghcr.io` to check, it stops with an error and changes nothing.
 
 ## Option 2: from a clone
 

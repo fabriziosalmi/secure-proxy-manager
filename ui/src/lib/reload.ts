@@ -6,12 +6,15 @@ import { formatClock } from './format';
  * What POST /api/maintenance/reload-config says the proxy did. The backend
  * writes a trigger and waits up to 8 seconds for the proxy's watchdog:
  * 200 success = the new configuration is live, 200 pending = nothing
- * answered in time, 500 reload_failed = the proxy refused it and kept the
- * previous one (docs/api/settings.md).
+ * answered in time, 200 partial export_failed = the proxy reloaded but the
+ * lists could not be exported, so it enforces the list files already on disk,
+ * 500 reload_failed = the proxy refused it and kept the previous one
+ * (docs/api/settings.md).
  */
 export type ApplyOutcome =
   | { kind: 'applied'; at: Date }
   | { kind: 'pending' }
+  | { kind: 'listsNotExported' }
   | { kind: 'refused'; generatorRc?: number; reconfigureRc?: number | null }
   | { kind: 'failed'; message: string };
 
@@ -19,6 +22,7 @@ export async function applyToProxy(): Promise<ApplyOutcome> {
   try {
     const res = await api.post('maintenance/reload-config', {});
     if (res.data?.status === 'pending') return { kind: 'pending' };
+    if (res.data?.status === 'partial' && res.data?.code === 'export_failed') return { kind: 'listsNotExported' };
     if (res.data?.status && res.data.status !== 'success') {
       return {
         kind: 'failed',
@@ -45,6 +49,11 @@ export function describeApply(o: ApplyOutcome, done = 'Saved'): { tone: 'success
       return { tone: 'success', text: `Applied to the proxy at ${formatClock(o.at)}.` };
     case 'pending':
       return { tone: 'warning', text: `${done}. The proxy did not confirm within 8 seconds: check that the proxy container is running.` };
+    case 'listsNotExported':
+      return {
+        tone: 'warning',
+        text: `${done}. The proxy reloaded, but the lists could not be exported: it enforces the list files already on disk, without the last list changes. The backend log says why.`,
+      };
     case 'refused': {
       const rc = o.generatorRc ? ` (generator exit code ${o.generatorRc})` : o.reconfigureRc ? ` (reconfigure exit code ${o.reconfigureRc})` : '';
       return { tone: 'danger', text: `${done}, but the proxy refused the new configuration and kept the previous one${rc}.` };
