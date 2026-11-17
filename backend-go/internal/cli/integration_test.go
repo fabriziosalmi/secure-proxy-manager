@@ -256,22 +256,35 @@ func TestCuratedCommandsAgainstTheRealBackend(t *testing.T) {
 		t.Fatalf("export after import: %q", out)
 	}
 	expect(exitOK, "paste", "blocked-domains", "sources")
+	// A blocked wildcard is removed by its name and as it is written: the
+	// search sent is the name, which every stored form contains. The output
+	// names the entry removed, as it is written on the list.
+	expect(exitOK, "", "blocked-domains", "add", "*.ads.example.org")
+	expect(exitOK, "Removed *.ads.example.org from Blocked domains", "blocked-domains", "remove", "ads.example.org")
+	expect(exitOK, "", "blocked-domains", "add", "*.ads.example.org")
+	expect(exitOK, "Removed *.ads.example.org from Blocked domains", "blocked-domains", "remove", "*.ads.example.org")
+	expect(exitOK, "", "domain-exceptions", "add", "cdn.example.net")
+	expect(exitOK, "Removed cdn.example.net from Domain exceptions", "domain-exceptions", "remove", "*.cdn.example.net")
 	expect(exitOK, "", "ip-exceptions", "add", "198.51.100.5")
 	expect(exitOK, "198.51.100.5", "ip-exceptions", "list")
 
 	expect(exitOK, "", "allowlist", "add", "example.com", "--subdomains")
 	expect(exitOK, ".example.com", "allowlist", "list")
-	expect(exitOK, "Removed example.com from Default-deny allowlist", "allowlist", "remove", "example.com")
+	expect(exitOK, "Removed .example.com from Default-deny allowlist", "allowlist", "remove", "example.com")
 	// Both forms on the list, the wider one newer: remove example.com takes
 	// the entry written so, not the newest loose match.
 	expect(exitOK, "", "allowlist", "add", "example.com")
 	expect(exitOK, "", "allowlist", "add", "example.com", "--subdomains")
-	expect(exitOK, "Removed example.com", "allowlist", "remove", "example.com")
+	expect(exitOK, "Removed example.com from Default-deny allowlist", "allowlist", "remove", "example.com")
 	var left []map[string]any
 	if err := json.Unmarshal([]byte(expect(exitOK, "", "allowlist", "list", "--json")), &left); err != nil || len(left) != 1 || left[0]["entry"] != ".example.com" {
 		t.Fatalf("after removing example.com with .example.com newer: %v (%v); want only .example.com", left, err)
 	}
 	expect(exitOK, "", "allowlist", "remove", ".example.com")
+	// "*.example.com" names the entry with subdomains, though the backend
+	// reads "*" in a search as a literal character.
+	expect(exitOK, "", "allowlist", "add", "example.com", "--subdomains")
+	expect(exitOK, "Removed .example.com from Default-deny allowlist", "allowlist", "remove", "*.example.com")
 	expect(exitUsage, "has no import", "allowlist", "import", f)
 
 	expect(exitOK, "", "settings", "set", "log_retention_days", "45")

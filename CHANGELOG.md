@@ -126,20 +126,29 @@ for at least one minor release before disappearing.
   certificate an authority signed), its 200 read as done, and
   `spm blocked-ips add` printed "Added" and exited 0 with nothing added. A redirect is now an error that
   names its target, nothing is sent there, and the exit status is 3.
-- **`spm-mcp` reports a redirect as an error that names where it points.** A
-  3xx answer, such as the one the plain HTTP port gives, came back as a
-  successful empty result, and at startup as "not an OpenAPI document". It is
-  now an error naming the `Location`, with the hint to set `SPM_URL` to that
-  server's address.
+- **`spm-mcp` 0.5.1 reports a redirect as an error that names where it
+  points.** A 3xx answer, such as the one the plain HTTP port gives, came back
+  as a successful empty result, and at startup as "not an OpenAPI document".
+  It is now an error naming the `Location`, with the hint to set `SPM_URL` to
+  that server's address. The startup error now carries that hint, and the
+  one for a refused token, which it used to drop: with `SPM_URL` on the plain
+  HTTP port it is the only error shown. The fix ships in `spm-mcp` 0.5.1, which works with the same
+  servers as 0.5.0 (3.41.0 or later).
 - **`spm <list> remove VALUE` removes the entry written as `VALUE`.** With
   both `example.com` and `.example.com` on the default-deny allowlist and the
   wider one newer, `spm allowlist remove example.com` removed `.example.com`,
   printed "Removed example.com" and exited 0, so default-deny then blocked the
-  subdomains. The exact entry now wins. A loose match (`.example.com` for
-  `example.com`) still counts when it is the only one, and one that fits
-  several entries is refused with exit status 1 and nothing removed. The
-  search reads every page, so an entry beyond the first 1000 matches is found
-  instead of reported as not on the list.
+  subdomains. The exact entry now wins. A loose match (`.example.com` or
+  `*.example.com` for `example.com`) still counts when it is the only one, and
+  one that fits several entries is refused with exit status 1 and nothing
+  removed. The search reads every page, so an entry beyond the first 1000
+  matches is found instead of reported as not on the list. The search sent to
+  the server is the bare name: the server reads `*` in a search as a literal
+  character, so `spm allowlist remove '*.example.com'` said it was not on the
+  list while `.example.com` was, and a blocked domain kept as
+  `*.ads.example.org` could be removed only as written. "Removed" names the
+  entry as the list writes it, which a loose match may write differently
+  from `VALUE`.
 - **`spm login` sends a saved token only to the server it was saved for.**
   `spm login --url https://OTHER:8443` without `--token` pinned the other
   server's certificate and then sent it the token saved for the first server,
