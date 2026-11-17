@@ -291,7 +291,6 @@ def test_a_redirect_is_an_error_that_names_its_target(monkeypatch):
 def test_the_startup_error_carries_the_hint(monkeypatch):
     """Every startup failure with a hint says it: a refused token at startup
     names SPM_TOKEN, not only "unauthorized (401)"."""
-    import httpx
     server = _load(monkeypatch, token="spm_x_y", api=lambda r: httpx.Response(401, json={"status": "error"}))
     with pytest.raises(RuntimeError, match=r"unauthorized \(401\)") as err:
         _tools(server)
