@@ -25,6 +25,20 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- **The installer installs the newest release whose images are published.**
+  It took the newest `vX.Y.Z` git tag, which exists from the moment it is
+  pushed, while the images are published only at the end of the release run
+  and never when a gate fails: an install or update in that window, or on a
+  release whose images were never published, stopped at the image pull with
+  `manifest unknown`. `deploy/install.sh` now asks `ghcr.io` anonymously
+  whether the five images (web, backend, waf, proxy, dns) of the tag exist
+  before it clones or moves the installation. A tag without them is skipped,
+  with a `[WARN]` naming it and the missing images, at most twice; then it
+  stops. When the registry cannot be asked it stops with an error and changes
+  nothing, rather than install an older release. An explicit `SPM_VERSION`
+  is checked the same way and never falls back. `scripts/canary.sh` follows
+  the same rule on its `release` track, using the installer's own check.
+
 - **A tar-pitted block no longer holds the shared inspection budget.** A
   client blocked more than three times in a minute still waits 10 seconds for
   each further block page, but its request now gives back the inspection
