@@ -151,10 +151,13 @@ for at least one minor release before disappearing.
   checks the certificate, then failed with exit status 3 against the default
   self-signed one. It now exits 2 with nothing sent, and the message names
   `--fingerprint` as the way to pin without the question.
-- An extra HTTPS port set in Settings opens HTTPS tunnels to it even below
-  1025 (993, 465, 636, 853): the proxy used to refuse those tunnels as
-  `port_policy`, because the `Safe_ports` rule ran before the `CONNECT` rule.
-  Plain HTTP to such a port is still refused. Ports such as 44, 8 and 844 are
+- An extra HTTPS port set in Settings carries HTTPS even below 1025 (993,
+  465, 636, 853), with SSL bump on or off. The proxy used to refuse it as
+  `port_policy`, because the `Safe_ports` rule ran first: the tunnel
+  (`CONNECT`), each request inside a bumped tunnel (an `https://` request
+  that Squid checks again) and an `https://` URL a client asks the proxy to
+  fetch without a tunnel. Plain HTTP to such a port, and HTTPS to a port
+  that is not listed, are still refused. Ports such as 44, 8 and 844 are
   now added too: they were taken as already present because 443 and 8443
   contain them.
 - **The WAF reconciler notices a WAF restart it did not see.** Every 30
