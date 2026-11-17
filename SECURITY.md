@@ -100,9 +100,11 @@ The backend adds its own policy to API responses
 
 Every published release image is keyless-signed with cosign by the release
 workflow, for a `vX.Y.Z` tag of this repository, after Trivy has scanned it
-for both architectures. Each GHCR image also carries a BuildKit SBOM and SLSA
-build provenance attestation. The identity is anchored, so a signature made by
-any other workflow or on any other ref does not match:
+for both architectures. No image of a release gets its `vX.Y.Z` or `latest`
+tag until all five images have passed that scan, and on GHCR each image is
+signed before either tag points at it. Each GHCR image also carries a
+BuildKit SBOM and SLSA build provenance attestation. The identity is anchored,
+so a signature made by any other workflow or on any other ref does not match:
 
 ```bash
 cosign verify \
