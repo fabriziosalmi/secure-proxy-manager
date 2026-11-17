@@ -31,6 +31,41 @@ for at least one minor release before disappearing.
   budget and lets go of its body before that wait, not after. One client's
   repeated blocked uploads can no longer make other clients' requests wait for
   the budget and fail with a 503.
+- **A page that fails to load after an upgrade offers a reload that works.**
+  A tab left open across an upgrade asks for page files the new build no
+  longer serves. The error screen now says a new version was installed and
+  its button reloads the page. Before, its Try again button brought back the
+  same error every time, because the failed load is kept until the page is
+  reloaded. Other errors keep Try again.
+- **Change password accepts every password the backend accepts.** The form
+  counted only 20 symbols as a special character, so a passphrase such as
+  `correct-horse-9`, whose only symbols are hyphens, kept the button disabled
+  although the API takes it. It now counts any character that is not an
+  ASCII letter or digit, as the backend does, and counts the length in
+  characters, so a 7-character password with an emoji is no longer shown as
+  long enough.
+- **Removing the last rows of a later page moves the table back a page.** On
+  Blacklists and the Egress allowlist, removing every row of page 2 or later
+  left the table on a page past the end. It showed the
+  empty state, as if the list were empty, with no Previous button to go
+  back. The table now moves to the last page that has rows.
+- **A refused access-log search says why.** The Logs search box stops at the
+  256 characters the backend takes. When the backend refuses the filters,
+  for example a longer search that arrives through the global search, the
+  table shows the backend's reason ("q is too long") instead of "logs did
+  not answer", and offers no Retry, which would be refused the same way.
+- **Blocked IPs and IP exceptions accept a single IPv6 address or network.**
+  Add entries, Single entry, refused `2001:db8::1` and `2001:db8::/32` as
+  "not an IPv4 address or network", although the backend and the proxy take
+  IPv6 and a pasted list already added it. The form now checks IPv6 the way
+  the backend does and refuses only what the backend refuses, saying "not
+  an IP address or network".
+- **After Reset statistics, Clear the log or Delete older logs, the pages
+  show the emptied figures.** Reset statistics marked no cached figure out
+  of date, and the other two only the Logs page, so for up to a minute
+  Logs, Clients, Overview and Analytics could show the numbers from before
+  the deletion. Every figure counted from the request log or the WAF is now
+  fetched again.
 - **`spm` stops at a redirect and names where it points.** The `web`
   service's plain HTTP ports answer every `/api/` path with a 301 to its
   https address. `spm` followed it, so a `POST` or `DELETE` arrived there as a

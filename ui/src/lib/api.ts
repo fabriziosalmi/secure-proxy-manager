@@ -95,8 +95,11 @@ export async function signIn(username: string, password: string): Promise<void> 
   startSession(res.data?.expires_at);
 }
 
-/** Leaving the page, through one object a test can replace. */
-export const browser = { assign: (url: string) => window.location.assign(url) };
+/** Leaving or reloading the page, through one object a test can replace. */
+export const browser = {
+  assign: (url: string) => window.location.assign(url),
+  reload: () => window.location.reload(),
+};
 
 /** Where the browser starts a sign-in with the OIDC provider. */
 export const OIDC_LOGIN_PATH = '/api/auth/oidc/login';

@@ -93,6 +93,23 @@ describe('DataTable', () => {
     expect(screen.getByRole('button', { name: 'Previous' })).toBeEnabled()
   })
 
+  // The last rows of a later page were removed: the backend answers the
+  // same offset with no rows, and an empty page has no Previous.
+  it('moves to the last page that has rows when the page on screen is past the end', () => {
+    const onChange = vi.fn()
+    table({ rows: [], pagination: { offset: 100, limit: 50, total: 100, onChange } })
+    expect(onChange).toHaveBeenCalledWith(50)
+  })
+
+  it('does not move the page while loading, on an error, on the first page or inside the list', () => {
+    const onChange = vi.fn()
+    table({ rows: [], loading: true, pagination: { offset: 100, limit: 50, total: 100, onChange } })
+    table({ rows: [], error: 'down', pagination: { offset: 100, limit: 50, total: 100, onChange } })
+    table({ rows: [], pagination: { offset: 0, limit: 50, total: 0, onChange } })
+    table({ rows: [], pagination: { offset: 50, limit: 50, total: 120, onChange } })
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
   it('shows skeleton rows while loading, marked busy, and says so to screen readers', async () => {
     const { container } = table({ rows: [], loading: true, skeletonRows: 3, pagination: { offset: 0, limit: 50, total: 0, onChange: () => {} } })
     expect(screen.getByRole('table', { name: 'Clients' })).toHaveAttribute('aria-busy', 'true')
