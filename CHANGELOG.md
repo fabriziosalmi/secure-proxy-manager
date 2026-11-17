@@ -21,13 +21,19 @@ for at least one minor release before disappearing.
   The release workflow builds, pushes by digest and scans every image first,
   and moves no `vX.Y.Z` or `latest` tag until all five have passed the scan
   and the `spm` binaries are signed. Then, for each image, it checks that the
-  scanned digest resolves, signs it, and only after that tags it, so a signing
-  failure leaves the image untagged instead of tagged and unsigned. A red scan
-  on one image no longer leaves an image that finished first published on its
-  own, as dns was in 3.26.0 while web failed its scan and the other three
-  stopped. A failure while publishing is finished by re-running the failed
-  jobs of the same run, with the digests that were scanned, without cutting a
-  new release.
+  scanned digest resolves, signs it on GHCR, and only after that gives it its
+  GHCR tags, so on GHCR a signing failure leaves the image untagged instead of
+  tagged and unsigned. The Docker Hub mirror follows: copying the digest to
+  Docker Hub creates its Hub tags, and the Hub copy is signed after that. A
+  red scan on one image no longer leaves an image that finished first
+  published on its own, as dns was in 3.26.0 while web failed its scan and the
+  other three stopped. A failure while publishing is finished by re-running
+  the failed jobs of the same run, with the digests that were scanned, without
+  cutting a new release. Each scanned digest is handed to publishing under a
+  name that carries the run attempt, and publishing reads, for each image, the
+  digest of the newest attempt: a full rerun publishes the digests it rebuilt
+  and scanned, and a rerun of the failed jobs only still finds the earlier
+  attempt's.
 - CI: a newer push to a pull request cancels the CI run of the commit it
   replaces, so a superseded run no longer holds runners the new head waits
   for. Runs on main, in the merge queue, the nightly run and manual runs each
