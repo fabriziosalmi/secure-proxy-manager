@@ -399,8 +399,9 @@ echo "── extra HTTPS ports ──"
 # Settings > Extra HTTPS ports promises HTTPS tunnels to each port. A port
 # below 1025 (993, 465, 636, 853) is not in Safe_ports, and "deny !Safe_ports"
 # came before the CONNECT rule, so a tunnel to it was refused as port_policy.
-# A CONNECT to a port in SSL_ports now passes the port policy; any other
-# request to it does not, so the port is not opened to plain HTTP. The
+# A CONNECT to a port in SSL_ports now passes the port policy, and so does an
+# https:// request (proto HTTPS: each request inside a bumped tunnel); plain
+# HTTP to it does not, so the port is not opened to plain HTTP. The
 # duplicate check matched substrings: 44, 8 and 844 were taken as present
 # (443, 8443) and never added. squid_acl_matrix_test.sh sends the requests.
 XSSL='printf "SQUID_PORT=3128\nEXTRA_SSL_PORTS=993,44 8 844 993 8443\n" > /config/squid_settings.env'
@@ -409,10 +410,13 @@ for p in 993 44 8 844 8443; do
   n=$(grep -cx "acl SSL_ports port $p" <<<"$conf")
   [ "$n" = 1 ] && ok "extra port $p is in SSL_ports exactly once" || bad "extra port $p is in SSL_ports exactly once" "found $n"
 done
-grep -qx 'acl spm_tls_tunnel all-of CONNECT SSL_ports' <<<"$conf" \
-  && grep -qx 'http_access deny !Safe_ports !spm_tls_tunnel spm_r_port_policy' <<<"$conf" \
-  && ok "a CONNECT to a port in SSL_ports passes the Safe_ports rule" \
-  || bad "a CONNECT to a port in SSL_ports passes the Safe_ports rule" "$(grep -E 'spm_tls_tunnel|deny !Safe_ports' <<<"$conf")"
+grep -qx 'acl spm_https_proto proto HTTPS' <<<"$conf" \
+  && grep -qx 'acl spm_tls_tunnel all-of CONNECT SSL_ports' <<<"$conf" \
+  && grep -qx 'acl spm_tls_request all-of spm_https_proto SSL_ports' <<<"$conf" \
+  && grep -qx 'acl spm_tls_port any-of spm_tls_tunnel spm_tls_request' <<<"$conf" \
+  && grep -qx 'http_access deny !Safe_ports !spm_tls_port spm_r_port_policy' <<<"$conf" \
+  && ok "a CONNECT or an https:// request to a port in SSL_ports passes the Safe_ports rule" \
+  || bad "a CONNECT or an https:// request to a port in SSL_ports passes the Safe_ports rule" "$(grep -E 'spm_https_proto|spm_tls_|deny !Safe_ports' <<<"$conf")"
 grep -qE '^acl Safe_ports port (993|44|8|844)$' <<<"$conf" \
   && bad "an extra port is not opened to plain HTTP (not in Safe_ports)" "$(grep '^acl Safe_ports' <<<"$conf")" \
   || ok "an extra port is not opened to plain HTTP (not in Safe_ports)"
