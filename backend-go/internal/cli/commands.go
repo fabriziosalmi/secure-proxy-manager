@@ -221,22 +221,52 @@ func listByNoun(noun string) (listDef, bool) {
 	return listDef{}, false
 }
 
-// findEntry is the id of the entry whose value is exactly v.
+// findEntry is the id of the entry written as v. An entry written exactly so
+// wins over any newer one that matches v loosely, such as ".example.com" for
+// example.com (the allowlist keeps the two apart: the host alone, and the
+// host with its subdomains). Without an exact one, a loose match counts when
+// it is the only one; v may also be written "*.example.com". Every page of
+// the search is read.
 func (s *session) findEntry(l listDef, v string) (string, int) {
-	data, _, code := s.call("GET", l.path+"?limit=1000&search="+url.QueryEscape(v), nil)
-	if code != exitOK {
-		return "", code
-	}
-	var items []map[string]any
-	_ = json.Unmarshal(data, &items)
 	want := strings.TrimPrefix(strings.ToLower(v), "*.")
-	for _, it := range items {
-		have := strings.TrimPrefix(strings.ToLower(str(it[l.field])), ".")
-		if have == want || strings.EqualFold(str(it[l.field]), v) {
-			return str(it["id"]), exitOK
+	var looseIDs, looseValues []string
+	for offset := 0; ; {
+		q := fmt.Sprintf("?limit=1000&offset=%d&search=%s", offset, url.QueryEscape(v))
+		data, r, code := s.call("GET", l.path+q, nil)
+		if code != exitOK {
+			return "", code
+		}
+		var items []map[string]any
+		_ = json.Unmarshal(data, &items)
+		for _, it := range items {
+			if strings.EqualFold(str(it[l.field]), v) {
+				return str(it["id"]), exitOK
+			}
+			if strings.TrimPrefix(strings.ToLower(str(it[l.field])), ".") == want {
+				looseIDs = append(looseIDs, str(it["id"]))
+				looseValues = append(looseValues, str(it[l.field]))
+			}
+		}
+		var page struct {
+			Meta struct {
+				Total int `json:"total"`
+			} `json:"meta"`
+		}
+		_ = json.Unmarshal(r.body, &page)
+		offset += len(items)
+		if len(items) == 0 || offset >= page.Meta.Total {
+			break
 		}
 	}
-	fmt.Fprintf(s.stderr, "spm: %s is not on %s\n", v, l.label)
+	switch len(looseIDs) {
+	case 0:
+		fmt.Fprintf(s.stderr, "spm: %s is not on %s\n", v, l.label)
+		return "", exitRefused
+	case 1:
+		return looseIDs[0], exitOK
+	}
+	fmt.Fprintf(s.stderr, "spm: %s matches more than one entry of %s (%s); nothing removed: give the entry as it is written\n",
+		v, l.label, strings.Join(looseValues, ", "))
 	return "", exitRefused
 }
 

@@ -2,10 +2,12 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -169,6 +171,54 @@ func TestARedirectIsAFailureThatNamesItsTarget(t *testing.T) {
 	}
 	if n := reached.Load(); n != 0 {
 		t.Errorf("%d requests reached the address the server redirected to", n)
+	}
+}
+
+// remove VALUE removes the entry written exactly as VALUE when there is one,
+// even when a newer entry matches it loosely (".example.com" for
+// example.com); it reads every page of the search, not only the first; and a
+// loose match that fits more than one entry is refused, with nothing removed.
+func TestRemoveTakesTheEntryWrittenAsGiven(t *testing.T) {
+	isolate(t)
+	var entries []map[string]any // newest first, as the API lists them
+	var deleted []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == "DELETE" {
+			deleted = append(deleted, r.URL.Path)
+			_, _ = w.Write([]byte(`{"status":"success"}`))
+			return
+		}
+		// Two rows a page, whatever limit asks: a server whose cap the
+		// search outgrew.
+		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+		page := []map[string]any{}
+		if offset < len(entries) {
+			page = entries[offset:min(offset+2, len(entries))]
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "data": page, "meta": map[string]any{"total": len(entries), "offset": offset}})
+	}))
+	defer srv.Close()
+	entry := func(id int, v string) map[string]any { return map[string]any{"id": id, "entry": v} }
+	for _, c := range []struct {
+		name    string
+		list    []map[string]any
+		remove  string
+		want    int
+		deleted string
+	}{
+		{"exact beats a newer loose match", []map[string]any{entry(2, ".example.com"), entry(1, "example.com")}, "example.com", exitOK, "/api/egress-allowlist/1"},
+		{"a loose match alone still counts", []map[string]any{entry(2, ".example.com")}, "example.com", exitOK, "/api/egress-allowlist/2"},
+		{"the entry on the second page", []map[string]any{entry(9, "a.example.com"), entry(8, "b.example.com"), entry(7, "example.com")}, "example.com", exitOK, "/api/egress-allowlist/7"},
+		{"two loose matches", []map[string]any{entry(4, ".example.com"), entry(3, "example.com")}, "*.example.com", exitRefused, ""},
+	} {
+		entries, deleted = c.list, nil
+		code, _, stderr := run(t, "", "allowlist", "remove", c.remove, "--url", srv.URL, "--token", "spm_x_y")
+		got := strings.Join(deleted, ",")
+		if code != c.want || got != c.deleted || (c.want == exitRefused && !strings.Contains(stderr, "matches more than one entry")) {
+			t.Errorf("%s: exit %d, deleted %q (%s); want %d and %q", c.name, code, got, strings.TrimSpace(stderr), c.want, c.deleted)
+		}
+		t.Logf("%s: exit %d, deleted %q %s", c.name, code, got, strings.TrimSpace(stderr))
 	}
 }
 

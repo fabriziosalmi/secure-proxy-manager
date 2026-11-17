@@ -73,8 +73,13 @@ spm history diff 12 && spm history restore 12 --yes
 spm logs --blocked --limit 50
 ```
 
-`remove` takes the entry itself, not its id. `clear` and `history restore` do
-nothing without `--yes`. Every command prints a table, or the API's data with
+`remove` takes the entry itself, not its id. An entry written exactly as you
+give it is the one removed: with both `example.com` and `.example.com` (the
+domain and its subdomains) on the allowlist, `remove example.com` removes
+`example.com`. Without an exact entry, `remove example.com` takes
+`.example.com` when it is the only such entry, and refuses (exit status 1,
+nothing removed) when more than one entry matches that way. `clear` and
+`history restore` do nothing without `--yes`. Every command prints a table, or the API's data with
 `--json`. In `GET /api/openapi.json`, `x-spm-surfaces` marks `cli` the
 operations these commands call; a test holds the two to each other.
 

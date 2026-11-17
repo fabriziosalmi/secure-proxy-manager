@@ -262,6 +262,16 @@ func TestCuratedCommandsAgainstTheRealBackend(t *testing.T) {
 	expect(exitOK, "", "allowlist", "add", "example.com", "--subdomains")
 	expect(exitOK, ".example.com", "allowlist", "list")
 	expect(exitOK, "Removed example.com from Default-deny allowlist", "allowlist", "remove", "example.com")
+	// Both forms on the list, the wider one newer: remove example.com takes
+	// the entry written so, not the newest loose match.
+	expect(exitOK, "", "allowlist", "add", "example.com")
+	expect(exitOK, "", "allowlist", "add", "example.com", "--subdomains")
+	expect(exitOK, "Removed example.com", "allowlist", "remove", "example.com")
+	var left []map[string]any
+	if err := json.Unmarshal([]byte(expect(exitOK, "", "allowlist", "list", "--json")), &left); err != nil || len(left) != 1 || left[0]["entry"] != ".example.com" {
+		t.Fatalf("after removing example.com with .example.com newer: %v (%v); want only .example.com", left, err)
+	}
+	expect(exitOK, "", "allowlist", "remove", ".example.com")
 	expect(exitUsage, "has no import", "allowlist", "import", f)
 
 	expect(exitOK, "", "settings", "set", "log_retention_days", "45")

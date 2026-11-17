@@ -35,6 +35,15 @@ for at least one minor release before disappearing.
   successful empty result, and at startup as "not an OpenAPI document". It is
   now an error naming the `Location`, with the hint to set `SPM_URL` to that
   server's address.
+- **`spm <list> remove VALUE` removes the entry written as `VALUE`.** With
+  both `example.com` and `.example.com` on the default-deny allowlist and the
+  wider one newer, `spm allowlist remove example.com` removed `.example.com`,
+  printed "Removed example.com" and exited 0, so default-deny then blocked the
+  subdomains. The exact entry now wins. A loose match (`.example.com` for
+  `example.com`) still counts when it is the only one, and one that fits
+  several entries is refused with exit status 1 and nothing removed. The
+  search reads every page, so an entry beyond the first 1000 matches is found
+  instead of reported as not on the list.
 
 ## [3.42.0] - 2026-11-16
 
