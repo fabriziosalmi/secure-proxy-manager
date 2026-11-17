@@ -41,6 +41,11 @@ for at least one minor release before disappearing.
   left the table on a page past the end. It showed the
   empty state, as if the list were empty, with no Previous button to go
   back. The table now moves to the last page that has rows.
+- **A refused access-log search says why.** The Logs search box stops at the
+  256 characters the backend takes. When the backend refuses the filters,
+  for example a longer search that arrives through the global search, the
+  table shows the backend's reason ("q is too long") instead of "logs did
+  not answer", and offers no Retry, which would be refused the same way.
 
 ## [3.42.0] - 2026-11-16
 
