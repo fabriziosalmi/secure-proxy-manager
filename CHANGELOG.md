@@ -31,6 +31,38 @@ for at least one minor release before disappearing.
   budget and lets go of its body before that wait, not after. One client's
   repeated blocked uploads can no longer make other clients' requests wait for
   the budget and fail with a 503.
+- **`spm` stops at a redirect and names where it points.** The `web`
+  service's plain HTTP ports answer every `/api/` path with a 301 to its
+  https address. `spm` followed it, so a `POST` or `DELETE` arrived there as a
+  `GET` with the token. When the https certificate passed (`--insecure`, or a
+  certificate an authority signed), its 200 read as done, and
+  `spm blocked-ips add` printed "Added" and exited 0 with nothing added. A redirect is now an error that
+  names its target, nothing is sent there, and the exit status is 3.
+- **`spm-mcp` reports a redirect as an error that names where it points.** A
+  3xx answer, such as the one the plain HTTP port gives, came back as a
+  successful empty result, and at startup as "not an OpenAPI document". It is
+  now an error naming the `Location`, with the hint to set `SPM_URL` to that
+  server's address.
+- **`spm <list> remove VALUE` removes the entry written as `VALUE`.** With
+  both `example.com` and `.example.com` on the default-deny allowlist and the
+  wider one newer, `spm allowlist remove example.com` removed `.example.com`,
+  printed "Removed example.com" and exited 0, so default-deny then blocked the
+  subdomains. The exact entry now wins. A loose match (`.example.com` for
+  `example.com`) still counts when it is the only one, and one that fits
+  several entries is refused with exit status 1 and nothing removed. The
+  search reads every page, so an entry beyond the first 1000 matches is found
+  instead of reported as not on the list.
+- **`spm login` sends a saved token only to the server it was saved for.**
+  `spm login --url https://OTHER:8443` without `--token` pinned the other
+  server's certificate and then sent it the token saved for the first server,
+  without asking. It now asks for a token for any address other than the
+  saved one, and reuses the saved token for the same address. When the server
+  refuses a reused token, the message says to give a new one with `--token`.
+- **`spm login --insecure` to an https address is refused.** It pinned
+  nothing, printed "Signed in" and exited 0, and every later command, which
+  checks the certificate, then failed with exit status 3 against the default
+  self-signed one. It now exits 2 with nothing sent, and the message names
+  `--fingerprint` as the way to pin without the question.
 - An extra HTTPS port set in Settings opens HTTPS tunnels to it even below
   1025 (993, 465, 636, 853): the proxy used to refuse those tunnels as
   `port_policy`, because the `Safe_ports` rule ran before the `CONNECT` rule.
