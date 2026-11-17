@@ -65,8 +65,9 @@ health check in the compose file.
 
 The heuristics are also settings (Settings > Inspection). With
 `INTERNAL_ALERT_TOKEN` set, the backend pushes the stored values to the WAF at
-start and every 30 seconds until the WAF matches them, so the stored settings
-win over the `WAF_H_*` values after start.
+start, and every 30 seconds it reads the heuristics the WAF runs and pushes the
+stored value of each one that differs, so the stored settings win over the
+`WAF_H_*` values after start and after a WAF restart or a restore.
 
 ## DNS
 

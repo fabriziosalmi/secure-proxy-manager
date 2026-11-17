@@ -23,6 +23,12 @@ for at least one minor release before disappearing.
   budget and lets go of its body before that wait, not after. One client's
   repeated blocked uploads can no longer make other clients' requests wait for
   the budget and fail with a 503.
+- **The WAF reconciler notices a WAF restart it did not see.** Every 30
+  seconds it reads the heuristics the WAF runs and pushes the stored value of
+  each one that differs, so a WAF that restarted between two passes, or a
+  restore that changed a `waf_h_*` setting, no longer leaves the WAF on its
+  `WAF_H_*` compose defaults. A WAF that matches gets no writes; a WAF whose
+  running heuristics cannot be read gets every stored value.
 
 ## [3.42.0] - 2026-11-16
 
