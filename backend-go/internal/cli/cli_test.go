@@ -222,6 +222,54 @@ func TestRemoveTakesTheEntryWrittenAsGiven(t *testing.T) {
 	}
 }
 
+// spm login reuses the saved token only for the server it was saved for. For
+// another server it asks for one, instead of sending the first server's token
+// to the one it just started to trust; and when the server refuses a reused
+// token, it says to give a new one.
+func TestLoginReusesTheSavedTokenOnlyForItsServer(t *testing.T) {
+	path := isolate(t)
+	server := func(seen *[]string) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			*seen = append(*seen, r.Header.Get("Authorization"))
+			if r.Header.Get("Authorization") == "Bearer revoked" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			_, _ = w.Write([]byte(`{"status":"success","data":{"username":"token:x","scope":"read"}}`))
+		}))
+	}
+	var seen1, seen2 []string
+	one, two := server(&seen1), server(&seen2)
+	defer one.Close()
+	defer two.Close()
+	if err := saveConfig(path, Config{URL: one.URL, Token: "tokenA"}); err != nil {
+		t.Fatal(err)
+	}
+
+	code, out, stderr := run(t, "tokenB\n", "login", "--url", two.URL)
+	saved, _ := loadConfig(path)
+	if code != exitOK || strings.Join(seen2, ",") != "Bearer tokenB" || saved.Token != "tokenB" || saved.URL != two.URL || !strings.Contains(out, "API token") {
+		t.Errorf("login to another server: exit %d, it saw %v, saved %+v, %q %q; want 0, Bearer tokenB asked for and saved", code, seen2, saved, out, stderr)
+	}
+
+	seen2 = nil
+	code, out, _ = run(t, "", "login", "--url", two.URL+"/")
+	if code != exitOK || strings.Join(seen2, ",") != "Bearer tokenB" || strings.Contains(out, "API token") {
+		t.Errorf("login again to the same server: exit %d, it saw %v, %q; want 0 and the saved token, not asked", code, seen2, out)
+	}
+
+	if err := saveConfig(path, Config{URL: two.URL, Token: "revoked"}); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr = run(t, "", "login")
+	if code != exitRefused || !strings.Contains(stderr, "saved token") || !strings.Contains(stderr, "--token") {
+		t.Errorf("a revoked saved token: exit %d, %q; want 1 and to give a new one with --token", code, stderr)
+	}
+	if len(seen1) != 0 {
+		t.Errorf("the first server saw %v", seen1)
+	}
+}
+
 // A server that speaks another API version is named on standard error.
 func TestAnotherAPIVersionIsSaid(t *testing.T) {
 	isolate(t)

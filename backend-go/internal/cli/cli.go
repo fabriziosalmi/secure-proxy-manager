@@ -383,6 +383,12 @@ func runLogin(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	cfg.URL = strings.TrimRight(cfg.URL, "/")
 	cfg.Fingerprint = ""
+	// A token from the config file is the one saved for the server there: it
+	// is reused for that server alone, never sent to another one.
+	reused := c.token == "" && os.Getenv("SPM_TOKEN") == "" && cfg.Token != ""
+	if saved, _ := loadConfig(path); reused && strings.TrimRight(saved.URL, "/") != cfg.URL {
+		cfg.Token, reused = "", false
+	}
 	in := bufio.NewReader(stdin)
 	if strings.HasPrefix(cfg.URL, "https://") && !c.insecure {
 		cert, trusted, err := peerCertificate(cfg.URL)
@@ -432,6 +438,11 @@ func runLogin(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return failure(stderr, err)
 	}
 	warnVersion(stderr, r)
+	if r.status != 200 && reused {
+		fmt.Fprintf(stderr, "spm login: the server refused the saved token (%d); nothing saved: give a new one with --token or SPM_TOKEN\n",
+			r.status)
+		return exitFor(r.status)
+	}
 	if r.status != 200 {
 		fmt.Fprintf(stderr, "spm login: the server refused the token (%d); nothing saved\n", r.status)
 		return exitFor(r.status)

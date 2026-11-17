@@ -44,6 +44,12 @@ for at least one minor release before disappearing.
   several entries is refused with exit status 1 and nothing removed. The
   search reads every page, so an entry beyond the first 1000 matches is found
   instead of reported as not on the list.
+- **`spm login` sends a saved token only to the server it was saved for.**
+  `spm login --url https://OTHER:8443` without `--token` pinned the other
+  server's certificate and then sent it the token saved for the first server,
+  without asking. It now asks for a token for any address other than the
+  saved one, and reuses the saved token for the same address. When the server
+  refuses a reused token, the message says to give a new one with `--token`.
 
 ## [3.42.0] - 2026-11-16
 

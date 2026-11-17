@@ -51,6 +51,12 @@ the token and the fingerprint to `spm/config.json` in your config directory
 (`SPM_CONFIG` to choose another file), with mode 0600 in a directory of mode
 0700. `spm` refuses to read a config file that other users can read.
 
+Without `--token` or `SPM_TOKEN`, `spm login` reuses the token saved for the
+same address, so signing in again to pin a new certificate does not ask for
+it, and asks for one for any other address: the token saved for one server is
+never sent to another. When the server refuses a saved token (revoked or
+expired), nothing is saved; give a new one with `--token`.
+
 ## The dashboard's lists and pages
 
 The commands carry the names the dashboard shows:
