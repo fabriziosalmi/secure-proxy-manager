@@ -508,7 +508,7 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 	}
 
 	if in.Blocked() {
-		block(w, in, ruleIDs, categories)
+		block(w, req.Request, in, ruleIDs, categories, release)
 		return
 	}
 
@@ -653,8 +653,11 @@ func (in *inspection) feature(r *http.Request) TrafficFeature {
 }
 
 // block logs the decision, applies the tar-pit to repeat offenders, notifies
-// the backend and writes the block page.
-func block(w icap.ResponseWriter, in *inspection, ruleIDs, categories []string) {
+// the backend and writes the block page. The request is not forwarded, so
+// before the tar-pit can sleep it drops every copy of r's body and gives back
+// the inspection budget (release): the sleep delays the offender's answer and
+// holds nothing other clients' inspections wait for.
+func block(w icap.ResponseWriter, r *http.Request, in *inspection, ruleIDs, categories []string, release func()) {
 	source := "URL"
 	if in.BodyStr != "" {
 		source = "URL+BODY"
@@ -677,10 +680,16 @@ func block(w icap.ResponseWriter, in *inspection, ruleIDs, categories []string) 
 		"score", in.Score, "threshold", eng.BlockThreshold(), "blocked_by", by, "crs_score", crsScore(in.Inspection),
 		"categories", categories, "rules", ruleIDs, "source", source, "url", truncate(in.RawURL, 200))
 
-	tarPit(in.ClientIP)
-	notifyBlock(blockAlert{EventID: in.eventID, ClientIP: in.ClientIP, RawURL: in.RawURL, Source: source,
+	// The alert is built first: its CRS targets are read from what DropBody
+	// takes away.
+	alert := blockAlert{EventID: in.eventID, ClientIP: in.ClientIP, RawURL: in.RawURL, Source: source,
 		Score: score, Categories: categories, Rules: ruleIDs, ScoringRules: in.ScoringRules(), BlockedBy: by,
-		CRSScore: crsScore(in.Inspection), CRSTargets: crsTargets(in.Inspection)})
+		CRSScore: crsScore(in.Inspection), CRSTargets: crsTargets(in.Inspection)}
+	in.DropBody(r)
+	release()
+
+	tarPit(in.ClientIP)
+	notifyBlock(alert)
 	sendBlockResponse(w, primaryCategory, score, in.eventID)
 }
 

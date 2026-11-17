@@ -25,6 +25,12 @@ for at least one minor release before disappearing.
   its source reads "not downloaded: larger than the 32 MB cap". A custom feed
   between 32 MB and 200 MiB that refreshed before now fails the same way; the
   import and the refresh share one constant, so the two caps cannot drift.
+- **A tar-pitted block no longer holds the shared inspection budget.** A
+  client blocked more than three times in a minute still waits 10 seconds for
+  each further block page, but its request now gives back the inspection
+  budget and lets go of its body before that wait, not after. One client's
+  repeated blocked uploads can no longer make other clients' requests wait for
+  the budget and fail with a 503.
 
 ## [3.42.0] - 2026-11-16
 
