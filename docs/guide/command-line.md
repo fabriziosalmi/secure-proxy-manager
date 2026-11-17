@@ -43,8 +43,19 @@ docker compose exec web openssl x509 -in /etc/nginx/ssl/server.crt -noout -finge
 To pin without the question, give the fingerprint you expect with
 `--fingerprint`; a different one is refused and nothing is saved. A server
 that shows another certificate later is refused (exit status 3) until you run
-`spm login` again. The certificate stays the same across restarts and
-upgrades, because it is kept in the `web-tls` volume.
+`spm login` again.
+
+The `web` service keeps its self-signed certificate in the `web-tls` volume,
+so restarts and upgrades keep it, with one exception: the certificate is
+valid for 365 days, and a start of `web` within 30 days of its expiry makes a
+new one (its log says "expires within 30 days: making a new one"). A pinned
+`spm` keeps working until that start, even past the expiry date while `web`
+runs, because the pin replaces the date check. From that start on, every
+command exits with status 3 ("not the one pinned") until you compare the new
+fingerprint as above and run `spm login` again. A certificate you mount in
+the volume yourself is never replaced, and a Let's Encrypt certificate is
+checked against the system's authorities, not pinned, so its renewals do not
+affect `spm`.
 
 `spm login` checks the token with `GET /api/session` and saves the address,
 the token and the fingerprint to `spm/config.json` in your config directory
