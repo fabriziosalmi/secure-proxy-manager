@@ -15,6 +15,17 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The blacklist auto-refresh refuses a feed above 32 MB, the cap the import
+  already used.** It read up to 200 MiB of a feed into memory, in a backend
+  limited to 128M, and cut a larger feed short with no error, so the entries
+  past the cut were handled as dropped. A feed above the cap now counts as
+  failed: its entries stay, nothing of that list is removed in that run, and
+  its source reads "not downloaded: larger than the 32 MB cap". A custom feed
+  between 32 MB and 200 MiB that refreshed before now fails the same way; the
+  import and the refresh share one constant, so the two caps cannot drift.
+
 ## [3.42.0] - 2026-11-16
 
 The MCP server offers 102 tools instead of 13. Nothing in the API is
