@@ -3,9 +3,12 @@ name: Multi-Arch Build & Push
 # Release pipeline. A v* tag builds every image for amd64 and arm64, pushes it
 # by digest only and scans what was pushed (build-scan). Only when every image
 # has passed its scan, and the spm binaries are built and signed, does publish
-# run: for each image it checks that the scanned digest resolves, signs it, and
-# only then gives it its tags (version, latest, the Docker Hub mirror). A red
-# scan on any image leaves every image of the run untagged: nothing an
+# run: for each image it checks that the scanned digest resolves, signs it on
+# GHCR, and only then gives it its GHCR tags (version, latest), so on GHCR a
+# signing failure leaves the image untagged. The Docker Hub mirror comes after:
+# copying the digest there creates its Hub tags, and the Hub copy is signed
+# once it exists, so on Docker Hub the tags are in place before the signature.
+# A red scan on any image leaves every image of the run untagged: nothing an
 # installer pulls points at a digest of a partial release. v3.26.0 tagged dns
 # because each image used to tag itself right after its own scan.
 #
@@ -14,7 +17,10 @@ name: Multi-Arch Build & Push
 # --failed): build-scan's digests are kept as artifacts, and signing and
 # tagging by digest are idempotent, so the rerun finishes the release with the
 # digests that were scanned and no new tag. Do it before a newer release is
-# tagged, or the rerun moves :latest back.
+# tagged, or the rerun moves :latest back. Each digest artifact carries the
+# run attempt that wrote it, and publish reads, for each image, the one of the
+# newest attempt: a full rerun publishes the digests it rebuilt and scanned,
+# and a rerun of the failed jobs only still finds the earlier attempt's.
 #
 # workflow_dispatch is a DRY RUN of the same path on the selected ref: build,
 # push by digest, scan, and in publish check that each digest resolves, then
@@ -111,7 +117,7 @@ jobs:
 
   # Builds, pushes by digest and scans each image. It tags nothing and signs
   # nothing: a digest that leaves this job is named only by its sha256. Each
-  # leg hands its digest to publish as the artifact digest-<image>.
+  # leg hands its digest to publish as the artifact digest-<image>-<attempt>.
   # fail-fast is off so that one red scan does not cancel the other legs: the
   # run reports every image's scan, and a rerun of the failed leg alone can
   # complete it.
@@ -214,8 +220,10 @@ jobs:
           done
 
       # Reached only when the scan above passed: the artifact exists only for
-      # a scanned digest. overwrite lets a full rerun replace the digest of an
-      # earlier attempt with the one it rebuilt and scanned.
+      # a scanned digest. Its name carries the run attempt, so no attempt
+      # overwrites another's and publish can tell which is newest: a run keeps
+      # every attempt's artifacts, and the download keeps one per name by
+      # artifact id, which is not an attempt order.
       - name: Write the scanned digest
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
@@ -228,20 +236,21 @@ jobs:
           echo "${GITHUB_REF}: ${IMAGE}@${DIGEST} built and scanned; not tagged, not signed."
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: digest-${{ matrix.image }}
+          name: digest-${{ matrix.image }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/digest/digest
           if-no-files-found: error
-          overwrite: true
           retention-days: 90
 
   # Runs only when every build-scan leg and cli-assets succeeded: needs makes
   # one red scan skip every publish leg, so no image of the run is tagged.
   # For each image: check that the scanned digest resolves to an index with
-  # both platforms, sign it, then tag it, then mirror and sign the mirror. The
-  # signature is in place before :vX.Y.Z or :latest names the digest, so a
-  # signing failure leaves the image untagged rather than tagged and
-  # unsigned. On Docker Hub the digest exists only once the mirror step has
-  # copied it with its tags, so the Hub signature still follows the Hub tags.
+  # both platforms, sign it, then tag it, then mirror and sign the mirror. On
+  # GHCR the signature is in place before :vX.Y.Z or :latest names the
+  # digest, so a signing failure leaves the image untagged rather than tagged
+  # and unsigned. On Docker Hub the digest exists only once the mirror step
+  # has copied it with its tags, so the Hub signature follows the Hub tags: a
+  # failure signing the mirror leaves the Hub tags in place, unsigned, until a
+  # rerun signs them.
   # On a dry run only the checks run.
   publish:
     name: Publish ${{ matrix.image }}
@@ -263,9 +272,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # Every build-scan leg's digest, one directory per artifact
-      # (digests/digest-<image>/digest), including those of earlier attempts
-      # of this run when only failed jobs are rerun.
+      # Every build-scan leg's digest of every attempt of this run, one
+      # directory per artifact (digests/digest-<image>-<attempt>/digest).
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: digest-*
@@ -274,6 +282,8 @@ jobs:
       # The two matrices list the images separately. If build-scan scanned an
       # image this matrix does not publish (or the reverse), every publish leg
       # stops here, so a release never goes out without one of its images.
+      # For this image the artifact of the newest attempt is read
+      # (scripts/select-scanned-digest.sh, tests/shell/release_digest_test.sh).
       - name: Read the scanned digest
         id: digest
         env:
@@ -281,14 +291,7 @@ jobs:
           JOB_TOTAL: ${{ strategy.job-total }}
         run: |
           set -euo pipefail
-          scanned=$(find "$DIGESTS" -mindepth 1 -maxdepth 1 -type d -name 'digest-*' | wc -l | tr -d ' ')
-          [ "$scanned" -eq "$JOB_TOTAL" ] \
-            || { echo "::error::build-scan handed over $scanned digests, publish has $JOB_TOTAL images"; ls "$DIGESTS"; exit 1; }
-          f="$DIGESTS/digest-${IMG}/digest"
-          [ -f "$f" ] || { echo "::error::no scanned digest for ${IMG} (expected $f)"; exit 1; }
-          digest=$(tr -d '[:space:]' < "$f")
-          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] \
-            || { echo "::error::$f holds '$digest', not a sha256 digest"; exit 1; }
+          digest=$(bash scripts/select-scanned-digest.sh "$DIGESTS" "$IMG" "$JOB_TOTAL")
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
           echo "${IMG}: ${IMAGE}@${digest}"
 

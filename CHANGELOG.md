@@ -21,18 +21,38 @@ for at least one minor release before disappearing.
   The release workflow builds, pushes by digest and scans every image first,
   and moves no `vX.Y.Z` or `latest` tag until all five have passed the scan
   and the `spm` binaries are signed. Then, for each image, it checks that the
-  scanned digest resolves, signs it, and only after that tags it, so a signing
-  failure leaves the image untagged instead of tagged and unsigned. A red scan
-  on one image no longer leaves an image that finished first published on its
-  own, as dns was in 3.26.0 while web failed its scan and the other three
-  stopped. A failure while publishing is finished by re-running the failed
-  jobs of the same run, with the digests that were scanned, without cutting a
-  new release.
+  scanned digest resolves, signs it on GHCR, and only after that gives it its
+  GHCR tags, so on GHCR a signing failure leaves the image untagged instead of
+  tagged and unsigned. The Docker Hub mirror follows: copying the digest to
+  Docker Hub creates its Hub tags, and the Hub copy is signed after that. A
+  red scan on one image no longer leaves an image that finished first
+  published on its own, as dns was in 3.26.0 while web failed its scan and the
+  other three stopped. A failure while publishing is finished by re-running
+  the failed jobs of the same run, with the digests that were scanned, without
+  cutting a new release. Each scanned digest is handed to publishing under a
+  name that carries the run attempt, and publishing reads, for each image, the
+  digest of the newest attempt: a full rerun publishes the digests it rebuilt
+  and scanned, and a rerun of the failed jobs only still finds the earlier
+  attempt's.
 - CI: a newer push to a pull request cancels the CI run of the commit it
   replaces, so a superseded run no longer holds runners the new head waits
   for. Runs on main, in the merge queue, the nightly run and manual runs each
   get a group of their own and are never cancelled or queued behind another
   run.
+- **BREAKING** (`X-API-Version: 1`): **a request that carries `dry_run` to a
+  configuration change that has no preview is refused and changes nothing.**
+  The nine operations that take a configuration snapshot first but do not
+  declare `dry_run` (`PUT /api/settings/{name}`, `POST /api/settings`,
+  `PUT /api/waf/policy`, `POST /api/waf/policy/exceptions`,
+  `POST /api/waf/policy/observe-rules`, `POST /api/egress-allowlist`,
+  `DELETE /api/egress-allowlist/{id}`, `POST /api/client-groups`,
+  `PUT /api/client-groups/{id}`) answer `400 invalid_request` to a
+  `dry_run` other than `false` or empty, before their handler runs. They ignored the
+  parameter and applied the change, while the snapshot taken before every
+  change was skipped for a request carrying `dry_run`, so a caller that asked
+  for a preview got the change with no snapshot to restore. `dry_run=false`,
+  an empty `dry_run` or none runs them as before. A test lists every route behind the
+  snapshot and holds each to this or to a real preview.
 
 ### Fixed
 
