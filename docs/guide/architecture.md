@@ -282,8 +282,9 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
 
 1. A client sends a request to Squid on port 3128.
 2. Squid evaluates its access rules, first match wins: dangerous methods and
-   FTP, ports outside `Safe_ports` (except a `CONNECT` to a port in
-   `SSL_ports`, which the extra HTTPS ports setting extends), sources outside
+   FTP, ports outside `Safe_ports` (except HTTPS to a port in `SSL_ports`,
+   which the extra HTTPS ports setting extends: a `CONNECT`, or an `https://`
+   request such as each one inside a bumped tunnel), sources outside
    the allowed client ranges,
    the cache manager, the IP blacklist, the domain blacklist, a name that
    resolved to the sinkhole address, the policy rules inserted for the access
