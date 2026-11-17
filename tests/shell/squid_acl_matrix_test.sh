@@ -81,16 +81,18 @@ create_network 198.18.0.0/24   "$PFX-ext"
 create_network 192.168.77.0/24 "$PFX-lan"
 create_network 203.0.113.0/24  "$PFX-pub"
 
-# Upstreams: a plain HTTP server on :80 and :8443 (the CONNECT target) serving
-# an index and an .exe in three letter cases, plus a file whose name holds
-# ".exe" but does not end with it, from the proxy image itself (python3 is in
-# it). Each exists, so a request the proxy lets through is a 200, not a 404.
+# Upstreams: a plain HTTP server on :80, :8443 (the CONNECT target) and :993
+# (an extra HTTPS port below 1025) serving an index and an .exe in three letter
+# cases, plus a file whose name holds ".exe" but does not end with it, from the
+# proxy image itself (python3 is in it). Each exists, so a request the proxy
+# lets through is a 200, not a 404.
 upstream() {
   local name="$1" net="$2" ip="$3"
   docker run -d --name "$name" --network "$net" --ip "$ip" --memory 64m --entrypoint /bin/bash "$IMAGE" -c '
     mkdir -p /srv && cd /srv && echo ok > index.html
     for f in x.exe X.EXE x.Exe x.exe.txt; do echo MZ > "$f"; done
     python3 -m http.server 8443 >/dev/null 2>&1 &
+    python3 -m http.server 993 >/dev/null 2>&1 &
     exec python3 -m http.server 80 >/dev/null 2>&1' >/dev/null
 }
 upstream "$PFX-pub" "$PFX-pub" "$PUB_SVC"
@@ -232,6 +234,16 @@ check  "LAN client → public IP literal (CONNECT :8443)"  403 direct_ip       t
 check  "LAN client → port outside Safe_ports"            403 port_policy     code   "$PFX-lan" "$LAN_CLIENT" http://pub.test:22/
 check  "LAN client → CONNECT to a non-SSL port"          403 port_policy     tunnel "$PFX-lan" "$LAN_CLIENT" pub.test:8080
 check  "LAN client → PUT"                                403 protocol_policy code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/ -X PUT
+
+echo "── an extra HTTPS port below 1025 ──"
+# Settings > Extra HTTPS ports: 993 is not in Safe_ports, and the Safe_ports
+# rule used to refuse the tunnel as port_policy before the CONNECT rule could
+# allow it. The tunnel now opens; plain HTTP to the same port is still refused,
+# and so is a tunnel to a port below 1025 that is not listed.
+start_proxy 'printf "SQUID_PORT=3128\nEXTRA_SSL_PORTS=993\n" > /config/squid_settings.env' || exit 1
+check  "LAN client → CONNECT to extra HTTPS port 993"    200 none          tunnel "$PFX-lan" "$LAN_CLIENT" pub.test:993
+check  "LAN client → plain HTTP to extra port 993"       403 port_policy   code   "$PFX-lan" "$LAN_CLIENT" http://pub.test:993/
+check  "LAN client → CONNECT to unlisted port 995"       403 port_policy   tunnel "$PFX-lan" "$LAN_CLIENT" pub.test:995
 
 echo "── IP blacklist blocks the destination ──"
 start_proxy "echo $PUB_SVC > /config/ip_blacklist.txt" || exit 1
