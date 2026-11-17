@@ -166,9 +166,11 @@ func wafRefusal(alertToken string, err error, status int) string {
 // pushHeuristicsToWAF propagates the heuristic toggles in the just-saved
 // settings to the WAF's runtime config (POST /heuristics/toggle) and returns
 // what it answered for each, or nil when the save carried none. The database
-// stays authoritative: a refused push does not fail the save, and
-// workers.StartWAFReconciler pushes the stored values again every 30 seconds
-// until the WAF matches.
+// stays authoritative: a refused push does not fail the save. Every 30
+// seconds workers.StartWAFReconciler reads the heuristics the WAF runs and
+// pushes the stored value of each one that differs (every stored value when
+// the WAF's state cannot be read), so the WAF comes to match within a pass of
+// accepting the push.
 //
 // The value "still applies on the WAF's next restart via WAF_H_* env" was
 // claimed here once; it does not: those variables come from the compose file

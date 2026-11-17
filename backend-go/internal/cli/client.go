@@ -65,6 +65,10 @@ func newClient(c Config, insecure bool) (*client, error) {
 		http: &http.Client{
 			Timeout:   60 * time.Second,
 			Transport: &http.Transport{TLSClientConfig: tlsCfg, Proxy: nil},
+			// A redirect is not followed: on a 301, Go would send a POST or a
+			// DELETE again as a GET, with the token, and its 200 would read
+			// as the write done. do() reports it instead.
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
 	}, nil
 }
@@ -99,6 +103,14 @@ func (cl *client) do(method, path string, body []byte) (*response, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		target := resp.Header.Get("Location")
+		if loc, err := resp.Location(); err == nil {
+			target = loc.String()
+		}
+		return nil, fmt.Errorf("%s %s: the server redirected to %q (%d); nothing was sent there: give that server's address with --url",
+			method, path, target, resp.StatusCode)
+	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 	if err != nil {
 		return nil, err

@@ -25,7 +25,7 @@ const (
 	exitOK      = 0 // the API answered 2xx
 	exitRefused = 1 // the API answered 4xx, or the person declined
 	exitUsage   = 2 // the command line or the config file is wrong; nothing was sent
-	exitFailed  = 3 // the server could not be reached, its certificate did not match, or it answered 5xx
+	exitFailed  = 3 // the server could not be reached, its certificate did not match, it redirected, or it answered 5xx
 )
 
 const usage = `spm: the Secure Proxy Manager API from a terminal.
@@ -44,10 +44,12 @@ const usage = `spm: the Secure Proxy Manager API from a terminal.
 The dashboard's lists and pages, by their names there:
 ` + nounUsage + `
 Every command takes --url, --token (or SPM_URL, SPM_TOKEN), --insecure (do
-not check the certificate at all), and --config (or SPM_CONFIG).
+not check the certificate at all; spm login refuses it for https, as it pins
+the certificate instead), and --config (or SPM_CONFIG).
 
 Exit status: 0 done, 1 refused (4xx) or declined, 2 usage or config error
-(nothing sent), 3 unreachable, certificate mismatch, or server error (5xx).
+(nothing sent), 3 unreachable, certificate mismatch, a redirect (not
+followed), or server error (5xx).
 `
 
 // Run is the spm command. It returns the exit status.
@@ -381,9 +383,22 @@ func runLogin(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 	cfg.URL = strings.TrimRight(cfg.URL, "/")
+	if strings.HasPrefix(cfg.URL, "https://") && c.insecure {
+		// It would pin nothing, and every later command, which checks the
+		// certificate, would refuse the server it saved.
+		fmt.Fprintf(stderr, "spm login: login pins the certificate, so it does not take --insecure; drop it, "+
+			"or pass --fingerprint SHA256 to pin the one you expect; nothing sent\n")
+		return exitUsage
+	}
 	cfg.Fingerprint = ""
+	// A token from the config file is the one saved for the server there: it
+	// is reused for that server alone, never sent to another one.
+	reused := c.token == "" && os.Getenv("SPM_TOKEN") == "" && cfg.Token != ""
+	if saved, _ := loadConfig(path); reused && strings.TrimRight(saved.URL, "/") != cfg.URL {
+		cfg.Token, reused = "", false
+	}
 	in := bufio.NewReader(stdin)
-	if strings.HasPrefix(cfg.URL, "https://") && !c.insecure {
+	if strings.HasPrefix(cfg.URL, "https://") {
 		cert, trusted, err := peerCertificate(cfg.URL)
 		if err != nil {
 			return failure(stderr, err)
@@ -431,6 +446,11 @@ func runLogin(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return failure(stderr, err)
 	}
 	warnVersion(stderr, r)
+	if r.status != 200 && reused {
+		fmt.Fprintf(stderr, "spm login: the server refused the saved token (%d); nothing saved: give a new one with --token or SPM_TOKEN\n",
+			r.status)
+		return exitFor(r.status)
+	}
 	if r.status != 200 {
 		fmt.Fprintf(stderr, "spm login: the server refused the token (%d); nothing saved\n", r.status)
 		return exitFor(r.status)

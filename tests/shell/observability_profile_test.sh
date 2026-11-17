@@ -43,8 +43,13 @@ services:
       resources:
         limits:
           cpus: '0.25'
-          memory: 256M
+          memory: 512M
 EOF
+# Grafana gets 512M. At 256M, on one GitHub runner image (ubuntu-26.04
+# 20261111.82.6, kernel 7.0.0-1016-aws, Docker 29.4.2), the kernel killed
+# Grafana 13.3.0 for memory at every start (an oom event and exit 137, nine
+# times in a row), while the same test passed on the other runner image. The
+# compose files set no memory limit on Grafana: the cap is this test's own.
 
 echo "── observability profile (prometheus + grafana) ──"
 TEST_START="$(date +%s)"
@@ -87,8 +92,18 @@ done
 # How the Grafana container ended, when it did not come up: a container that
 # restarts with no error in its log was killed, and OOMKilled says whether by
 # the memory limit this test sets.
+# OOMKilled and ExitCode describe the current run only: after a restart they
+# read false and 0 even when every earlier run was killed for memory, so the
+# kills are counted from Docker's oom events since the test started.
 grafana_state() {
-  docker inspect -f 'OOMKilled={{.State.OOMKilled}} ExitCode={{.State.ExitCode}} Restarts={{.RestartCount}} Status={{.State.Status}}' secure-proxy-manager-grafana 2>&1
+  local ooms
+  ooms=$(docker events --since "$TEST_START" --until "$(date +%s)" \
+    --filter container=secure-proxy-manager-grafana --filter event=oom --format '{{.Action}}' 2>/dev/null | grep -c oom)
+  echo "Restarts=$(docker inspect -f '{{.RestartCount}}' secure-proxy-manager-grafana 2>&1)" \
+    "Status=$(docker inspect -f '{{.State.Status}}' secure-proxy-manager-grafana 2>&1)" \
+    "oom_kills=$ooms" \
+    "memory=$(docker stats --no-stream --format '{{.MemUsage}}' secure-proxy-manager-grafana 2>&1)" \
+    "peak=$(docker exec secure-proxy-manager-grafana cat /sys/fs/cgroup/memory.peak 2>/dev/null || echo n/a)"
 }
 # Why Grafana stopped, when it restarts with exit code 0 and no OOM (seen on
 # one GitHub runner image only, 2026-11-16): what Docker saw happen to the

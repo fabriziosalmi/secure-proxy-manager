@@ -17,6 +17,14 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- **The blacklist auto-refresh refuses a feed above 32 MB, the cap the import
+  already used.** It read up to 200 MiB of a feed into memory, in a backend
+  limited to 128M, and cut a larger feed short with no error, so the entries
+  past the cut were handled as dropped. A feed above the cap now counts as
+  failed: its entries stay, nothing of that list is removed in that run, and
+  its source reads "not downloaded: larger than the 32 MB cap". A custom feed
+  between 32 MB and 200 MiB that refreshed before now fails the same way; the
+  import and the refresh share one constant, so the two caps cannot drift.
 - **A tar-pitted block no longer holds the shared inspection budget.** A
   client blocked more than three times in a minute still waits 10 seconds for
   each further block page, but its request now gives back the inspection
@@ -58,6 +66,68 @@ for at least one minor release before disappearing.
   Logs, Clients, Overview and Analytics could show the numbers from before
   the deletion. Every figure counted from the request log or the WAF is now
   fetched again.
+- **`spm` stops at a redirect and names where it points.** The `web`
+  service's plain HTTP ports answer every `/api/` path with a 301 to its
+  https address. `spm` followed it, so a `POST` or `DELETE` arrived there as a
+  `GET` with the token. When the https certificate passed (`--insecure`, or a
+  certificate an authority signed), its 200 read as done, and
+  `spm blocked-ips add` printed "Added" and exited 0 with nothing added. A redirect is now an error that
+  names its target, nothing is sent there, and the exit status is 3.
+- **`spm-mcp` reports a redirect as an error that names where it points.** A
+  3xx answer, such as the one the plain HTTP port gives, came back as a
+  successful empty result, and at startup as "not an OpenAPI document". It is
+  now an error naming the `Location`, with the hint to set `SPM_URL` to that
+  server's address.
+- **`spm <list> remove VALUE` removes the entry written as `VALUE`.** With
+  both `example.com` and `.example.com` on the default-deny allowlist and the
+  wider one newer, `spm allowlist remove example.com` removed `.example.com`,
+  printed "Removed example.com" and exited 0, so default-deny then blocked the
+  subdomains. The exact entry now wins. A loose match (`.example.com` for
+  `example.com`) still counts when it is the only one, and one that fits
+  several entries is refused with exit status 1 and nothing removed. The
+  search reads every page, so an entry beyond the first 1000 matches is found
+  instead of reported as not on the list.
+- **`spm login` sends a saved token only to the server it was saved for.**
+  `spm login --url https://OTHER:8443` without `--token` pinned the other
+  server's certificate and then sent it the token saved for the first server,
+  without asking. It now asks for a token for any address other than the
+  saved one, and reuses the saved token for the same address. When the server
+  refuses a reused token, the message says to give a new one with `--token`.
+- **`spm login --insecure` to an https address is refused.** It pinned
+  nothing, printed "Signed in" and exited 0, and every later command, which
+  checks the certificate, then failed with exit status 3 against the default
+  self-signed one. It now exits 2 with nothing sent, and the message names
+  `--fingerprint` as the way to pin without the question.
+- An extra HTTPS port set in Settings opens HTTPS tunnels to it even below
+  1025 (993, 465, 636, 853): the proxy used to refuse those tunnels as
+  `port_policy`, because the `Safe_ports` rule ran before the `CONNECT` rule.
+  Plain HTTP to such a port is still refused. Ports such as 44, 8 and 844 are
+  now added too: they were taken as already present because 443 and 8443
+  contain them.
+- **The WAF reconciler notices a WAF restart it did not see.** Every 30
+  seconds it reads the heuristics the WAF runs and pushes the stored value of
+  each one that differs, so a WAF that restarted between two passes, or a
+  restore that changed a `waf_h_*` setting, no longer leaves the WAF on its
+  `WAF_H_*` compose defaults. A WAF that matches gets no writes; a WAF whose
+  running heuristics cannot be read gets every stored value.
+- **Saving or restoring only the time window or the bandwidth limits reaches
+  the proxy.** `time_restrictions.conf` and `bandwidth_limits.conf` are
+  rewritten when a request carries any of their settings, not only the
+  toggle, so `PUT /api/settings/{name}` (`spm settings set
+  time_restriction_start 09:00`) and a snapshot restore that changes only a
+  time or a limit no longer leave the proxy on the old values.
+- **Changing one setting takes a configuration snapshot first.**
+  `PUT /api/settings/{name}` (`spm settings set`) is preceded by a snapshot,
+  as `POST /api/settings` is, with the reason "before a change to setting
+  {name}", so the configuration history can undo it and tells it apart from a
+  settings save.
+- **`POST /api/maintenance/reload-config` no longer answers "Proxy reloaded"
+  when exporting the lists failed.** The proxy still reloads, and the answer
+  is `200` with `status: "partial"` and `code: "export_failed"`, saying the
+  proxy enforces the list files already on disk. The dashboard shows it as a
+  warning, not as applied and not as a reload that could not be requested. A
+  `trigger_write_failed` answer no longer claims the lists were exported when
+  they were not.
 
 ## [3.42.0] - 2026-11-16
 

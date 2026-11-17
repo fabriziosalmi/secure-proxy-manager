@@ -74,6 +74,8 @@ func fetchFailure(err error) string {
 	switch {
 	case errors.Is(err, errRefreshRefused):
 		return "not downloaded: the address is not a public one"
+	case errors.Is(err, errFeedTooLarge):
+		return fmt.Sprintf("not downloaded: larger than the %d MB cap", MaxFeedBytes>>20)
 	case strings.HasPrefix(err.Error(), "HTTP "):
 		return "not downloaded: the server answered " + err.Error()
 	default:
