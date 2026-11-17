@@ -494,7 +494,9 @@ func (h *BlacklistHandlers) AddDomainWhitelist(w http.ResponseWriter, r *http.Re
 // buffers the whole response and the parse then builds a dedupe set over it, so
 // a cap above the budget means the process is OOM-killed before the cap can
 // fire — the guard would read as protection and provide none (SECURE-INPT-01).
-const maxImportSize = 32 * 1024 * 1024 // 32 MB
+// It is the auto-refresh's cap too (workers.MaxFeedBytes), so the two cannot
+// drift.
+const maxImportSize = workers.MaxFeedBytes
 
 // Import ingests a blacklist feed, from a URL or an inline body, into the IP or
 // domain blacklist. It was a single 155-line body at CCN 41 — the repository's
