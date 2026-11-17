@@ -23,6 +23,12 @@ for at least one minor release before disappearing.
   budget and lets go of its body before that wait, not after. One client's
   repeated blocked uploads can no longer make other clients' requests wait for
   the budget and fail with a 503.
+- An extra HTTPS port set in Settings opens HTTPS tunnels to it even below
+  1025 (993, 465, 636, 853): the proxy used to refuse those tunnels as
+  `port_policy`, because the `Safe_ports` rule ran before the `CONNECT` rule.
+  Plain HTTP to such a port is still refused. Ports such as 44, 8 and 844 are
+  now added too: they were taken as already present because 443 and 8443
+  contain them.
 
 ## [3.42.0] - 2026-11-16
 
