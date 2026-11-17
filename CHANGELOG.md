@@ -46,6 +46,12 @@ for at least one minor release before disappearing.
   for example a longer search that arrives through the global search, the
   table shows the backend's reason ("q is too long") instead of "logs did
   not answer", and offers no Retry, which would be refused the same way.
+- **Blocked IPs and IP exceptions accept a single IPv6 address or network.**
+  Add entries, Single entry, refused `2001:db8::1` and `2001:db8::/32` as
+  "not an IPv4 address or network", although the backend and the proxy take
+  IPv6 and a pasted list already added it. The form now checks IPv6 the way
+  the backend does and refuses only what the backend refuses, saying "not
+  an IP address or network".
 
 ## [3.42.0] - 2026-11-16
 

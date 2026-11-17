@@ -549,7 +549,31 @@ describe('Blacklists', () => {
       open()
       fireEvent.change(screen.getByLabelText('IP address or network'), { target: { value: '300.1.1.1' } })
       fireEvent.click(screen.getByRole('button', { name: 'Add entry' }))
-      expect(await screen.findByRole('alert')).toHaveTextContent('"300.1.1.1" is not an IPv4 address or network')
+      expect(await screen.findByRole('alert')).toHaveTextContent('"300.1.1.1" is not an IP address or network')
+      expect(api.post).not.toHaveBeenCalled()
+    })
+
+    // The backend (netguard.IsValidCIDR) and the proxy take IPv6 on both IP
+    // lists, and the list already labels IPv6 entries.
+    it.each([
+      ['blocked-ips', 'ip-blacklist', '2001:db8::/32'],
+      ['allowed-ips', 'ip-whitelist', '2001:db8::1'],
+    ])('%s: adds a single IPv6 address or network', async (tab, path, value) => {
+      go(`?tab=${tab}`)
+      renderWithProviders(<Blacklists />)
+      open()
+      fireEvent.change(screen.getByLabelText('IP address or network'), { target: { value } })
+      fireEvent.click(screen.getByRole('button', { name: 'Add entry' }))
+      await waitFor(() => expect(api.post).toHaveBeenCalledWith(path, { ip: value, description: '' }))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('refuses an IPv6 value the backend refuses, and says why', async () => {
+      renderWithProviders(<Blacklists />)
+      open()
+      fireEvent.change(screen.getByLabelText('IP address or network'), { target: { value: '2001:db8:::1' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Add entry' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('"2001:db8:::1" is not an IP address or network')
       expect(api.post).not.toHaveBeenCalled()
     })
 
