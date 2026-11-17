@@ -23,6 +23,12 @@ for at least one minor release before disappearing.
   budget and lets go of its body before that wait, not after. One client's
   repeated blocked uploads can no longer make other clients' requests wait for
   the budget and fail with a 503.
+- **A page that fails to load after an upgrade offers a reload that works.**
+  A tab left open across an upgrade asks for page files the new build no
+  longer serves. The error screen now says a new version was installed and
+  its button reloads the page. Before, its Try again button brought back the
+  same error every time, because the failed load is kept until the page is
+  reloaded. Other errors keep Try again.
 
 ## [3.42.0] - 2026-11-16
 

@@ -5,7 +5,8 @@ import toast, { Toaster } from 'react-hot-toast';
 import { Layout } from './components/layout/Layout';
 import { Button } from './components/ui/Button';
 import { Notice } from './components/ui/Notice';
-import { getErrorMessage, loadSession, signOut } from './lib/api';
+import { browser, getErrorMessage, loadSession, signOut } from './lib/api';
+import { isChunkLoadError } from './lib/chunkLoad';
 import { settingsQuery } from './lib/queries';
 import { ThemeProvider } from './components/ThemeProvider';
 import { SettingsDraftsProvider } from './components/settings/SettingsDrafts';
@@ -49,7 +50,7 @@ const PublicSetup = lazy(() => import('./pages/PublicSetup'));
 const Clients = lazy(() => import('./pages/Clients').then(m => ({ default: m.Clients })));
 const EgressAllowlist = lazy(() => import('./pages/EgressAllowlist').then(m => ({ default: m.EgressAllowlist })));
 
-class ErrorBoundary extends Component<{ children: React.ReactNode; silent?: boolean }, { error: Error | null }> {
+export class ErrorBoundary extends Component<{ children: React.ReactNode; silent?: boolean }, { error: Error | null }> {
   constructor(props: { children: React.ReactNode; silent?: boolean }) {
     super(props);
     this.state = { error: null };
@@ -60,16 +61,26 @@ class ErrorBoundary extends Component<{ children: React.ReactNode; silent?: bool
   render() {
     if (this.state.error) {
       if (this.props.silent) return null;
+      // React.lazy keeps a rejected import and throws it again on every
+      // render, so resetting the boundary would bring back this same screen:
+      // only a reload fetches the new build. The reload runs on a click, so
+      // a server that keeps refusing the chunk cannot make it loop.
+      const chunk = isChunkLoadError(this.state.error);
       return (
         <div className="flex items-center justify-center h-screen bg-ground text-ink">
           <div className="text-center space-y-3 max-w-md px-4">
             <p className="text-lg font-semibold text-danger">Something went wrong</p>
+            {chunk && (
+              <p className="text-sm text-ink">
+                A new version of the dashboard was installed since this page was opened. Reload the page to use it.
+              </p>
+            )}
             <p className="text-sm text-ink-muted font-mono">{this.state.error.message}</p>
             <Button
-              onClick={() => this.setState({ error: null })}
+              onClick={() => (chunk ? browser.reload() : this.setState({ error: null }))}
               className="mt-4"
             >
-              Try again
+              {chunk ? 'Reload the page' : 'Try again'}
             </Button>
           </div>
         </div>
