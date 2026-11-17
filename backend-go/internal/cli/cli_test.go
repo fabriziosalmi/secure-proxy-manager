@@ -270,6 +270,25 @@ func TestLoginReusesTheSavedTokenOnlyForItsServer(t *testing.T) {
 	}
 }
 
+// spm login --insecure to an https address is refused before anything is
+// sent: it pinned nothing, so it saved a config every later command (without
+// --insecure) refused with a certificate error after saying "Signed in".
+func TestLoginRefusesInsecure(t *testing.T) {
+	path := isolate(t)
+	var hits atomic.Int32
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"username":"token:x","scope":"read"}}`))
+	}))
+	defer srv.Close()
+	code, out, stderr := run(t, "", "login", "--url", srv.URL, "--token", "spm_x_y", "--insecure")
+	if _, err := os.Stat(path); code != exitUsage || !strings.Contains(stderr, "--fingerprint") || err == nil || hits.Load() != 0 {
+		t.Fatalf("login --insecure: exit %d, %q %q, config saved %v, %d requests; want 2, --fingerprint named, nothing saved or sent",
+			code, out, stderr, err == nil, hits.Load())
+	}
+	t.Logf("exit %d, %s", code, strings.TrimSpace(stderr))
+}
+
 // A server that speaks another API version is named on standard error.
 func TestAnotherAPIVersionIsSaid(t *testing.T) {
 	isolate(t)

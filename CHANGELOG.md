@@ -50,6 +50,11 @@ for at least one minor release before disappearing.
   without asking. It now asks for a token for any address other than the
   saved one, and reuses the saved token for the same address. When the server
   refuses a reused token, the message says to give a new one with `--token`.
+- **`spm login --insecure` to an https address is refused.** It pinned
+  nothing, printed "Signed in" and exited 0, and every later command, which
+  checks the certificate, then failed with exit status 3 against the default
+  self-signed one. It now exits 2 with nothing sent, and the message names
+  `--fingerprint` as the way to pin without the question.
 
 ## [3.42.0] - 2026-11-16
 

@@ -123,7 +123,10 @@ asks a server that declares it how many entries would go, and says so.
 
 Every command takes `--url` and `--token` (or `SPM_URL` and `SPM_TOKEN`), which
 take precedence over the config file, and `--insecure`, which does not check
-the certificate at all.
+the certificate at all. `spm login` refuses `--insecure` for an https address
+(exit status 2, nothing sent): it would pin nothing, and every later command,
+which checks the certificate, would refuse the server. To pin without the
+question, give `--fingerprint` instead.
 
 ## Exit status
 
