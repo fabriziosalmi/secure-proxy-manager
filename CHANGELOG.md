@@ -15,6 +15,23 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.43.0] - 2026-11-17
+
+Hardening: what the proxy, the CLI, the MCP server, the installer and the
+release say they did is now what they did. One change is marked
+**BREAKING** and `X-API-Version` stays 1: nine configuration operations that
+never declared `dry_run` now refuse it instead of applying the change.
+
+**Upgrade notes.**
+- A raw API call that sent `dry_run` to one of the nine operations listed
+  below gets `400 invalid_request` and nothing changes. `spm`, `spm-mcp` and
+  the web UI never send it there.
+- The release workflow now publishes all five images or none: no version tag
+  or `:latest` moves until every image has passed its scan, and on GHCR each
+  image is signed before it is tagged.
+- `spm-mcp` 0.5.1 carries the redirect and startup-hint fixes below and is
+  published to PyPI separately; it works with 3.41.0 or later.
+
 ### Changed
 
 - **No image of a release is tagged until all five have passed their scan.**
