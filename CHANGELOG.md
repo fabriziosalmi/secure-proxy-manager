@@ -29,6 +29,13 @@ for at least one minor release before disappearing.
   its button reloads the page. Before, its Try again button brought back the
   same error every time, because the failed load is kept until the page is
   reloaded. Other errors keep Try again.
+- **Change password accepts every password the backend accepts.** The form
+  counted only 20 symbols as a special character, so a passphrase such as
+  `correct-horse-9`, whose only symbols are hyphens, kept the button disabled
+  although the API takes it. It now counts any character that is not an
+  ASCII letter or digit, as the backend does, and counts the length in
+  characters, so a 7-character password with an emoji is no longer shown as
+  long enough.
 
 ## [3.42.0] - 2026-11-16
 

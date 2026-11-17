@@ -137,6 +137,20 @@ describe('validatePassword', () => {
   ])('recognizes special char: %s', (char) => {
     expect(validatePassword(`Abcdefg1${char}`).hasSpecial).toBe(true)
   })
+
+  // The backend (auth.go pwdSpecial) counts any character that is not an
+  // ASCII letter or digit, so the form must not refuse what the API takes.
+  it.each([
+    '-', '_', '+', '=', '~', '/', ';', ' ', "'", '[', ']', '\\', '`', 'é',
+  ])('recognizes what the backend counts as special: %j', (char) => {
+    expect(validatePassword(`Abcdefg1${char}`).hasSpecial).toBe(true)
+  })
+
+  it('counts length in characters, as the backend does (min=8 counts runes)', () => {
+    // 7 characters, 8 UTF-16 code units: the backend refuses it.
+    expect(validatePassword('Abcde1\u{1F600}').hasLength).toBe(false)
+    expect(validatePassword('Abcdef1\u{1F600}').hasLength).toBe(true)
+  })
 })
 
 describe('parseGeoCountries', () => {

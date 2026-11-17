@@ -28,11 +28,16 @@ export function isValidDomain(value: string): boolean {
   );
 }
 
-/** Validate password strength: 8+ chars, at least one digit, at least one special char. */
+/** Validate password strength: 8+ characters, at least one digit, at least
+ *  one special character. The backend is the source of truth and this
+ *  mirrors it (backend-go/internal/handlers/auth.go ChangePassword): `min=8`
+ *  counts characters (runes), not UTF-16 units; pwdStrong is [0-9]; and
+ *  pwdSpecial is [^a-zA-Z0-9], so any character that is not an ASCII letter
+ *  or digit counts, a hyphen, a space or an accented letter included. */
 export function validatePassword(pwd: string): { valid: boolean; hasLength: boolean; hasNumber: boolean; hasSpecial: boolean } {
-  const hasLength = pwd.length >= 8;
-  const hasNumber = /\d/.test(pwd);
-  const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(pwd);
+  const hasLength = [...pwd].length >= 8;
+  const hasNumber = /[0-9]/.test(pwd);
+  const hasSpecial = /[^a-zA-Z0-9]/.test(pwd);
   return { valid: hasLength && hasNumber && hasSpecial, hasLength, hasNumber, hasSpecial };
 }
 
