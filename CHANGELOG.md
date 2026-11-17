@@ -106,11 +106,14 @@ for at least one minor release before disappearing.
   certificate an authority signed), its 200 read as done, and
   `spm blocked-ips add` printed "Added" and exited 0 with nothing added. A redirect is now an error that
   names its target, nothing is sent there, and the exit status is 3.
-- **`spm-mcp` reports a redirect as an error that names where it points.** A
-  3xx answer, such as the one the plain HTTP port gives, came back as a
-  successful empty result, and at startup as "not an OpenAPI document". It is
-  now an error naming the `Location`, with the hint to set `SPM_URL` to that
-  server's address.
+- **`spm-mcp` 0.5.1 reports a redirect as an error that names where it
+  points.** A 3xx answer, such as the one the plain HTTP port gives, came back
+  as a successful empty result, and at startup as "not an OpenAPI document".
+  It is now an error naming the `Location`, with the hint to set `SPM_URL` to
+  that server's address. The startup error carries the hint too, as it does
+  for a refused token: with `SPM_URL` on the plain HTTP port it is the only
+  error shown. The fix ships in `spm-mcp` 0.5.1, which works with the same
+  servers as 0.5.0 (3.41.0 or later).
 - **`spm <list> remove VALUE` removes the entry written as `VALUE`.** With
   both `example.com` and `.example.com` on the default-deny allowlist and the
   wider one newer, `spm allowlist remove example.com` removed `.example.com`,
