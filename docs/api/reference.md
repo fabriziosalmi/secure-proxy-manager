@@ -102,8 +102,8 @@ An operation that changes the configuration takes a configuration snapshot
 first, except for a request that carries `dry_run`. Those that have no
 preview (a settings change or save, the WAF policy, its exceptions and
 log-only rules, a default-deny allowlist addition or removal by id, a client
-group added or edited) answer `400 invalid_request` to any `dry_run` but
-`false` and change nothing.
+group added or edited) answer `400 invalid_request` to a `dry_run` other than
+`false` or empty, and change nothing.
 
 A server before 3.40.0 does not know `dry_run`: it ignores the parameter and
 runs the call. Before asking an unknown server for a preview, check that its

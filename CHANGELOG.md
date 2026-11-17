@@ -40,12 +40,12 @@ for at least one minor release before disappearing.
   `PUT /api/waf/policy`, `POST /api/waf/policy/exceptions`,
   `POST /api/waf/policy/observe-rules`, `POST /api/egress-allowlist`,
   `DELETE /api/egress-allowlist/{id}`, `POST /api/client-groups`,
-  `PUT /api/client-groups/{id}`) answer `400 invalid_request` to any
-  `dry_run` but `false`, before their handler runs. They ignored the
+  `PUT /api/client-groups/{id}`) answer `400 invalid_request` to a
+  `dry_run` other than `false` or empty, before their handler runs. They ignored the
   parameter and applied the change, while the snapshot taken before every
   change was skipped for a request carrying `dry_run`, so a caller that asked
-  for a preview got the change with no snapshot to restore. `dry_run=false`
-  or no `dry_run` runs them as before. A test lists every route behind the
+  for a preview got the change with no snapshot to restore. `dry_run=false`,
+  an empty `dry_run` or none runs them as before. A test lists every route behind the
   snapshot and holds each to this or to a real preview.
 
 ### Fixed
