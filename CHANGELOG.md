@@ -30,6 +30,11 @@ for at least one minor release before disappearing.
   certificate an authority signed), its 200 read as done, and
   `spm blocked-ips add` printed "Added" and exited 0 with nothing added. A redirect is now an error that
   names its target, nothing is sent there, and the exit status is 3.
+- **`spm-mcp` reports a redirect as an error that names where it points.** A
+  3xx answer, such as the one the plain HTTP port gives, came back as a
+  successful empty result, and at startup as "not an OpenAPI document". It is
+  now an error naming the `Location`, with the hint to set `SPM_URL` to that
+  server's address.
 
 ## [3.42.0] - 2026-11-16
 
