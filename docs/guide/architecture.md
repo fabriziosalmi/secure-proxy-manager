@@ -59,8 +59,9 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
   pool of four connections and a 5 second busy timeout.
 - Workers: the access-log tailer (`/logs/access.log`) and the dnsmasq log
   tailer, log retention (daily), the blocklist refresh, the list exporter, the
-  WAF reconciler (pushes the stored heuristic settings to the WAF every 30
-  seconds until it matches), the update checker (GitHub releases, every 6
+  WAF reconciler (every 30 seconds compares the heuristics the WAF runs with
+  the stored settings and pushes those that differ), the update checker
+  (GitHub releases, every 6
   hours; off with `UPDATE_CHECK=false`) and the Squid CVE check at start.
 - It applies list changes by writing `/config/ip_blacklist.txt`,
   `ip_whitelist.txt`, `domain_blacklist.txt`, `dst_allow_ip.txt`,

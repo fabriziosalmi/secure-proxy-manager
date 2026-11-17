@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 )
 
 func TestMaintenanceHandlers_BackupConfig(t *testing.T) {
@@ -546,6 +548,52 @@ func TestReloadConfigUnwritableTriggerDoesNotReportSuccess(t *testing.T) {
 	}
 	if w.Code != http.StatusInternalServerError || body["code"] != "trigger_write_failed" {
 		t.Errorf("unwritable .reload-squid: got %d %v, want 500 code=trigger_write_failed", w.Code, body)
+	}
+}
+
+// When the lists cannot be exported, the proxy still reloads, but with the
+// list files already on disk: the change that asked for the reload is not
+// enforced. The answer was 200 "Proxy reloaded" all the same. It is now
+// status partial with code export_failed, and a trigger that cannot be
+// written either is not described as following an export.
+func TestReloadConfigDoesNotReportSuccessWhenTheExportFailed(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	// A directory where the export writes ip_blacklist.txt makes the export
+	// fail while the trigger can still be written.
+	if err := os.MkdirAll(filepath.Join(cfg.ConfigDir, "ip_blacklist.txt", "x"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.ExportBlacklistsToFiles(db, cfg.ConfigDir); err == nil {
+		t.Fatal("the export did not fail: the test does not exercise the case")
+	}
+	stamp := time.Now().Unix() + 5
+	ack, _ := json.Marshal(map[string]any{"trigger_mtime": stamp, "generator_rc": 0, "reconfigure_rc": 0, "applied": true, "at": stamp})
+	if err := os.WriteFile(filepath.Join(cfg.ConfigDir, ".reload-squid.result"), ack, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h := NewMaintenanceHandlers(db, cfg)
+	h.reloadAckTimeout = 2 * time.Second
+	w := httptest.NewRecorder()
+	h.ReloadConfig(w, httptest.NewRequest(http.MethodPost, "/api/maintenance/reload-config", nil))
+	var body map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&body)
+	if w.Code != http.StatusOK || body["status"] != "partial" || body["code"] != "export_failed" {
+		t.Errorf("export failed, reload applied: got %d %v, want 200 status=partial code=export_failed", w.Code, body)
+	}
+
+	// Neither the export nor the trigger.
+	_ = os.Remove(filepath.Join(cfg.ConfigDir, ".reload-squid"))
+	if err := os.MkdirAll(filepath.Join(cfg.ConfigDir, ".reload-squid"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	w = httptest.NewRecorder()
+	h.ReloadConfig(w, httptest.NewRequest(http.MethodPost, "/api/maintenance/reload-config", nil))
+	body = map[string]any{}
+	_ = json.NewDecoder(w.Body).Decode(&body)
+	msg, _ := body["message"].(string)
+	if w.Code != http.StatusInternalServerError || body["code"] != "trigger_write_failed" || strings.Contains(msg, "exported, but") {
+		t.Errorf("export and trigger failed: got %d %v, want 500 trigger_write_failed without claiming an export", w.Code, body)
 	}
 }
 

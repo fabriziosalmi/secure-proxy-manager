@@ -119,12 +119,13 @@ function formatWizardApply(outcome: ApplyOutcome): { tone: NoticeTone; title: st
       text: base.text,
     };
   }
-  const title =
-    outcome.kind === 'pending'
-      ? 'Saved, waiting for the proxy'
-      : outcome.kind === 'refused'
-        ? 'Proxy refused the configuration'
-        : 'Could not reload the proxy';
+  const titles: Record<Exclude<ApplyOutcome['kind'], 'applied'>, string> = {
+    pending: 'Saved, waiting for the proxy',
+    listsNotExported: 'Proxy reloaded with the previous lists',
+    refused: 'Proxy refused the configuration',
+    failed: 'Could not reload the proxy',
+  };
+  const title = titles[outcome.kind];
   return {
     tone: base.tone === 'warning' ? 'warning' : 'danger',
     title,

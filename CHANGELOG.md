@@ -31,6 +31,30 @@ for at least one minor release before disappearing.
   budget and lets go of its body before that wait, not after. One client's
   repeated blocked uploads can no longer make other clients' requests wait for
   the budget and fail with a 503.
+- **The WAF reconciler notices a WAF restart it did not see.** Every 30
+  seconds it reads the heuristics the WAF runs and pushes the stored value of
+  each one that differs, so a WAF that restarted between two passes, or a
+  restore that changed a `waf_h_*` setting, no longer leaves the WAF on its
+  `WAF_H_*` compose defaults. A WAF that matches gets no writes; a WAF whose
+  running heuristics cannot be read gets every stored value.
+- **Saving or restoring only the time window or the bandwidth limits reaches
+  the proxy.** `time_restrictions.conf` and `bandwidth_limits.conf` are
+  rewritten when a request carries any of their settings, not only the
+  toggle, so `PUT /api/settings/{name}` (`spm settings set
+  time_restriction_start 09:00`) and a snapshot restore that changes only a
+  time or a limit no longer leave the proxy on the old values.
+- **Changing one setting takes a configuration snapshot first.**
+  `PUT /api/settings/{name}` (`spm settings set`) is preceded by a snapshot,
+  as `POST /api/settings` is, with the reason "before a change to setting
+  {name}", so the configuration history can undo it and tells it apart from a
+  settings save.
+- **`POST /api/maintenance/reload-config` no longer answers "Proxy reloaded"
+  when exporting the lists failed.** The proxy still reloads, and the answer
+  is `200` with `status: "partial"` and `code: "export_failed"`, saying the
+  proxy enforces the list files already on disk. The dashboard shows it as a
+  warning, not as applied and not as a reload that could not be requested. A
+  `trigger_write_failed` answer no longer claims the lists were exported when
+  they were not.
 
 ## [3.42.0] - 2026-11-16
 
