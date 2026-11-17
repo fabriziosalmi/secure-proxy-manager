@@ -240,6 +240,20 @@ export function DataTable<T>({
 
   const canPage = pagination && !loading && !error && rows.length > 0;
 
+  // A page past the end: the last rows of a later page were removed (or the
+  // list shrank), and the backend answers that offset with no rows. Without
+  // rows there is no pagination bar and so no Previous, and the empty state
+  // would say the list is empty. Move to the last page that has rows. Only
+  // on an answer for this offset that is past the total, so a fetch in
+  // flight or an error never moves the page.
+  const pastEnd = !!pagination && !loading && !error && rows.length === 0
+    && pagination.offset > 0 && pagination.offset >= pagination.total;
+  const lastOffset = pagination ? Math.max(0, (Math.ceil(pagination.total / pagination.limit) - 1) * pagination.limit) : 0;
+  const onPageChange = pagination?.onChange;
+  useEffect(() => {
+    if (pastEnd && onPageChange) onPageChange(lastOffset);
+  }, [pastEnd, lastOffset, onPageChange]);
+
   return (
     <div className={cn('min-w-0', className)}>
       {loading && <p role="status" className="sr-only">Loading {caption.toLowerCase()}</p>}

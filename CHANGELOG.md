@@ -36,6 +36,11 @@ for at least one minor release before disappearing.
   ASCII letter or digit, as the backend does, and counts the length in
   characters, so a 7-character password with an emoji is no longer shown as
   long enough.
+- **Removing the last rows of a later page moves the table back a page.** On
+  Blacklists and the Egress allowlist, removing every row of page 2 or later
+  left the table on a page past the end. It showed the
+  empty state, as if the list were empty, with no Previous button to go
+  back. The table now moves to the last page that has rows.
 
 ## [3.42.0] - 2026-11-16
 
