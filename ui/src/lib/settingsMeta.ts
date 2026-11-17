@@ -42,8 +42,8 @@ export function sectionPath(id: SectionId): string {
 /**
  * The keys each section saves. A section's Save sends all of its keys that
  * have a value (stored or typed), so a toggle always travels with its
- * parameters: the backend rewrites the time and bandwidth files only when
- * their toggle is in the request. Internal keys (wizard_completed,
+ * parameters and the backend writes its marker and its time or bandwidth file
+ * in the same save. Internal keys (wizard_completed,
  * default_password_changed) belong to no section and are never sent.
  */
 export const SECTION_KEYS: Record<SectionId, string[]> = {

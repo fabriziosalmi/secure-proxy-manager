@@ -292,8 +292,21 @@ const sizeOf = async (): Promise<number | null> => {
   }
 };
 
+/**
+ * The queries whose figures come from the request log or the WAF's records
+ * and counters: the Logs, Clients, Overview and Analytics pages. Clear the
+ * log, Delete older logs and Reset statistics delete what they count, so
+ * their cached answers are marked out of date instead of being shown again
+ * until their stale time or next poll. The proxy cache figures come from the
+ * proxy, not the log, and stay.
+ */
+const LOG_FIGURES = new Set(['logs', 'clients', 'client-details', 'dashboard', 'timeline', 'analytics', 'waf']);
+
 export function MaintenanceActions() {
   const queryClient = useQueryClient();
+  const refreshLogFigures = () => {
+    void queryClient.invalidateQueries({ predicate: (q) => LOG_FIGURES.has(String(q.queryKey[0])) });
+  };
   const { confirm, dialog } = useConfirm();
   const [busy, setBusy] = useState<ActionId | null>(null);
   const [oldDays, setOldDays] = useState('30');
@@ -352,7 +365,7 @@ export function MaintenanceActions() {
     }))) return;
     void run('clear', async () => {
       await api.post('logs/clear');
-      void queryClient.invalidateQueries({ queryKey: ['logs'] });
+      refreshLogFigures();
       return { tone: 'success', text: 'The access log is empty. The WAF kept its counters.' };
     });
   };
@@ -370,7 +383,7 @@ export function MaintenanceActions() {
     void run('old', async () => {
       const res = await api.post('logs/clear-old', null, { params: { days } });
       const removed: unknown = res.data?.data?.removed;
-      void queryClient.invalidateQueries({ queryKey: ['logs'] });
+      refreshLogFigures();
       return {
         tone: 'success',
         text: typeof removed === 'number'
@@ -389,6 +402,7 @@ export function MaintenanceActions() {
     }))) return;
     void run('reset', async () => {
       const res = await api.post('counters/reset');
+      refreshLogFigures();
       const d = res.data?.data ?? {};
       const logs = typeof d.logs_cleared === 'number' ? `Deleted ${formatCount(d.logs_cleared)} logged ${d.logs_cleared === 1 ? 'request' : 'requests'}.` : 'The log was cleared.';
       const waf = d.waf_reset === true ? 'The WAF reset its counters.' : 'The WAF did not reset its counters: it did not answer, or refused the backend.';

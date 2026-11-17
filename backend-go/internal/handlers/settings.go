@@ -272,7 +272,7 @@ func NewSettingsHandlers(db *sql.DB, cfg *config.Config) *SettingsHandlers {
 
 func (h *SettingsHandlers) Register(r chi.Router, authMW func(http.Handler) http.Handler) {
 	r.With(authMW).Get("/api/settings", h.GetAll)
-	r.With(authMW).Put("/api/settings/{name}", h.Update)
+	r.With(authMW, snapshotBeforeFunc(settingChangeReason)).Put("/api/settings/{name}", h.Update)
 	r.With(authMW, snapshotBefore("a settings save")).Post("/api/settings", h.BulkUpdate)
 	r.With(authMW).Get("/api/waf/heuristics", h.WAFHeuristics)
 }
@@ -659,13 +659,15 @@ func (h *SettingsHandlers) writeSquidArtefacts(body map[string]string) []string 
 		}
 	}
 
-	// Write time restriction settings for Squid time ACL.
-	if _, ok := body["enable_time_restrictions"]; ok {
+	// Write time restriction settings for Squid time ACL, and the bandwidth
+	// limit settings for Squid delay_pools, when any of their keys is in the
+	// request. Gating on the toggle alone left the file on the old window or
+	// limit after a PUT of one value or a restore that changed only the value;
+	// the writers read the keys the request does not carry from the database.
+	if carriesAny(body, "enable_time_restrictions", "time_restriction_start", "time_restriction_end") {
 		h.writeTimeRestrictions(body)
 	}
-
-	// Write bandwidth limit settings for Squid delay_pools.
-	if _, ok := body["enable_bandwidth_limits"]; ok {
+	if carriesAny(body, "enable_bandwidth_limits", "bandwidth_limit_mbps", "bandwidth_limit_per_user_kbps") {
 		h.writeBandwidthSettings(body)
 	}
 
@@ -700,6 +702,16 @@ func (h *SettingsHandlers) writeSquidArtefacts(body map[string]string) []string 
 		}
 	}
 	return failedArtifacts
+}
+
+// carriesAny reports whether body has any of keys.
+func carriesAny(body map[string]string, keys ...string) bool {
+	for _, k := range keys {
+		if _, ok := body[k]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // squidToggleFiles maps a boolean setting to the marker file Squid's startup

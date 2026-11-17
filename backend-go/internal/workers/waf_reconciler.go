@@ -5,6 +5,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -21,7 +24,8 @@ var heuristicKeys = []string{
 }
 
 // StartWAFReconciler pushes the stored heuristic configuration to the WAF at
-// startup and whenever the WAF comes back after being unreachable.
+// startup, and on every later pass compares the heuristics the WAF runs with
+// the stored ones and pushes those that differ.
 //
 // The WAF reads WAF_H_* from its environment once, at process start, and the
 // backend pushed the database values only when settings were saved. Nothing
@@ -58,10 +62,11 @@ func StartWAFReconciler(ctx context.Context, db *sql.DB, wafURL string, auth WAF
 		ticker := time.NewTicker(reconcileEvery)
 		defer ticker.Stop()
 		// synced is true once the WAF is known to match the stored
-		// configuration. Until then every pass pushes, so a push that failed
-		// (the WAF answered but rejected the credential, or dropped the
-		// connection) is retried in 30 s instead of waiting for the WAF to
-		// restart.
+		// configuration. Until then every pass pushes every stored value, so
+		// a push that failed (the WAF answered but rejected the credential, or
+		// dropped the connection) is retried in 30 s. Once synced, a pass
+		// pushes only what the WAF runs differently, which is how a WAF
+		// restart between two passes is caught.
 		synced := false
 		lastOutcome := reconcileOK
 		for {
@@ -115,8 +120,12 @@ func (o reconcileOutcome) String() string {
 // reconcileWAF makes one pass. It reports reconcileUnreachable when the WAF
 // cannot be reached or is unhealthy, reconcilePushFailed when it was reached
 // but at least one stored toggle could not be applied, and reconcileOK
-// otherwise. It only pushes when force is set, so a healthy, matching WAF is not
-// rewritten every 30 seconds.
+// otherwise. When force is set it pushes every stored heuristic. Otherwise it
+// reads the heuristics the WAF runs (GET /heuristics) and pushes only those
+// that differ from the stored ones, so a WAF that restarted between two passes
+// and came back on its WAF_H_* defaults is corrected, and a matching WAF is not
+// rewritten every 30 seconds. A WAF whose running heuristics cannot be read is
+// not taken as matching: every stored value is pushed.
 func reconcileWAF(ctx context.Context, db *sql.DB, wafURL string, auth WAFAuth, force bool) reconcileOutcome {
 	hc := &http.Client{Timeout: 5 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, wafURL+"/health", nil)
@@ -131,21 +140,20 @@ func reconcileWAF(ctx context.Context, db *sql.DB, wafURL string, auth WAFAuth, 
 	if resp.StatusCode != http.StatusOK {
 		return reconcileUnreachable
 	}
+	stored := storedHeuristics(db)
 	if !force {
-		return reconcileOK
+		running, err := runningHeuristics(ctx, hc, wafURL, auth)
+		if err != nil {
+			log.Debug().Err(err).Msg("waf reconcile: running heuristics not readable; pushing every stored value")
+		} else {
+			stored = differing(stored, running)
+		}
 	}
 
 	pushed, failed := 0, 0
-	for _, key := range heuristicKeys {
-		var val string
-		if err := db.QueryRow("SELECT setting_value FROM settings WHERE setting_name = ?", key).Scan(&val); err != nil {
-			continue // not configured: the WAF's env default stands
-		}
-		// "true" only, as the Settings page and every other reader of a
-		// boolean setting read it; "1" used to switch on here a heuristic
-		// the page showed as off.
-		enabled := val == "true"
-		body, err := json.Marshal(map[string]any{"heuristic": key, "enabled": enabled})
+	for _, hs := range stored {
+		key := hs.key
+		body, err := json.Marshal(map[string]any{"heuristic": key, "enabled": hs.enabled})
 		if err != nil {
 			continue
 		}
@@ -179,4 +187,67 @@ func reconcileWAF(ctx context.Context, db *sql.DB, wafURL string, auth WAFAuth, 
 		return reconcilePushFailed
 	}
 	return reconcileOK
+}
+
+// heuristicState is one stored heuristic toggle.
+type heuristicState struct {
+	key     string
+	enabled bool
+}
+
+// storedHeuristics reads the stored heuristic toggles, in heuristicKeys order.
+// A heuristic with no row is left out: the WAF's env default stands.
+func storedHeuristics(db *sql.DB) []heuristicState {
+	out := make([]heuristicState, 0, len(heuristicKeys))
+	for _, key := range heuristicKeys {
+		var val string
+		if err := db.QueryRow("SELECT setting_value FROM settings WHERE setting_name = ?", key).Scan(&val); err != nil {
+			continue
+		}
+		// "true" only, as the Settings page and every other reader of a
+		// boolean setting read it; "1" used to switch on here a heuristic
+		// the page showed as off.
+		out = append(out, heuristicState{key: key, enabled: val == "true"})
+	}
+	return out
+}
+
+// runningHeuristics asks the WAF which heuristics it runs: GET /heuristics
+// answers {"data": {"waf_h_pii": true, ...}}.
+func runningHeuristics(ctx context.Context, hc *http.Client, wafURL string, auth WAFAuth) (map[string]bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, wafURL+"/heuristics", nil)
+	if err != nil {
+		return nil, err
+	}
+	auth.Apply(req)
+	resp, err := hc.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close() //nolint:errcheck
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GET /heuristics answered HTTP %d", resp.StatusCode)
+	}
+	var body struct {
+		Data map[string]bool `json:"data"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&body); err != nil {
+		return nil, err
+	}
+	if body.Data == nil {
+		return nil, errors.New("GET /heuristics carried no data")
+	}
+	return body.Data, nil
+}
+
+// differing keeps the stored toggles the WAF does not run as stored. A
+// heuristic the WAF does not report counts as differing.
+func differing(stored []heuristicState, running map[string]bool) []heuristicState {
+	out := []heuristicState{}
+	for _, hs := range stored {
+		if on, ok := running[hs.key]; !ok || on != hs.enabled {
+			out = append(out, hs)
+		}
+	}
+	return out
 }

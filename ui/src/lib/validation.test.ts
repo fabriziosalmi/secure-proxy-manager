@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isValidIP, isValidDomain, validatePassword, parseGeoCountries, oldLogDays } from './validation'
+import { isValidIP, isValidIPOrNetwork, isValidDomain, validatePassword, parseGeoCountries, oldLogDays } from './validation'
 
 describe('isValidIP', () => {
   // Valid IPs
@@ -50,6 +50,33 @@ describe('isValidIP', () => {
 
   it('rejects IP with spaces', () => {
     expect(isValidIP('192.168. 1.1')).toBe(false)
+  })
+})
+
+// What the backend's netguard.IsValidCIDR (netip.ParsePrefix, then
+// netip.ParseAddr) answers for each value: the table was printed by running
+// those two calls in Go 1.27 on these inputs, not written by hand.
+describe('isValidIPOrNetwork answers as the backend does', () => {
+  it.each([
+    ['2001:db8::1', true], ['2001:db8::/32', true], ['::', true], ['::/0', true], ['::1', true], ['::1/128', true],
+    ['1::', true], ['1:2:3:4:5:6:7::', true], ['::2:3:4:5:6:7:8', true], ['1:2:3:4:5:6:7:8', true],
+    ['1:2:3:4:5:6:7:8/64', true], ['2001:DB8::ABCD', true], ['0001:0db8::0001', true], ['::ffff:192.0.2.1', true],
+    ['::ffff:192.0.2.1/120', true], ['1:2:3:4:5:6:192.0.2.1', true], ['1::192.0.2.1', true], ['::192.0.2.1', true],
+    ['fe80::1%eth0', true], ['fe80::1%a/b', true], ['2001:db8::/0', true], ['2001:db8::/128', true],
+    ['2001:db8:::1', false], [':::', false], ['1:::2', false], ['1:2:3:4:5:6:7:8::', false], ['::1:2:3:4:5:6:7:8', false],
+    ['1:2:3:4:5:6:7', false], ['1:2:3:4:5:6:7:8:9', false], [':1:2:3:4:5:6:7', false], ['1:2:3:4:5:6:7:', false],
+    ['12345::1', false], ['2001:db8::g', false], ['2001:db8::/129', false], ['2001:db8::/-1', false],
+    ['2001:db8::/032', false], ['2001:db8::/', false], ['2001:db8::/3x', false], ['fe80::1%eth0/64', true],
+    ['fe80::1%', false], ['1:2:3:4:5:6:7:192.0.2.1', false], ['::ffff:192.0.2.01', false], ['::ffff:192.0.2', false],
+    ['::ffff:256.0.2.1', false], ['::192.0.2.1:1', false], ['a:192.0.2.1::', false], ['192.0.2.1::1', false],
+    ['192.0.2.1:80', false], ['%eth0', false], ['::/1/2', false], [' 2001:db8::1', false], ['2001:db8::1 ', false],
+    ['192.0.2.1', true], ['192.0.2.0/24', true], ['0.0.0.0/0', true], ['300.1.1.1', false], ['192.0.2.1/33', false],
+  ] as const)('%j: %s', (value, ok) => {
+    expect(isValidIPOrNetwork(value)).toBe(ok)
+  })
+
+  it('leaves isValidIP, which the egress form relies on, IPv4 only', () => {
+    expect(isValidIP('2001:db8::1')).toBe(false)
   })
 })
 
@@ -136,6 +163,20 @@ describe('validatePassword', () => {
     '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', ',', '.', '?', '"', ':', '{', '}', '|', '<', '>',
   ])('recognizes special char: %s', (char) => {
     expect(validatePassword(`Abcdefg1${char}`).hasSpecial).toBe(true)
+  })
+
+  // The backend (auth.go pwdSpecial) counts any character that is not an
+  // ASCII letter or digit, so the form must not refuse what the API takes.
+  it.each([
+    '-', '_', '+', '=', '~', '/', ';', ' ', "'", '[', ']', '\\', '`', 'é',
+  ])('recognizes what the backend counts as special: %j', (char) => {
+    expect(validatePassword(`Abcdefg1${char}`).hasSpecial).toBe(true)
+  })
+
+  it('counts length in characters, as the backend does (min=8 counts runes)', () => {
+    // 7 characters, 8 UTF-16 code units: the backend refuses it.
+    expect(validatePassword('Abcde1\u{1F600}').hasLength).toBe(false)
+    expect(validatePassword('Abcdef1\u{1F600}').hasLength).toBe(true)
   })
 })
 

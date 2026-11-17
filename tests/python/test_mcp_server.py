@@ -265,3 +265,21 @@ def test_a_refused_token_says_why(monkeypatch, status, hint):
                    api=StubAPI(answer=lambda r: httpx.Response(status, json={"status": "error"})))
     res = _call(server, "spm_status")
     assert res.is_error and hint in res.structured_content["hint"]
+
+
+def test_a_redirect_is_an_error_that_names_its_target(monkeypatch):
+    """The web service's plain HTTP port answers every /api/ path with a 301
+    to its https address. httpx does not follow it, and a 3xx used to come
+    back as a success (an empty text), so a tool call reported nothing wrong
+    and startup said "not an OpenAPI document"."""
+    import httpx
+    target = "https://spm.test:8443/api/status"
+    server = _load(monkeypatch, api=StubAPI(answer=lambda r: httpx.Response(301, headers={"location": target})))
+    res = _call(server, "spm_status")
+    assert res.is_error and target in res.structured_content["error"], res.structured_content
+
+    def redirect_everything(request):
+        return httpx.Response(301, headers={"location": "https://spm.test:8443" + request.url.path})
+    server = _load(monkeypatch, api=redirect_everything)
+    with pytest.raises(RuntimeError, match="redirected to https://spm.test:8443/api/openapi.json"):
+        _tools(server)

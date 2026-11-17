@@ -222,11 +222,35 @@ var fetchRefreshFeed = func(u string) (string, error) {
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 200*1024*1024))
+	return readRefreshFeed(resp.Body)
+}
+
+// MaxFeedBytes bounds a blacklist feed download, on the import and on the
+// auto-refresh alike. It is deliberately far below the container's memory
+// limit (128M in both compose files): the whole response is buffered and then
+// parsed, so a cap above the budget means the process is OOM-killed before the
+// cap can fire, and the guard would read as protection and provide none
+// (SECURE-INPT-01).
+const MaxFeedBytes = 32 * 1024 * 1024 // 32 MB
+
+// errFeedTooLarge is a feed above MaxFeedBytes. It counts as not read: its
+// entries stay, and nothing of the list is removed in that run.
+var errFeedTooLarge = fmt.Errorf("feed exceeds the %d MB cap (%d bytes)", MaxFeedBytes>>20, MaxFeedBytes)
+
+// readRefreshFeed reads a feed of at most MaxFeedBytes. It stops one byte past
+// the cap and fails, so an oversized feed is neither buffered whole nor
+// returned cut short as if it were complete. The builder's String does not
+// copy the buffer.
+func readRefreshFeed(r io.Reader) (string, error) {
+	var b strings.Builder
+	n, err := io.Copy(&b, io.LimitReader(r, MaxFeedBytes+1))
 	if err != nil {
 		return "", err
 	}
-	return string(data), nil
+	if n > MaxFeedBytes {
+		return "", errFeedTooLarge
+	}
+	return b.String(), nil
 }
 
 // feedURLs is every feed a list is refreshed from, each once: the built-in
