@@ -1,4 +1,6 @@
 {
-  "_comment": "GHSA IDs that npm-audit-gate.mjs will NOT fail on. ONLY for advisories that are non-applicable or dev-only with no proportionate fix. Each MUST carry a justification and, ideally, a tracked follow-up. Runtime-reachable advisories must never be listed here — fix them. Currently EMPTY (the react-router RSC exception was retired by the v8 migration, #191).",
-  "allow": {}
+  "_comment": "GHSA IDs that npm-audit-gate.mjs will NOT fail on. ONLY for advisories that are non-applicable or dev-only with no proportionate fix. Each MUST carry a justification and, ideally, a tracked follow-up. Runtime-reachable advisories must never be listed here: fix them.",
+  "allow": {
+    "GHSA-fc5q-39xc-vjpf": "picomatch <= 4.0.7, ReDoS through repeated extglobs; no patched release exists (advisory widened on 2026-11-17). Dev-only: picomatch 4.0.7 comes in through vite, tinyglobby/fdir and vitest at build and test time; `npm ls picomatch --omit=dev` is empty, so it is not in the built UI or any image, and the patterns it compiles come from the repository's own build config, not from request input. Remove this entry when a fixed picomatch is released and the lockfile picks it up."
+  }
 }
