@@ -222,16 +222,22 @@ func listByNoun(noun string) (listDef, bool) {
 }
 
 // findEntry is the id of the entry written as v. An entry written exactly so
-// wins over any newer one that matches v loosely, such as ".example.com" for
-// example.com (the allowlist keeps the two apart: the host alone, and the
+// wins over any newer one that matches v loosely, such as ".example.com" or
+// "*.example.com" for example.com (the allowlist keeps the two apart: the host alone, and the
 // host with its subdomains). Without an exact one, a loose match counts when
 // it is the only one; v may also be written "*.example.com". Every page of
 // the search is read.
+//
+// The search sent is the bare name, not v: the backend searches with SQL LIKE,
+// where "*" is a literal character, so "*.example.com" would find no
+// ".example.com" on the allowlist and no "example.com" on Domain exceptions.
+// Every stored form of a name (n, .n, *.n, as Blocked domains keeps them,
+// in any case) contains the bare name, and the backend's LIKE ignores case.
 func (s *session) findEntry(l listDef, v string) (string, int) {
-	want := strings.TrimPrefix(strings.ToLower(v), "*.")
+	want := bareName(v)
 	var looseIDs, looseValues []string
 	for offset := 0; ; {
-		q := fmt.Sprintf("?limit=1000&offset=%d&search=%s", offset, url.QueryEscape(v))
+		q := fmt.Sprintf("?limit=1000&offset=%d&search=%s", offset, url.QueryEscape(want))
 		data, r, code := s.call("GET", l.path+q, nil)
 		if code != exitOK {
 			return "", code
@@ -242,7 +248,7 @@ func (s *session) findEntry(l listDef, v string) (string, int) {
 			if strings.EqualFold(str(it[l.field]), v) {
 				return str(it["id"]), exitOK
 			}
-			if strings.TrimPrefix(strings.ToLower(str(it[l.field])), ".") == want {
+			if bareName(str(it[l.field])) == want {
 				looseIDs = append(looseIDs, str(it["id"]))
 				looseValues = append(looseValues, str(it[l.field]))
 			}
@@ -268,6 +274,13 @@ func (s *session) findEntry(l listDef, v string) (string, int) {
 	fmt.Fprintf(s.stderr, "spm: %s matches more than one entry of %s (%s); nothing removed: give the entry as it is written\n",
 		v, l.label, strings.Join(looseValues, ", "))
 	return "", exitRefused
+}
+
+// bareName is v in lower case without the "*." and leading dots that write a
+// name with its subdomains: the name the exporter enforces for a blocked
+// domain (database.EnforcedDomain). An IP address or network is unchanged.
+func bareName(v string) string {
+	return strings.TrimLeft(strings.TrimPrefix(strings.ToLower(v), "*."), ".")
 }
 
 func runList(l listDef, args []string, stdin io.Reader, stdout, stderr io.Writer) int {

@@ -178,6 +178,9 @@ func TestARedirectIsAFailureThatNamesItsTarget(t *testing.T) {
 // even when a newer entry matches it loosely (".example.com" for
 // example.com); it reads every page of the search, not only the first; and a
 // loose match that fits more than one entry is refused, with nothing removed.
+// The mock searches as the backend does (listHandler): a case-insensitive
+// substring of the entry or its note, where "*" is a literal character, so a
+// search for "*.example.com" finds no ".example.com".
 func TestRemoveTakesTheEntryWrittenAsGiven(t *testing.T) {
 	isolate(t)
 	var entries []map[string]any // newest first, as the API lists them
@@ -189,31 +192,51 @@ func TestRemoveTakesTheEntryWrittenAsGiven(t *testing.T) {
 			_, _ = w.Write([]byte(`{"status":"success"}`))
 			return
 		}
+		found := entries
+		if search := strings.ToLower(r.URL.Query().Get("search")); search != "" {
+			found = nil
+			for _, e := range entries {
+				if strings.Contains(strings.ToLower(e["entry"].(string)), search) || strings.Contains(strings.ToLower(e["description"].(string)), search) {
+					found = append(found, e)
+				}
+			}
+		}
 		// Two rows a page, whatever limit asks: a server whose cap the
 		// search outgrew.
 		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 		page := []map[string]any{}
-		if offset < len(entries) {
-			page = entries[offset:min(offset+2, len(entries))]
+		if offset < len(found) {
+			page = found[offset:min(offset+2, len(found))]
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "data": page, "meta": map[string]any{"total": len(entries), "offset": offset}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "data": page, "meta": map[string]any{"total": len(found), "offset": offset}})
 	}))
 	defer srv.Close()
-	entry := func(id int, v string) map[string]any { return map[string]any{"id": id, "entry": v} }
+	// Every list's field carries the value, so one mock serves them all.
+	entry := func(id int, v string) map[string]any {
+		return map[string]any{"id": id, "entry": v, "domain": v, "ip": v, "description": ""}
+	}
 	for _, c := range []struct {
 		name    string
+		noun    string
 		list    []map[string]any
 		remove  string
 		want    int
 		deleted string
 	}{
-		{"exact beats a newer loose match", []map[string]any{entry(2, ".example.com"), entry(1, "example.com")}, "example.com", exitOK, "/api/egress-allowlist/1"},
-		{"a loose match alone still counts", []map[string]any{entry(2, ".example.com")}, "example.com", exitOK, "/api/egress-allowlist/2"},
-		{"the entry on the second page", []map[string]any{entry(9, "a.example.com"), entry(8, "b.example.com"), entry(7, "example.com")}, "example.com", exitOK, "/api/egress-allowlist/7"},
-		{"two loose matches", []map[string]any{entry(4, ".example.com"), entry(3, "example.com")}, "*.example.com", exitRefused, ""},
+		{"exact beats a newer loose match", "allowlist", []map[string]any{entry(2, ".example.com"), entry(1, "example.com")}, "example.com", exitOK, "/api/egress-allowlist/1"},
+		{"a loose match alone still counts", "allowlist", []map[string]any{entry(2, ".example.com")}, "example.com", exitOK, "/api/egress-allowlist/2"},
+		{"the entry on the second page", "allowlist", []map[string]any{entry(9, "a.example.com"), entry(8, "b.example.com"), entry(7, "example.com")}, "example.com", exitOK, "/api/egress-allowlist/7"},
+		{"two loose matches", "allowlist", []map[string]any{entry(4, ".example.com"), entry(3, "example.com")}, "*.example.com", exitRefused, ""},
+		{"a wildcard finds the subdomain entry", "allowlist", []map[string]any{entry(5, ".example.com")}, "*.example.com", exitOK, "/api/egress-allowlist/5"},
+		{"a blocked wildcard by its name", "blocked-domains", []map[string]any{entry(6, "*.ads.example.org")}, "ads.example.org", exitOK, "/api/domain-blacklist/6"},
+		{"a blocked wildcard by its dotted form", "blocked-domains", []map[string]any{entry(6, "*.ads.example.org")}, ".ads.example.org", exitOK, "/api/domain-blacklist/6"},
+		{"a blocked name written with an upper-case letter", "blocked-domains", []map[string]any{entry(7, "Ads.Example.org")}, "*.ads.example.org", exitOK, "/api/domain-blacklist/7"},
+		{"a domain exception by its wildcard", "domain-exceptions", []map[string]any{entry(8, "cdn.example.net")}, "*.cdn.example.net", exitOK, "/api/domain-whitelist/8"},
+		{"an IP", "blocked-ips", []map[string]any{entry(10, "203.0.113.70"), entry(9, "203.0.113.7")}, "203.0.113.7", exitOK, "/api/ip-blacklist/9"},
+		{"a network", "ip-exceptions", []map[string]any{entry(11, "198.51.100.0/24")}, "198.51.100.0/24", exitOK, "/api/ip-whitelist/11"},
 	} {
 		entries, deleted = c.list, nil
-		code, _, stderr := run(t, "", "allowlist", "remove", c.remove, "--url", srv.URL, "--token", "spm_x_y")
+		code, _, stderr := run(t, "", c.noun, "remove", c.remove, "--url", srv.URL, "--token", "spm_x_y")
 		got := strings.Join(deleted, ",")
 		if code != c.want || got != c.deleted || (c.want == exitRefused && !strings.Contains(stderr, "matches more than one entry")) {
 			t.Errorf("%s: exit %d, deleted %q (%s); want %d and %q", c.name, code, got, strings.TrimSpace(stderr), c.want, c.deleted)

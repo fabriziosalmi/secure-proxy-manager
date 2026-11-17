@@ -115,11 +115,15 @@ for at least one minor release before disappearing.
   both `example.com` and `.example.com` on the default-deny allowlist and the
   wider one newer, `spm allowlist remove example.com` removed `.example.com`,
   printed "Removed example.com" and exited 0, so default-deny then blocked the
-  subdomains. The exact entry now wins. A loose match (`.example.com` for
-  `example.com`) still counts when it is the only one, and one that fits
-  several entries is refused with exit status 1 and nothing removed. The
-  search reads every page, so an entry beyond the first 1000 matches is found
-  instead of reported as not on the list.
+  subdomains. The exact entry now wins. A loose match (`.example.com` or
+  `*.example.com` for `example.com`) still counts when it is the only one, and
+  one that fits several entries is refused with exit status 1 and nothing
+  removed. The search reads every page, so an entry beyond the first 1000
+  matches is found instead of reported as not on the list. The search sent to
+  the server is the bare name: the server reads `*` in a search as a literal
+  character, so `spm allowlist remove '*.example.com'` reported
+  `.example.com` as not on the list, and a blocked domain kept as
+  `*.ads.example.org` could be removed only as written.
 - **`spm login` sends a saved token only to the server it was saved for.**
   `spm login --url https://OTHER:8443` without `--token` pinned the other
   server's certificate and then sent it the token saved for the first server,
