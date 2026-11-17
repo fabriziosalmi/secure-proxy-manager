@@ -15,6 +15,15 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A tar-pitted block no longer holds the shared inspection budget.** A
+  client blocked more than three times in a minute still waits 10 seconds for
+  each further block page, but its request now gives back the inspection
+  budget and lets go of its body before that wait, not after. One client's
+  repeated blocked uploads can no longer make other clients' requests wait for
+  the budget and fail with a 503.
+
 ## [3.42.0] - 2026-11-16
 
 The MCP server offers 102 tools instead of 13. Nothing in the API is
