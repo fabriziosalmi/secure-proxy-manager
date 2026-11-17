@@ -95,7 +95,7 @@ operations these commands call; a test holds the two to each other.
 spm status                    # the server's version and state
 spm status --json
 spm api --list                # every operation, with the token scope it needs
-spm api GET /api/ip-blacklist?search=203.0.113
+spm api GET '/api/ip-blacklist?search=203.0.113'
 spm api POST /api/ip-blacklist -d '{"ip":"203.0.113.9","description":"scanner"}'
 spm api POST /api/blacklists/import -d @list.json
 spm api DELETE /api/ip-blacklist/42 --dry-run
