@@ -15,6 +15,21 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.43.1] - 2026-11-20
+
+Two fixes for what 3.43.0 left behind. Nothing is **BREAKING** and
+`X-API-Version` stays 1.
+
+**Upgrade notes.**
+- A deployment that follows releases with `scripts/canary.sh`
+  (`CANARY_TRACK=release`) from a copy of the script outside its checkout
+  could not move past 3.43.0: the 3.43.0 canary stops before aligning. Align
+  it to 3.43.1 once by hand, or run the 3.43.0 script once from a copy kept
+  inside the checkout (for example `.canary-once/canary.sh`); from 3.43.1 on
+  it moves by itself.
+- The optional observability and Tailscale profiles pull newer images
+  (grafana 13.3.1, prometheus v3.16.0, tailscale v1.104.7).
+
 ### Changed
 
 - **The optional observability and Tailscale services move to newer
