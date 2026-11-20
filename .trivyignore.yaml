@@ -61,6 +61,37 @@ vulnerabilities:
   - id: CVE-2026-78661
     statement: "golang.org/x/net/html < 0.62.0 (x/net 0.58.0 to 0.61.0) in the datasource plugins bundled with grafana/grafana:13.3.0 and in grafana/k6:2.3.0, the newest tags of both, checked on Docker Hub 2026-11-11. Recorded 2026-11-11. Our own modules are on 0.62.0 (waf-go, wafeval), and tailscale moved to v1.104.4."
     expired_at: 2026-11-30
+  # CVE-2026-97054 (GO-2026-6859), Go net/http: an HTTP/1 server can crash
+  # through a race in MaxBytesReader; fixed in Go 1.26.11 / 1.27.4. Recorded
+  # 2026-11-20 when the CI scan of grafana 13.3.1, prometheus v3.16.0 and k6
+  # 2.4.0 (the newest tags on Docker Hub that day) still found it in 18
+  # binaries built with Go 1.27.3 (one with 1.26.7); tailscale v1.104.7 scans
+  # clean and moved. Scoped to those binaries by path, so it cannot hide the
+  # same CVE anywhere else. Short expiry: a Go patch rebuild usually follows
+  # within weeks. The images this project builds use Go 1.27.4 and are
+  # scanned at release with no ignore file.
+  - id: CVE-2026-97054
+    paths:
+      - "bin/prometheus"
+      - "bin/promtool"
+      - "usr/bin/k6"
+      - "usr/share/grafana/bin/grafana"
+      - "usr/share/grafana/data/plugins-bundled/cloudwatch/gpx_grafana_cloudwatch_datasource_linux_amd64"
+      - "usr/share/grafana/data/plugins-bundled/elasticsearch/gpx_grafana_elasticsearch_datasource_linux_amd64"
+      - "usr/share/grafana/data/plugins-bundled/grafana-postgresql-datasource/gpx_grafana_postgresql_datasource_linux_amd64"
+      - "usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64"
+      - "usr/share/grafana/data/plugins-bundled/influxdb/gpx_grafana_influxdb_datasource_linux_amd64"
+      - "usr/share/grafana/data/plugins-bundled/jaeger/gpx_grafana-jaeger-datasource_linux_amd64"
+      - "usr/share/grafana/data/plugins-bundled/loki/gpx_grafana-loki-datasource_linux_amd64"
+      - "usr/share/grafana/data/plugins-bundled/mssql/gpx_grafana-mssql-datasource_linux_amd64"
+      - "usr/share/grafana/data/plugins-bundled/mysql/gpx_grafana-mysql-datasource_linux_amd64"
+      - "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64"
+      - "usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64"
+      - "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64"
+      - "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64"
+      - "usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64"
+    statement: "Go stdlib < 1.26.11 / 1.27.4 in grafana/grafana:13.3.1 (grafana binary and 14 bundled datasource plugins), prom/prometheus:v3.16.0 (prometheus, promtool) and grafana/k6:2.4.0 (k6), the newest tags on Docker Hub on 2026-11-20; upstream rebuild required. Recorded 2026-11-20."
+    expired_at: 2026-12-04
   - id: CVE-2026-56857
     statement: "Go stdlib os.Root Mkdir/MkdirAll following junctions (fixed in 1.26.9 / 1.27.2) in the grafana 13.3.0 plugins (Go 1.26.7) and k6 2.3.0 (Go 1.27.1); both are the newest tags, checked 2026-10-28. Junctions are a Windows feature and both images are Linux. Our own images are built with 1.27.3."
     expired_at: 2026-11-30
