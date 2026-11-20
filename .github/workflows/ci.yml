@@ -293,6 +293,8 @@ jobs:
         run: bash tests/shell/cosign_sign_test.sh
       - name: Release publish reads each image's digest from its newest scanned attempt
         run: bash tests/shell/release_digest_test.sh
+      - name: A release dry run never signs, tags or mirrors, and does install cosign and verify the current release
+        run: bash tests/shell/release_dry_run_test.sh
       - name: The canary waits out a proxy that is reconfiguring and never retries a verdict
         run: bash tests/shell/canary_probe_test.sh
       - name: The canary aligns to main, or to the newest release and never to a candidate

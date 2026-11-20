@@ -27,6 +27,15 @@ for at least one minor release before disappearing.
   check`, imports, non-root user, an MCP initialize over stdio, and the
   startup error behind a redirect. No workflow built that image before, so a
   change of its base passed CI unbuilt.
+- **A release dry run installs cosign, logs in to Docker Hub and verifies the
+  current release.** It skipped all three, so the release-only steps that a
+  dependency update touches (cosign-installer, docker/login-action for Docker
+  Hub) would first run on a tag, where a fix needs another release. Now it
+  installs cosign, logs in to Docker Hub when the credentials exist, and runs
+  `scripts/cosign-verify.sh` on the current release's `:latest` on GHCR and
+  on the Docker Hub mirror. It still signs, tags and mirrors nothing:
+  `tests/shell/release_dry_run_test.sh` holds every such step to a release
+  tag.
 
 ## [3.43.1] - 2026-11-20
 
