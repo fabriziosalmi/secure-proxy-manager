@@ -11,6 +11,12 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mockApi } from './fixtures';
 
+// Headless Chromium hides scrollbars (--hide-scrollbars), so a page that
+// scrolls is as wide as one that does not and the shift this file guards
+// against cannot be seen. Here the scrollbars take their room, as on a
+// desktop browser with a mouse.
+test.use({ launchOptions: { ignoreDefaultArgs: ['--hide-scrollbars'] } });
+
 const SECTIONS = ['overview', 'access', 'filtering', 'inspection', 'alerts', 'logs', 'admin', 'engine', 'appearance'];
 const ROUTES = ['/', '/analytics', '/logs', '/clients', '/blacklists', '/egress', ...SECTIONS.map((s) => `/settings/${s}`), '/audit'];
 
