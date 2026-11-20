@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 )
 
 // planOf returns the EXPLAIN QUERY PLAN details of query, one per line.
@@ -52,7 +54,7 @@ func countPlans(t *testing.T, db *sql.DB, f logFilter, internal []string) []stri
 // through an index, not by reading the table. Each filter that has an index
 // to use is checked against the plan SQLite picks: a client by
 // idx_proxy_logs_source_ip, a rule by idx_proxy_logs_blocked_reason, blocked
-// rows by a partial index on them, the internal sources' rows by the source
+// rows and upstream errors by a partial index on each, the internal sources' rows by the source
 // index. A destination substring (LIKE '%x%') has no index that could serve
 // it; it walks the table newest first and stops at the page size.
 //
@@ -79,6 +81,9 @@ func TestLogFiltersUseIndexes(t *testing.T) {
 		{"rule page", logFilter{reason: "waf"}, false, "idx_proxy_logs_blocked_reason"},
 		{"rule count", logFilter{reason: "waf"}, true, "idx_proxy_logs_blocked_reason"},
 		{"blocked page", logFilter{outcome: "blocked", includeInternal: true}, false, "idx_proxy_logs_blocked"},
+		{"upstream error page", logFilter{outcome: "upstream_error", includeInternal: true}, false, "idx_proxy_logs_upstream_error"},
+		// Covering: the count reads the partial index only, never the table.
+		{"upstream error count", logFilter{outcome: "upstream_error"}, true, "COVERING INDEX idx_proxy_logs_upstream_error"},
 		{"cursor page", logFilter{includeInternal: true, beforeID: 500}, false, "INTEGER PRIMARY KEY (rowid<?)"},
 	}
 	for _, c := range cases {
@@ -104,10 +109,11 @@ func TestLogFiltersUseIndexes(t *testing.T) {
 	if len(plans) != 2 || !strings.Contains(plans[1], "idx_proxy_logs_source_ip (source_ip=?)") {
 		t.Errorf("default view counts: want every row, then the internal rows by idx_proxy_logs_source_ip; got\n%s", strings.Join(plans, "\n--\n"))
 	}
-	// Allowed rows are every row less the blocked ones (the partial index).
+	// Allowed rows are every row less the blocked ones and less the upstream
+	// errors, each counted from its partial index.
 	plans = countPlans(t, db, logFilter{outcome: "allowed", includeInternal: true}, internal)
-	if len(plans) != 2 || !strings.Contains(plans[1], "idx_proxy_logs_blocked") {
-		t.Errorf("allowed counts: want every row, then the blocked rows by a partial index; got\n%s", strings.Join(plans, "\n--\n"))
+	if len(plans) != 3 || !strings.Contains(plans[1], "idx_proxy_logs_blocked") || !strings.Contains(plans[2], "COVERING INDEX idx_proxy_logs_upstream_error") {
+		t.Errorf("allowed counts: want every row, then the blocked rows and the upstream errors by their partial indexes; got\n%s", strings.Join(plans, "\n--\n"))
 	}
 }
 
@@ -134,6 +140,14 @@ func TestLogFilters1M(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("creating idx_proxy_logs_blocked_reason on %d rows took %s", n, time.Since(created).Round(time.Millisecond))
+	if _, err := db.Exec("DROP INDEX idx_proxy_logs_upstream_error"); err != nil {
+		t.Fatal(err)
+	}
+	created = time.Now()
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_proxy_logs_upstream_error ON proxy_logs(id, source_ip, blocked, status) WHERE blocked != 1 AND " + string(database.UpstreamErrorCond)); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("creating idx_proxy_logs_upstream_error on %d rows took %s", n, time.Since(created).Round(time.Millisecond))
 	if _, err := db.Exec("ANALYZE"); err != nil {
 		t.Fatal(err)
 	}
@@ -149,15 +163,16 @@ func TestLogFilters1M(t *testing.T) {
 	}{
 		{"default (internal hidden)", logFilter{}, ""},
 		{"include internal", logFilter{includeInternal: true}, "include_internal=true"},
-		{"client", logFilter{sourceIP: "192.168.1.15"}, "source_ip=192.168.1.15"},
+		{"client", logFilter{sourceIP: "192.168.0.15"}, "source_ip=192.168.0.15"},
 		{"blocked", logFilter{outcome: "blocked"}, "outcome=blocked"},
 		{"allowed", logFilter{outcome: "allowed"}, "outcome=allowed"},
+		{"upstream error", logFilter{outcome: "upstream_error"}, "outcome=upstream_error"},
 		{"rule waf", logFilter{reason: "waf"}, "reason=waf"},
 		{"rule ip_blacklist (rare)", logFilter{reason: "ip_blacklist"}, "reason=ip_blacklist"},
 		{"q common", logFilter{q: "host-12"}, "q=host-12"},
 		{"q rare", logFilter{q: "host-4999."}, "q=host-4999."},
 		{"q absent", logFilter{q: "nothing-matches"}, "q=nothing-matches"},
-		{"client + rule", logFilter{sourceIP: "192.168.1.15", reason: "domain_blacklist_dns"}, "source_ip=192.168.1.15&reason=domain_blacklist_dns"},
+		{"client + rule", logFilter{sourceIP: "192.168.0.15", reason: "domain_blacklist_dns"}, "source_ip=192.168.0.15&reason=domain_blacklist_dns"},
 		{"cursor deep", logFilter{beforeID: 100_000}, "before_id=100000"},
 	}
 	for _, c := range cases {
@@ -191,7 +206,8 @@ func TestLogFilters1M(t *testing.T) {
 
 // seed1M writes n rows shaped like a home deployment: 20 LAN devices, the
 // backend and the Docker host (internal, about 10% of the rows), about 10%
-// blocked over five rules, destinations over 5,000 hosts, one row a second.
+// blocked over five rules, about 3% upstream errors (502, 503), destinations
+// over 5,000 hosts, one row a second.
 func seed1M(t *testing.T, db *sql.DB, n int) {
 	t.Helper()
 	tx, err := db.Begin()
@@ -222,6 +238,11 @@ func seed1M(t *testing.T, db *sql.DB, n int) {
 			blocked, reason, status = 1, "unclassified", "TCP_DENIED/403"
 		case 9:
 			blocked, reason, status = 1, "direct_ip", "TCP_DENIED/403"
+		case 50, 60:
+			// Not blocked, failed beyond the proxy: about 3% upstream errors.
+			status = "TCP_TUNNEL/503"
+		case 70:
+			status = "TCP_MISS/502"
 		}
 		if i%1000 == 11 {
 			blocked, reason, status = 1, "ip_blacklist", "TCP_DENIED/403"
