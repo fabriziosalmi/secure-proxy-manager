@@ -301,7 +301,8 @@ describe('Blacklists', () => {
         const table = await screen.findByRole('table', { name: 'Sources of Blocked IPs' })
         await within(table).findByText('Firehol Level 1')
         const row = (name: string) => within(table).getByText(name).closest('tr')!
-        expect(within(row('Firehol Level 1')).getByText('https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset')).toBeInTheDocument()
+        // The URL is written whole, in pieces that wrap after a dot or a slash.
+        expect(within(row('Firehol Level 1')).getByRole('link', { name: 'https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset' })).toBeInTheDocument()
         expect(within(row('Firehol Level 1')).getByText('4,521')).toBeInTheDocument()
         // The Added column (the range is also under the name, for a phone).
         expect(row('Firehol Level 1').cells[2]).toHaveTextContent(/^Sun 25 11:00 to 11:02$/)

@@ -66,6 +66,13 @@ for at least one minor release before disappearing.
   blocked it and gives the code. Blocked requests are unchanged, and so is
   the Allowed filter: it still lists every request no rule blocked, these
   included.
+- **A host name no longer breaks in the middle of a label.** The top
+  destinations of a client split "gsp57-ssl-background.ls.apple.c" from "om",
+  and a source URL on Blacklists split "maste" from "r/hosts": both used
+  `break-all`. They now wrap only after a dot or a slash, each label with its
+  hyphens on one line (a label longer than 24 characters may still break, so
+  it cannot run out of its column). The access log's Request column keeps
+  each destination on one line, cut with an ellipsis, whole in its tooltip.
 
 ## [3.43.2] - 2026-11-20
 

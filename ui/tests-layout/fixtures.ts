@@ -132,6 +132,8 @@ const clientDetail = {
   first_seen: '2026-10-25 07:59:02', last_seen: '2026-10-29 07:51:30',
   top_domains: [
     { destination: 'updates.cdn-apple.com', requests: 602, blocked: 0 },
+    // Longer than the column at 1512 px: it wraps, and only after a dot.
+    { destination: 'gsp57-ssl-background.ls.apple.com', requests: 511, blocked: 0 },
     { destination: 'gdmf.apple.com', requests: 398, blocked: 0 },
     { destination: 'github.com', requests: 40, blocked: 24 },
   ],

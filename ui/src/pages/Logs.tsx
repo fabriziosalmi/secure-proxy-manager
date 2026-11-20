@@ -24,6 +24,7 @@ import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { Switch } from '../components/ui/Switch';
 import { Button, IconButton } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { Hostname } from '../components/ui/Hostname';
 import { useConfirm } from '../hooks/useConfirm';
 import { useModal } from '../hooks/useModal';
 import { useMediaQuery, DESKTOP_QUERY } from '../hooks/useMediaQuery';
@@ -486,10 +487,9 @@ export function Logs() {
             onClick={() => setSelectedKey(row.key === selectedKey && isDesktop ? null : row.key)}
             aria-pressed={isDesktop ? row.key === selectedKey : undefined}
             aria-haspopup={isDesktop ? undefined : 'dialog'}
-            title={row.entry.destination}
-            className="min-w-0 truncate rounded-sm text-left font-mono text-[13px] text-ink hover:text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
+            className="min-w-0 overflow-hidden rounded-sm text-left font-mono text-[13px] text-ink hover:text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
           >
-            {row.entry.destination || 'Not recorded'}
+            {row.entry.destination ? <Hostname name={row.entry.destination} truncate /> : 'Not recorded'}
           </button>
         </div>
         <span className="flex w-[calc(100vw-5rem)] min-w-0 items-center gap-2 sm:hidden">

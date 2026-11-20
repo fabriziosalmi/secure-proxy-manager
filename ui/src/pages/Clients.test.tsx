@@ -261,9 +261,13 @@ describe('Clients', () => {
       expect(within(panel).getByText('These counts cover the last 7 days, as the table does.')).toBeInTheDocument()
       expect(within(panel).getByText('8 of the 908 blocked requests were logged before the proxy recorded why it blocked a request, so the rule is not known.')).toBeInTheDocument()
       const dest = within(panel).getByRole('table', { name: 'Top destinations of 192.168.1.109' })
-      // The whole name, wrapped; it was cut, whole only in a tooltip.
-      expect(within(dest).getByText('ads.example.test')).toHaveClass('break-all')
-      expect(within(dest).getByText('ads.example.test')).not.toHaveClass('truncate')
+      // The whole name, wrapped after a dot only; it was cut, whole only in a
+      // tooltip, and then broken in the middle of a label (break-all).
+      const host = dest.querySelector('[data-hostname="ads.example.test"]') as HTMLElement
+      expect(host).toHaveTextContent(/^ads\.example\.test$/)
+      expect(host).not.toHaveClass('break-all')
+      expect(host).not.toHaveClass('truncate')
+      expect(host.querySelectorAll('wbr')).toHaveLength(2)
       expect(within(dest).getAllByText('700')).toHaveLength(2)
       expect(within(panel).getByText('Domain blacklist')).toBeInTheDocument()
       // "Not blocked" here, "Allowed" in the access log: one word now.

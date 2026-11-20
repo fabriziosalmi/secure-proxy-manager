@@ -182,7 +182,9 @@ describe('Logs', () => {
     // Every LAN client is a private network address: the row does not say it.
     expect(within(a).queryByText('Private network address')).toBeNull()
     expect(within(a).getByText('CONNECT')).toBeInTheDocument()
-    expect(within(a).getByRole('button', { name: 'example.com:443' })).toHaveAttribute('title', 'example.com:443')
+    // Cut to the column, whole in the title.
+    const destination = within(a).getByRole('button', { name: 'example.com:443' })
+    expect(within(destination).getByTitle('example.com:443')).toHaveClass('truncate')
     expect(within(a).getByText('200')).toHaveClass('text-success')
     expect(within(a).getByText('HTTPS tunnel')).toHaveAttribute('title', 'TCP_TUNNEL/200')
     expect(within(cellOf(a, 'Outcome')).getByText('Allowed')).toHaveAttribute('data-tone', 'success')

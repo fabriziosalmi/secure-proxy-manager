@@ -30,11 +30,14 @@ describe('SourcesSection layout', () => {
   it('cuts a long name to the width left over, and lets its URL run onto more lines as a link, with the whole text in the title', () => {
     const table = renderSources()
     const name = within(table).getByText('A Popular list with a name long enough to need cutting')
-    const url = within(table).getByText(LONG)
+    const url = table.querySelector(`[data-hostname="${LONG}"]`)!.closest('a')!
     expect(classes(name)).toEqual(expect.arrayContaining(['block', 'truncate']))
     expect(name).toHaveAttribute('title', name.textContent)
-    // An ellipsis on the first line hid most of every feed URL.
-    expect(classes(url)).toEqual(expect.arrayContaining(['line-clamp-3', 'break-all']))
+    // An ellipsis on the first line hid most of every feed URL; break-all
+    // then cut its names in the middle. It wraps after a dot or a slash.
+    expect(classes(url)).toContain('line-clamp-3')
+    expect(classes(url)).not.toContain('break-all')
+    expect(url.querySelectorAll('wbr').length).toBeGreaterThan(0)
     expect(classes(url)).not.toContain('truncate')
     expect(url.tagName).toBe('A')
     expect(url).toHaveAttribute('href', LONG)
