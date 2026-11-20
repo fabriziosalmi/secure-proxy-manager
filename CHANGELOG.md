@@ -46,6 +46,17 @@ for at least one minor release before disappearing.
   have fixed widths, so search, outcome, client, rule, time range and the
   internal-traffic switch sit on one row from a 1280 px window with the
   sidebar open.
+- **Overview: the four cards open the page that lists what they count, all
+  in the same way.** Client requests opens the access log (it opened
+  nothing), Blocked the blocked requests, Active clients the Clients page
+  and Blacklist entries the blacklists. The whole card is the link, with the
+  same hover (a stronger border, a tinted ground) and a focus ring around the
+  card; no label is underlined any more, which made Blocked alone read as a
+  text link under the pointer. When nothing was blocked in the last 24
+  hours and there is no older block to list, Blocked by rule, Most blocked
+  destinations and Latest blocks, three cards that each said so, are one
+  line ("No client request was blocked in the last 24 hours."), and the
+  requests chart takes the whole row.
 
 ### Fixed
 

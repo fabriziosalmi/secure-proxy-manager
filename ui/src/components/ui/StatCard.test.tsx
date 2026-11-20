@@ -30,6 +30,17 @@ describe('StatCard', () => {
     await expectNoAxeViolations(container)
   })
 
+  // The label was underlined under the pointer, as a text link, so one card
+  // in four read as a link: the card is the target, its label stays plain.
+  it('makes the whole card the link, with a hover state and a focus ring on the card, and no underline on its label', () => {
+    renderWithProviders(<StatCard label="Blocked" value={97} to="/logs?outcome=blocked" />)
+    const link = screen.getByRole('link', { name: 'Blocked' })
+    expect(link.className).not.toMatch(/(^|\s)hover:underline/)
+    expect(link.className).toContain('focus-visible:after:ring-2')
+    expect(link.className).toContain('after:inset-0')
+    expect(link.closest('p')!.parentElement!.className).toContain('hover:border-line-strong')
+  })
+
   it('shows a real zero as 0', () => {
     render(<StatCard label="Blocked" value={0} />)
     expect(screen.getByText('0')).toBeInTheDocument()

@@ -151,6 +151,50 @@ describe('Dashboard (Overview)', () => {
     expect(within(card('Active clients')).getByRole('link', { name: 'Active clients' })).toHaveAttribute('href', '/clients')
   })
 
+  // Only Blocked read as a link (its label underlined under the pointer), and
+  // Client requests opened nothing: the four cards are now alike.
+  it('links each of the four cards to the page that lists what it counts, all in the same way', async () => {
+    renderWithProviders(<Dashboard />)
+    await waitFor(() => { expect(card('Client requests')).toHaveTextContent('1,180') })
+    const glance = screen.getByRole('region', { name: 'Last 24 hours at a glance' })
+    const links = within(glance).getAllByRole('link')
+    expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      ['Client requests', '/logs'],
+      ['Blocked', '/logs?outcome=blocked'],
+      ['Active clients', '/clients'],
+      ['Blacklist entries', '/blacklists'],
+    ])
+    expect(new Set(links.map((a) => a.className)).size).toBe(1)
+    expect(new Set(links.map((a) => a.closest('p')!.parentElement!.className)).size).toBe(1)
+    for (const a of links) expect(a.className).not.toMatch(/(^|\s)hover:underline/)
+  })
+
+  // With nothing blocked, three cards said so three times and squeezed the chart.
+  it('folds the three blocked cards into one line when nothing was blocked, and gives the chart the row', async () => {
+    serve({
+      ...DEFAULT_ROUTES,
+      'dashboard/summary': { ...summaryData, last_24h_blocked: 0, top_blocked: [], recent_blocks: [], blocked_by_reason_24h: [] },
+      'logs/timeline': [{ time: '2026-07-01 06:00:00', total: 1146, blocked: 0 }],
+    })
+    renderWithProviders(<Dashboard />)
+    const quiet = await screen.findByRole('region', { name: 'Blocked requests' })
+    expect(quiet).toHaveTextContent('No client request was blocked in the last 24 hours.')
+    for (const gone of ['Blocked by rule', 'Most blocked destinations', 'Latest blocks']) {
+      expect(screen.queryByRole('region', { name: gone })).toBeNull()
+    }
+    const chart = screen.getByRole('region', { name: 'Requests per hour' })
+    expect(chart.parentElement!.children).toHaveLength(1)
+  })
+
+  it('keeps the three blocked cards while one of them has something to show', async () => {
+    // Nothing in the last 24 hours, but the latest blocks reach further back.
+    serve({ ...DEFAULT_ROUTES, 'dashboard/summary': { ...summaryData, last_24h_blocked: 0, top_blocked: [], blocked_by_reason_24h: [] } })
+    renderWithProviders(<Dashboard />)
+    expect(await screen.findByRole('region', { name: 'Latest blocks' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Blocked by rule' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Blocked requests' })).toBeNull()
+  })
+
   // The count said there were advisories, not which: the list is under the
   // proxy's line, read only when there are some.
   it('lists the advisories behind the proxy CVE count, and asks for none when there are none', async () => {
