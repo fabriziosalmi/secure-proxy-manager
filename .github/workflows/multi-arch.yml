@@ -23,8 +23,11 @@ name: Multi-Arch Build & Push
 # and a rerun of the failed jobs only still finds the earlier attempt's.
 #
 # workflow_dispatch is a DRY RUN of the same path on the selected ref: build,
-# push by digest, scan, and in publish check that each digest resolves, then
-# stop. Nothing is signed or tagged. It used to tag and push :latest from any
+# push by digest, scan, and in publish check that each digest resolves; then
+# install cosign, log in to Docker Hub when its credentials exist, verify the
+# current release's :latest on GHCR and Docker Hub with that cosign, and stop.
+# Nothing is signed or tagged (tests/shell/release_dry_run_test.sh holds every
+# sign, tag and mirror step to a release tag). It used to tag and push :latest from any
 # ref, unsigned, because signing ran only for tags; the production compose
 # pulled :latest, so any dispatch replaced what installers received.
 on:
@@ -102,9 +105,12 @@ jobs:
         env:
           VERSION: ${{ needs.preflight.outputs.version }}
         run: bash scripts/build-cli-assets.sh "$VERSION" dist/spm "${GITHUB_SHA::12}"
+      # Installed on a dry run too, so a broken installer shows before a tag.
       - name: Install cosign
-        if: ${{ env.RELEASE == 'true' }}
         uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+      - name: Run the installed cosign (dry run)
+        if: ${{ env.RELEASE != 'true' }}
+        run: cosign version
       - name: Sign SHA256SUMS (keyless)
         if: ${{ env.RELEASE == 'true' }}
         run: bash scripts/cosign-sign-blob.sh dist/spm/SHA256SUMS
@@ -251,7 +257,7 @@ jobs:
   # has copied it with its tags, so the Hub signature follows the Hub tags: a
   # failure signing the mirror leaves the Hub tags in place, unsigned, until a
   # rerun signs them.
-  # On a dry run only the checks run.
+  # On a dry run only the checks run, and the current release is verified.
   publish:
     name: Publish ${{ matrix.image }}
     needs: [preflight, build-scan, cli-assets]
@@ -323,8 +329,9 @@ jobs:
       # Docker Hub is where people search for images (GHCR has little organic
       # discovery). Mirror there too, but only when the credentials exist, so
       # the release still works with just GHCR if they are not configured.
+      # Logged in to on a dry run too: the dry run verifies the mirror below.
       - name: Login to Docker Hub
-        if: ${{ env.RELEASE == 'true' && steps.dh.outputs.enabled == 'true' }}
+        if: ${{ steps.dh.outputs.enabled == 'true' }}
         uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: docker.io
@@ -345,6 +352,23 @@ jobs:
                      | (index("linux/amd64") != null) and (index("linux/arm64") != null)' >/dev/null \
             || { echo "::error::${IMAGE}@${DIGEST} is not an index with linux/amd64 and linux/arm64"; exit 1; }
 
+      # Installed on a dry run too, and used there to verify the current
+      # release: a broken cosign-installer or Docker Hub login shows here,
+      # not first on a tag, where a fix needs another release.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+      - name: Verify the current release with the installed cosign (dry run)
+        if: ${{ env.RELEASE != 'true' }}
+        env:
+          DH_ENABLED: ${{ steps.dh.outputs.enabled }}
+          DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          set -euo pipefail
+          bash scripts/cosign-verify.sh "${IMAGE}:latest"
+          if [ "$DH_ENABLED" = true ]; then
+            bash scripts/cosign-verify.sh "docker.io/${DH_USER}/secure-proxy-manager:${IMG}-latest"
+          fi
+
       - name: Stop here on a dry run
         if: ${{ env.RELEASE != 'true' }}
         env:
@@ -358,9 +382,6 @@ jobs:
       # scripts/cosign-sign.sh retries a transient failure (v3.18.1 lost its
       # Docker Hub signature to a Rekor 409 on cosign's own retry) and then
       # verifies the signature is there.
-      - name: Install cosign
-        if: ${{ env.RELEASE == 'true' }}
-        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
       - name: Sign the scanned digest (keyless)
         if: ${{ env.RELEASE == 'true' }}
         env:
