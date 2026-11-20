@@ -144,7 +144,7 @@ func TestLogFilters1M(t *testing.T) {
 		t.Fatal(err)
 	}
 	created = time.Now()
-	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_proxy_logs_upstream_error ON proxy_logs(id, source_ip, blocked, status) WHERE blocked != 1 AND " + string(database.UpstreamErrorCond)); err != nil {
+	if _, err := db.Exec(database.UpstreamErrorIndex); err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("creating idx_proxy_logs_upstream_error on %d rows took %s", n, time.Since(created).Round(time.Millisecond))

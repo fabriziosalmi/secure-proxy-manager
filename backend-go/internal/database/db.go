@@ -336,6 +336,13 @@ const UpstreamErrorCond SQLText = "substr(status, -4) IN " + upstreamErrorCodes
 // both sides.
 const NotUpstreamErrorCond SQLText = "IFNULL(substr(status, -4), '') NOT IN " + upstreamErrorCodes
 
+// UpstreamErrorIndex creates idx_proxy_logs_upstream_error. Its WHERE is
+// blocked != 1 and UpstreamErrorCond, written out in one literal so the
+// statement is not built at run time: TestUpstreamErrorIndexIsItsCondition
+// holds the two texts together, and TestLogFiltersUseIndexes fails if SQLite
+// stops using the index for the query built from UpstreamErrorCond.
+const UpstreamErrorIndex = `CREATE INDEX IF NOT EXISTS idx_proxy_logs_upstream_error ON proxy_logs(id, source_ip, blocked, status) WHERE blocked != 1 AND substr(status, -4) IN ('/502', '/503', '/504')`
+
 // createPostMigrationIndexes creates the indexes that depend on migrated columns.
 func createPostMigrationIndexes(db *sql.DB) error {
 	// Indexes on migrated columns must be created AFTER the ALTERs above add the
@@ -368,7 +375,7 @@ func createPostMigrationIndexes(db *sql.DB) error {
 		// columns its WHERE and the internal-source condition read, so its
 		// counts (outcome=allowed subtracts them) never touch the table.
 		// Measured on 1M rows: docs/api/logs.md.
-		"CREATE INDEX IF NOT EXISTS idx_proxy_logs_upstream_error ON proxy_logs(id, source_ip, blocked, status) WHERE blocked != 1 AND " + string(UpstreamErrorCond),
+		UpstreamErrorIndex,
 		// The domain blacklist entries with an upper-case letter, which the
 		// UNIQUE index cannot find from a lower-case allowed name: the count
 		// of entries the allowed list takes out (BlockedOnAllowed) reads them
