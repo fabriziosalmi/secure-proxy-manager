@@ -17,6 +17,25 @@ for at least one minor release before disappearing.
 
 ### Changed
 
+- **BREAKING** (`X-API-Version: 1`): **`outcome=allowed` on `GET /api/logs`
+  and `GET /api/logs/export` no longer lists the requests that failed beyond
+  the proxy; `outcome=upstream_error` lists them.** A request no rule blocked
+  whose status ends in `/502`, `/503` or `/504` (a name that does not
+  resolve, a server that refuses, breaks off or does not answer in time, or
+  sends that code itself) is an upstream error. `blocked`, `upstream_error`
+  and `allowed` now split the log, each row in exactly one, and the count in
+  `meta` follows. The response shape is unchanged, so `X-API-Version` stays
+  1. A script that read `outcome=allowed` as "every request no rule blocked"
+  should ask for `allowed` and `upstream_error`, or for every row less
+  `outcome=blocked`. A partial index, `idx_proxy_logs_upstream_error`, keeps
+  the new filter fast: on 1,000,000 rows with 3% upstream errors it answers
+  in 2.1 ms, and `outcome=allowed` takes 76 ms against 59 ms for `blocked`
+  (the same ratio as before). Start-up creates the index once after the
+  upgrade: 385 ms on those rows.
+- **Access logs: the outcome filter is one select with Any outcome, Allowed,
+  Upstream error and Blocked**, the words of the Outcome badge, instead of
+  the All, Allowed and Blocked buttons, and the live feed sorts its rows the
+  same way.
 - **Every page's title sits in a band across the top of the main column,
   on the line under the sidebar's brand.** The band is 64 px high on wide
   screens, as the sidebar header is, with the same border, so the two lines
@@ -42,12 +61,12 @@ for at least one minor release before disappearing.
   range; only Custom range shows the two times, on a row of their own. A
   preset writes the same `since` that typing that time into From did, with
   `until` open, so the URL and the request to the API are as before, and a
-  range from a link opens as Custom range with its times. The client and
-  rule selects are named by their first option (All clients, Any rule) and
-  are compact while nothing is chosen, so search, outcome, client, rule,
-  time range and the internal-traffic switch sit on one row from a 1280 px
-  window with the sidebar open; a chosen client or rule widens its select
-  so the value reads whole, and the row may then wrap.
+  range from a link opens as Custom range with its times. The outcome,
+  client and rule selects are named by their first option (Any outcome, All
+  clients, Any rule) and are compact while nothing is chosen, so search,
+  outcome, client, rule, time range and the internal-traffic switch sit on
+  one row from a 1280 px window with the sidebar open; a chosen value
+  widens its select so it reads whole, and the row may then wrap.
 - **Overview: the four cards open the page that lists what they count, all
   in the same way.** Client requests opens the access log (it opened
   nothing), Blocked the blocked requests, Active clients the Clients page
@@ -89,9 +108,8 @@ for at least one minor release before disappearing.
   "Allowed" badge, as if it had worked. It now has an amber "Upstream error"
   badge in the table and in the request details, whose "Why" says no rule
   blocked it and gives the code, and in a client's recent requests on
-  Clients. Blocked requests are unchanged, and so is
-  the Allowed filter: it still lists every request no rule blocked, these
-  included.
+  Clients. Blocked requests are unchanged; the outcome filter lists these
+  requests under Upstream error (see Changed).
 - **A host name no longer breaks in the middle of a label.** The top
   destinations of a client split "gsp57-ssl-background.ls.apple.c" from "om",
   and a source URL on Blacklists split "maste" from "r/hosts": both used

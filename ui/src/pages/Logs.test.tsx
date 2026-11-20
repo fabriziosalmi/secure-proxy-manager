@@ -327,7 +327,7 @@ describe('Logs', () => {
     expect(p.get('reason')).toBe('waf')
     expect(p.get('q')).toBe('shop')
     expect(screen.getByRole('searchbox', { name: 'Search destinations' })).toHaveValue('shop')
-    expect(screen.getByRole('button', { name: 'Blocked' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('combobox', { name: 'Outcome' })).toHaveValue('blocked')
     await waitFor(() => expect(screen.getByRole('combobox', { name: 'Client' })).toHaveValue('192.168.1.20'))
     await waitFor(() => expect(screen.getByRole('combobox', { name: 'Rule' })).toHaveValue('waf'))
   })
@@ -335,7 +335,14 @@ describe('Logs', () => {
   it('writes a filter change to the URL and asks the server again', async () => {
     renderWithProviders(<Logs />)
     await waitFor(() => expect(logCalls().length).toBe(1))
-    fireEvent.click(screen.getByRole('button', { name: 'Blocked' }))
+    // One select names every outcome, the upstream errors included, in the
+    // words of the Outcome badge.
+    const outcome = screen.getByRole('combobox', { name: 'Outcome' })
+    expect([...(outcome as HTMLSelectElement).options].map((o) => o.text)).toEqual(['Any outcome', 'Allowed', 'Upstream error', 'Blocked'])
+    fireEvent.change(outcome, { target: { value: 'upstream_error' } })
+    await waitFor(() => expect(lastLogParams().get('outcome')).toBe('upstream_error'))
+    expect(window.location.search).toBe('?outcome=upstream_error')
+    fireEvent.change(outcome, { target: { value: 'blocked' } })
     await waitFor(() => expect(lastLogParams().get('outcome')).toBe('blocked'))
     expect(window.location.search).toBe('?outcome=blocked')
 
