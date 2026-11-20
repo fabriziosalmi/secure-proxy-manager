@@ -10,6 +10,7 @@ import { isChunkLoadError } from './lib/chunkLoad';
 import { settingsQuery } from './lib/queries';
 import { ThemeProvider } from './components/ThemeProvider';
 import { SettingsDraftsProvider } from './components/settings/SettingsDrafts';
+import { PageHeader } from './components/ui/PageHeader';
 
 function createAppQueryClient() {
   return new QueryClient({
@@ -99,12 +100,16 @@ function PageLoader() {
   );
 }
 
+/** A path no page answers: its title in the band like every page, so the band is not left empty. */
 function NotFound() {
   return (
-    <div className="flex flex-col items-center justify-center h-full text-center gap-2 py-24">
-      <span className="text-5xl font-bold text-ink-subtle">404</span>
-      <p className="text-sm text-ink-muted">Page not found</p>
-    </div>
+    <>
+      <PageHeader title="Page not found" />
+      <div className="flex flex-col items-center justify-center h-full text-center gap-2 py-24">
+        <span className="text-5xl font-bold text-ink-subtle">404</span>
+        <p className="text-sm text-ink-muted">There is no page at this address.</p>
+      </div>
+    </>
   );
 }
 

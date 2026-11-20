@@ -78,7 +78,7 @@ describe('Blacklists', () => {
   it('shows the header from the mockup, four tabs and the sections, with headings in order', async () => {
     renderWithProviders(<Blacklists />)
     expect(screen.getByRole('heading', { level: 1, name: 'Blacklists' })).toBeInTheDocument()
-    expect(screen.getByText('Protection')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'About Blacklists' })).toHaveAccessibleDescription('Destinations the proxy refuses, and the ones it lets through.')
     expect(screen.getAllByRole('tab').map((t) => t.textContent?.replace(/[\d,]/g, ''))).toEqual(['Blocked IPs', 'Blocked domains', 'IP exceptions', 'Domain exceptions'])
     expect(screen.getByRole('tab', { name: /Blocked IPs/ })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'bl-tab-blocked-ips')
@@ -301,7 +301,8 @@ describe('Blacklists', () => {
         const table = await screen.findByRole('table', { name: 'Sources of Blocked IPs' })
         await within(table).findByText('Firehol Level 1')
         const row = (name: string) => within(table).getByText(name).closest('tr')!
-        expect(within(row('Firehol Level 1')).getByText('https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset')).toBeInTheDocument()
+        // The URL is written whole, in pieces that wrap after a dot or a slash.
+        expect(within(row('Firehol Level 1')).getByRole('link', { name: 'https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset' })).toBeInTheDocument()
         expect(within(row('Firehol Level 1')).getByText('4,521')).toBeInTheDocument()
         // The Added column (the range is also under the name, for a phone).
         expect(row('Firehol Level 1').cells[2]).toHaveTextContent(/^Sun 25 11:00 to 11:02$/)

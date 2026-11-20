@@ -902,7 +902,8 @@ test.describe('UI: Audit log', () => {
 
     await page.goto('/audit');
     await expect(page.getByRole('heading', { level: 1, name: 'Audit log' })).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('Who changed what, and every sign-in. Kept for 365 days.')).toBeVisible();
+    // The description is the tooltip of the info button by the title, read with it by a screen reader.
+    await expect(page.getByRole('button', { name: 'About Audit log' })).toHaveAccessibleDescription('Who changed what, and every sign-in. Kept for 365 days.');
     const events = page.getByRole('table', { name: 'Audit events' });
     await expect(events.getByText('Removed 2 blocked domains from a pasted list').first()).toBeVisible({ timeout: 10_000 });
     await expect(events.getByText('Added 2 domains to Blocked domains from a pasted list').first()).toBeVisible();
@@ -1121,7 +1122,8 @@ test.describe('UI — Blacklists (Blocked IPs)', () => {
     const card = page.getByRole('region', { name: 'Where the entries came from' });
     const buttons = card.getByRole('button', { name: /^Remove batch:/ });
     await expect(buttons.first()).toBeVisible({ timeout: 15_000 });
-    await expect(card.getByText(longUrl)).toHaveAttribute('title', longUrl);
+    // The link carries the whole URL in its title; its text wraps after a dot or a slash.
+    await expect(card.getByRole('link', { name: longUrl, exact: true })).toHaveAttribute('title', longUrl);
     const box = (await card.boundingBox())!;
     const n = await buttons.count();
     expect(n).toBeGreaterThan(1);

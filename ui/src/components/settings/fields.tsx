@@ -4,6 +4,11 @@
  * from the static map, and a message the last save refused for that key is
  * shown under it with aria-invalid on the control. The input id is the key,
  * so a refused field can be focused by name.
+ *
+ * Every row (label, description, control) is held to ROW_WIDTH, so on a wide
+ * screen a switch sits by its text instead of at the far edge of the card,
+ * and every description, a field's help included, is written in HELP_TEXT:
+ * the same size, and the width of the row rather than of the field above it.
  */
 import type { ReactNode } from 'react';
 import { Switch } from '../ui/Switch';
@@ -12,6 +17,12 @@ import { ApplyBadge } from './ApplyBadge';
 import { SecretField } from './SecretField';
 import { cn } from '../../lib/utils';
 import type { SectionForm } from './sectionForm';
+
+/** The readable width of a settings row: its label, description and control. */
+export const ROW_WIDTH = 'max-w-3xl';
+
+/** The description of a setting, under a switch, a choice or a field alike. */
+export const HELP_TEXT = 'text-sm leading-5 text-ink-muted';
 
 /** The backend's messages start in lower case ("must be a positive number"). */
 const sentence = (msg: string) => msg.charAt(0).toUpperCase() + msg.slice(1);
@@ -32,13 +43,13 @@ export function ToggleRow({ form, setting, label, help, children }: ToggleRowPro
   const error = form.error(setting);
   return (
     <div className="flex flex-col gap-3 border-t border-line-subtle py-4 first:border-t-0 first:pt-0 last:pb-0">
-      <div className="flex items-start gap-4">
+      <div className={cn('flex items-start gap-4', ROW_WIDTH)}>
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <div className="flex flex-wrap items-center gap-2">
             <span id={labelId} className="text-sm font-semibold text-ink">{label}</span>
             <ApplyBadge setting={setting} />
           </div>
-          <p id={helpId} className="text-sm leading-5 text-ink-muted">{help}</p>
+          <p id={helpId} className={HELP_TEXT}>{help}</p>
         </div>
         <Switch
           size="md"
@@ -75,13 +86,13 @@ export function ChoiceRow<V extends string>({ form, setting, label, help, option
   const value = form.values[setting] ?? '';
   return (
     <div className="flex flex-col gap-3 border-t border-line-subtle py-4 first:border-t-0 first:pt-0 last:pb-0">
-      <div className="flex flex-wrap items-start gap-4">
+      <div className={cn('flex flex-wrap items-start gap-4', ROW_WIDTH)}>
         <div className="flex min-w-0 flex-1 basis-60 flex-col gap-0.5">
           <div className="flex flex-wrap items-center gap-2">
             <span id={labelId} className="text-sm font-semibold text-ink">{label}</span>
             <ApplyBadge setting={setting} />
           </div>
-          <p id={`${setting}-help`} className="text-sm leading-5 text-ink-muted">{help}</p>
+          <p id={`${setting}-help`} className={HELP_TEXT}>{help}</p>
         </div>
         <SegmentedControl
           label={label}
@@ -129,11 +140,13 @@ export interface TextFieldProps {
   inputMode?: 'numeric' | 'text';
   placeholder?: string;
   className?: string;
+  /** A narrower width for the label and the input (a number of hours, say); the help keeps the row's width. */
+  inputWidth?: string;
   /** Off for a field a browser must not fill with a saved login. */
   autoComplete?: 'off';
 }
 
-export function TextField({ form, setting, label, hint, type = 'text', inputMode, placeholder, className, autoComplete }: TextFieldProps) {
+export function TextField({ form, setting, label, hint, type = 'text', inputMode, placeholder, className, inputWidth, autoComplete }: TextFieldProps) {
   const error = form.error(setting);
   const hintId = `${setting}-hint`;
   const errorId = `${setting}-error`;
@@ -141,28 +154,30 @@ export function TextField({ form, setting, label, hint, type = 'text', inputMode
   const stored = setting in form.stored;
   const describedBy = [hint || !stored ? hintId : '', error ? errorId : ''].filter(Boolean).join(' ') || undefined;
   return (
-    <div className={cn('flex min-w-0 flex-col gap-1.5', className)}>
-      <label htmlFor={setting} className="text-sm font-medium text-ink">{label}</label>
-      <input
-        id={setting}
-        name={setting}
-        type={type}
-        inputMode={inputMode}
-        placeholder={placeholder}
-        autoComplete={autoComplete}
-        spellCheck={autoComplete === 'off' ? false : undefined}
-        value={value}
-        onChange={(e) => form.set(setting, e.target.value)}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={describedBy}
-        className={cn(
-          'h-9 w-full min-w-0 rounded-control border bg-surface px-3 text-sm text-ink placeholder:text-ink-subtle',
-          'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent',
-          error ? 'border-danger-line' : 'border-line-strong',
-        )}
-      />
+    <div className={cn('flex min-w-0 flex-col gap-1.5', ROW_WIDTH, className)}>
+      <div className={cn('flex min-w-0 flex-col gap-1.5', inputWidth)}>
+        <label htmlFor={setting} className="text-sm font-medium text-ink">{label}</label>
+        <input
+          id={setting}
+          name={setting}
+          type={type}
+          inputMode={inputMode}
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+          spellCheck={autoComplete === 'off' ? false : undefined}
+          value={value}
+          onChange={(e) => form.set(setting, e.target.value)}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={describedBy}
+          className={cn(
+            'h-9 w-full min-w-0 rounded-control border bg-surface px-3 text-sm text-ink placeholder:text-ink-subtle',
+            'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent',
+            error ? 'border-danger-line' : 'border-line-strong',
+          )}
+        />
+      </div>
       {(hint || !stored) && (
-        <p id={hintId} className="text-xs text-ink-muted">
+        <p id={hintId} className={HELP_TEXT}>
           {hint}
           {!stored && value === '' && <>{hint ? ' ' : ''}No value is stored for this yet.</>}
         </p>

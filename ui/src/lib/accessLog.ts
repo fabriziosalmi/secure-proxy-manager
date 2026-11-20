@@ -41,6 +41,28 @@ export function fromLocalInput(value: string): number | null {
   return Number.isNaN(ms) ? null : Math.floor(ms / 1000);
 }
 
+/** The time range select: an open range, three spans back from now, or two times picked by hand. */
+export type TimeRange = 'any' | '1h' | '24h' | '7d' | 'custom';
+
+export const TIME_RANGES: { value: TimeRange; label: string; seconds?: number }[] = [
+  { value: 'any', label: 'Any time' },
+  { value: '1h', label: 'Last hour', seconds: 3600 },
+  { value: '24h', label: 'Last 24 hours', seconds: 86_400 },
+  { value: '7d', label: 'Last 7 days', seconds: 604_800 },
+  { value: 'custom', label: 'Custom range' },
+];
+
+/**
+ * The since and until a choice of the time range select writes, at nowSec:
+ * a span is since = now minus the span with until open, as typing that time
+ * into From did; Any time opens both. Custom range keeps what is set (null).
+ */
+export function rangeFilters(range: TimeRange, nowSec: number): Pick<LogFilters, 'since' | 'until'> | null {
+  if (range === 'custom') return null;
+  const span = TIME_RANGES.find((r) => r.value === range)?.seconds;
+  return { since: span ? nowSec - span : null, until: null };
+}
+
 /** Whether f's time range can hold no request: until is not later than since. */
 export const emptyRange = (f: LogFilters) => f.since !== null && f.until !== null && f.until <= f.since;
 
@@ -288,6 +310,27 @@ export function squidResultText(squid: string): string {
 export const isHttpCode = (code: string) => /^\d{3}$/.test(code);
 
 /**
+ * The codes of a request that failed beyond the proxy. Squid answers 503
+ * when a name does not resolve or the server refuses the connection (a
+ * CONNECT logs TCP_TUNNEL/503), 502 when the answer breaks off or cannot be
+ * read, 504 when it does not come in time; a server can send them itself.
+ */
+const UPSTREAM_ERRORS = new Set(['502', '503', '504']);
+
+export type RequestOutcome = 'allowed' | 'upstream_error' | 'blocked';
+
+/**
+ * What happened to r: blocked by a rule, failed beyond the proxy (no rule
+ * blocked it, but it ended in 502, 503 or 504), or allowed. The Allowed and
+ * Blocked filters still split rows by the blocked flag alone, so an upstream
+ * error is among the Allowed ones.
+ */
+export function outcomeOf(r: LogEntry): RequestOutcome {
+  if (isBlocked(r)) return 'blocked';
+  return UPSTREAM_ERRORS.has(splitStatus(r.status).code) ? 'upstream_error' : 'allowed';
+}
+
+/**
  * The tone of a row's HTTP code. A block is danger. A request the proxy let
  * through can still fail: a 503 to a name that does not resolve, a 404 from
  * the origin, a 000 when the client went away. Those are warning, so a
@@ -394,6 +437,10 @@ const WHY: Record<string, string> = {
 
 /** One sentence on why r was or was not blocked. */
 export function whyText(r: LogEntry): string {
+  if (outcomeOf(r) === 'upstream_error') {
+    return `No rule blocked it, but it failed beyond the proxy (HTTP ${splitStatus(r.status).code}): the name did not resolve, ` +
+      'the server could not be reached or did not answer in time, or the server sent this error itself.';
+  }
   if (!isBlocked(r)) return 'Allowed: no rule blocked it.';
   const reason = r.reason ?? '';
   if (WHY[reason]) return WHY[reason];

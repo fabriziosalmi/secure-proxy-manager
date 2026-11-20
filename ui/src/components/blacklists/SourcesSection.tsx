@@ -14,6 +14,7 @@ import { Button } from '../ui/Button';
 import { Switch } from '../ui/Switch';
 import { DataTable, type Column } from '../ui/DataTable';
 import { Section } from '../ui/Section';
+import { Hostname } from '../ui/Hostname';
 import { addedRange, refreshLine, sourceDetail, sourceTitle, type ListDef } from './lists';
 
 export interface SourcesSectionProps {
@@ -92,9 +93,10 @@ export function SourcesSection({ list, sources, loading, error, onRetry, onRemov
                 target="_blank"
                 rel="noopener noreferrer"
                 title={detail}
-                className="line-clamp-3 break-all text-xs text-ink-muted hover:text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
+                className="line-clamp-3 text-xs text-ink-muted hover:text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
               >
-                {detail}
+                {/* Wrapped after a dot or a slash: break-all split names in the middle. */}
+                <Hostname name={detail} />
               </a>
             ) : (
               <span title={detail} className="line-clamp-2 text-xs text-ink-muted [overflow-wrap:anywhere]">{detail}</span>

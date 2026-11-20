@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  allowableDomain, allowableEgress, apiParams, emptyRange, fromLocalInput, ipBlacklistLink, isHttpCode, matchesFilters, readFilters, requestHost, splitStatus, squidResultText, statusTone, toLocalInput, whyText, writeFilters,
+  allowableDomain, allowableEgress, apiParams, emptyRange, fromLocalInput, ipBlacklistLink, isHttpCode, matchesFilters, outcomeOf, readFilters, requestHost, splitStatus, squidResultText, statusTone, toLocalInput, whyText, writeFilters,
   NO_FILTERS,
 } from './accessLog'
 import type { LogEntry } from '../types'
@@ -184,6 +184,36 @@ describe('row facts', () => {
     expect(whyText(entry({ blocked: 1, reason: 'lists_unverified', reason_label: 'Lists not verified' })))
       .toMatch(/^A blocklist did not match the manifest .* until a verified copy was loaded\.$/)
     expect(whyText(entry({ blocked: 1, reason: 'proxy_auth_unset' }))).toBe('Proxy login is on but no proxy credentials are set, so the proxy refuses every client until they are set.')
+  })
+})
+
+// A request no rule blocked is not a success when the proxy could not get an
+// answer beyond itself: TCP_TUNNEL/503 is a CONNECT to a name that did not
+// resolve or a server that refused, TCP_MISS/502 and /504 a broken or late
+// answer. They read "Allowed", in green.
+describe('outcome', () => {
+  it('is an upstream error for a request no rule blocked that ended in 502, 503 or 504', () => {
+    for (const status of ['TCP_TUNNEL/503', 'TCP_MISS/502', 'TCP_MISS/504', 'TCP_MISS_ABORTED/503', 'NONE_NONE/503']) {
+      expect(outcomeOf(entry({ status })), status).toBe('upstream_error')
+    }
+  })
+
+  it('is allowed for any other request no rule blocked', () => {
+    for (const status of ['TCP_TUNNEL/200', 'TCP_MISS/200', 'TCP_MISS/404', 'TCP_MISS/500', 'TCP_MISS/000', 'TCP_HIT/200', '', 'TCP_MISS']) {
+      expect(outcomeOf(entry({ status })), status).toBe('allowed')
+    }
+  })
+
+  it('is blocked for a blocked request, whatever its code', () => {
+    expect(outcomeOf(entry({ status: 'TCP_DENIED/403', blocked: 1, reason: 'domain_blacklist' }))).toBe('blocked')
+    expect(outcomeOf(entry({ status: 'TCP_MISS/503', blocked: true, reason: 'domain_blacklist_dns_reconstructed' }))).toBe('blocked')
+  })
+
+  it('says why an upstream error is not a block, with its code', () => {
+    expect(whyText(entry({ status: 'TCP_TUNNEL/503' }))).toBe(
+      'No rule blocked it, but it failed beyond the proxy (HTTP 503): the name did not resolve, the server could not be reached or did not answer in time, or the server sent this error itself.',
+    )
+    expect(whyText(entry({ status: 'TCP_TUNNEL/200' }))).toBe('Allowed: no rule blocked it.')
   })
 })
 

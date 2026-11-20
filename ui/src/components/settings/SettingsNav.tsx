@@ -79,8 +79,10 @@ export function SettingsNav(props: SettingsNavProps) {
   const open = openOn === props.current;
 
   if (isDesktop) {
+    // It sticks where it starts: under the 64px page band and the 24px
+    // above the content (top-22, 88px), so it never slides under the band.
     return (
-      <nav aria-label="Settings sections" className="sticky top-0 w-[220px] flex-none self-start pt-1">
+      <nav aria-label="Settings sections" className="sticky top-22 w-[220px] flex-none self-start pt-1">
         <SectionList {...props} />
       </nav>
     );

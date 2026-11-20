@@ -39,8 +39,8 @@ describe('Audit', () => {
   it('shows the page from the mockup with the retention from the API, and no axe violation', async () => {
     const { container } = renderWithProviders(<Audit />)
     expect(screen.getByRole('heading', { level: 1, name: 'Audit log' })).toBeInTheDocument()
-    expect(screen.getByText('System')).toBeInTheDocument()
     expect(await screen.findByText('Who changed what, and every sign-in. Kept for 365 days.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'About Audit log' })).toHaveAccessibleDescription('Who changed what, and every sign-in. Kept for 365 days.')
     const group = screen.getByRole('group', { name: 'Show' })
     expect(within(group).getAllByRole('button').map((b) => b.textContent)).toEqual(['All', 'Changes', 'Sign-ins'])
     expect(within(group).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true')

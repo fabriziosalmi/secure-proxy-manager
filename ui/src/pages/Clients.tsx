@@ -27,6 +27,7 @@ import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { Button, IconButton } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { ShareBar } from '../components/ui/ShareBar';
+import { Hostname } from '../components/ui/Hostname';
 import { shareText } from '../lib/share';
 import { useModal } from '../hooks/useModal';
 import { useMediaQuery, DESKTOP_QUERY } from '../hooks/useMediaQuery';
@@ -194,8 +195,8 @@ export function Clients() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Traffic"
         title="Clients"
+        describe="inline"
         description="Devices that sent traffic through the proxy in the last 7 days."
         actions={connect}
       />
@@ -287,8 +288,9 @@ const DEST_COLUMNS: Column<ClientDomain>[] = [
   {
     id: 'host',
     header: 'Destination',
-    // The whole name, wrapped: it was cut with an ellipsis, whole only in a tooltip.
-    cell: (d) => <code className="block max-w-[11rem] break-all font-mono text-xs sm:max-w-[14rem]">{d.destination}</code>,
+    // The whole name, wrapped after a dot: it was cut with an ellipsis, whole
+    // only in a tooltip, and then broken inside a label (break-all).
+    cell: (d) => <code className="block max-w-[11rem] font-mono text-xs sm:max-w-[14rem]"><Hostname name={d.destination} /></code>,
   },
   { id: 'requests', header: 'Requests', align: 'right', cell: (d) => formatCount(d.requests) },
   {

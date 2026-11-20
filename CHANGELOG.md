@@ -15,6 +15,63 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Changed
+
+- **Every page's title sits in a band across the top of the main column,
+  on the line under the sidebar's brand.** The band is 64 px high on wide
+  screens, as the sidebar header is, with the same border, so the two lines
+  are one; it stays at the top while the page scrolls, and its title starts
+  where the content starts. Over the title is the page's group in the
+  sidebar (Insights, Traffic, Protection, System), read from the navigation
+  for the route, so the Overview now shows "Insights" too and no page can
+  name a group it is not in. The page's buttons are on the right of the
+  band; on a phone they go under the title and wrap inside the band. A page description that says what the numbers count or over which
+  time window (Overview, Analytics, Clients) is a line at the top of the
+  content; the others (Access logs, Blacklists, Default-deny allowlist,
+  Audit log) are the tooltip of an info button next to the title, shown on
+  hover and on keyboard focus. An address no page answers shows "Page not
+  found" in the band. The main column keeps its scrollbar gutter
+  when a page does not scroll, so the content no longer moves sideways from
+  one page to the next (Settings, Appearance was 4 px wider than every other
+  page), and the Settings section list stays in view under the band.
+- **Access logs: one time range select instead of From and Until, and the
+  filters keep one row.** "Until" wrapped alone onto a second row with the
+  internal-traffic switch, and the two empty date fields showed the
+  browser's own date format (such as gg/mm/aaaa) in an English page. The
+  select offers Any time, Last hour, Last 24 hours, Last 7 days and Custom
+  range; only Custom range shows the two times, on a row of their own. A
+  preset writes the same `since` that typing that time into From did, with
+  `until` open, so the URL and the request to the API are as before, and a
+  range from a link opens as Custom range with its times. The client and
+  rule selects are named by their first option (All clients, Any rule) and
+  are compact while nothing is chosen, so search, outcome, client, rule,
+  time range and the internal-traffic switch sit on one row from a 1280 px
+  window with the sidebar open; a chosen client or rule widens its select
+  so the value reads whole, and the row may then wrap.
+- **Overview: the four cards open the page that lists what they count, all
+  in the same way.** Client requests opens the access log (it opened
+  nothing), Blocked the blocked requests, Active clients the Clients page
+  and Blacklist entries the blacklists. The whole card is the link, with the
+  same hover (a stronger border, a tinted ground) and a focus ring around the
+  card; no label is underlined any more, which made Blocked alone read as a
+  text link under the pointer. When nothing was blocked in the last 24
+  hours and there is no older block to list, Blocked by rule, Most blocked
+  destinations and Latest blocks, three cards that each said so, are one
+  line ("No client request was blocked in the last 24 hours."), and the
+  requests chart takes the whole row.
+- **Settings: each row keeps its control by its text, and every description
+  is written the same way.** On a 1512 px screen the "Require proxy login"
+  switch ended 886 px from the start of its label; each row (label,
+  description and control) is now at most 768 px wide, in every section, so the switch or choice is
+  next to what it sets. The help under a narrow field ("Refresh provider
+  lists every (hours)", "Keep logs for (days)") was cut to the field's
+  width in smaller type; field help, and the notes under a field, now have
+  the size and the width of every other description. Two sections that
+  looked selected at once were investigated: it happens only while the
+  pointer is over the second one (its hover ground) or the keyboard focus
+  is on it; once the pointer leaves, only the current section is
+  highlighted, so nothing was changed there.
+
 ### Fixed
 
 - **The canary retries a failed `git fetch` before it gives up.** A resolver
@@ -25,6 +82,22 @@ for at least one minor release before disappearing.
   so when it retries; after the last failure it is refused and nothing moves,
   as before. Only the fetch is retried: every check of the run still runs
   once.
+- **Access logs: a request that failed beyond the proxy reads "Upstream
+  error", not "Allowed".** A request no rule blocked that ended in 502, 503
+  or 504 (`TCP_TUNNEL/503` for a name that does not resolve or a server that
+  refuses, `TCP_MISS/502` or `/504` for a broken or late answer) had a green
+  "Allowed" badge, as if it had worked. It now has an amber "Upstream error"
+  badge in the table and in the request details, whose "Why" says no rule
+  blocked it and gives the code. Blocked requests are unchanged, and so is
+  the Allowed filter: it still lists every request no rule blocked, these
+  included.
+- **A host name no longer breaks in the middle of a label.** The top
+  destinations of a client split "gsp57-ssl-background.ls.apple.c" from "om",
+  and a source URL on Blacklists split "maste" from "r/hosts": both used
+  `break-all`. They now wrap only after a dot or a slash, each label with its
+  hyphens on one line (a label longer than 24 characters may still break, so
+  it cannot run out of its column). The access log's Request column keeps
+  each destination on one line, cut with an ellipsis, whole in its tooltip.
 
 ## [3.43.2] - 2026-11-20
 

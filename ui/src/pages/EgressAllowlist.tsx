@@ -374,7 +374,6 @@ export function EgressAllowlist() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Protection"
         title="Default-deny allowlist"
         description="With default deny on, clients may reach only the destinations listed here."
       />

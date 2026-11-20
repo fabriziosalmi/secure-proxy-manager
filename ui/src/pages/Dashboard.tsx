@@ -17,7 +17,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { Check, Copy } from 'lucide-react';
+import { Check, Copy, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getData } from '../lib/api';
 import { statusQuery } from '../lib/queries';
@@ -216,6 +216,18 @@ function LatestBlocks({ rows, loading, error, now }: { rows?: RecentBlock[]; loa
   );
 }
 
+/** The one line that stands for Blocked by rule, Most blocked destinations and Latest blocks when there is nothing to list. */
+function NoBlocks() {
+  return (
+    <Section title="Blocked requests" action={{ label: 'Open analytics', to: '/analytics' }}>
+      <p className="flex items-center gap-2 text-sm text-ink-muted">
+        <ShieldCheck aria-hidden="true" className="h-4 w-4 shrink-0 text-success" strokeWidth={1.75} />
+        No client request was blocked in the last 24 hours.
+      </p>
+    </Section>
+  );
+}
+
 /** "1 IP", "4 domains". */
 const countOf = (n: number, one: string, many: string) => `${formatCount(n)} ${n === 1 ? one : many}`;
 
@@ -289,13 +301,17 @@ export function Dashboard() {
     blockedSub = 'No requests to block';
   }
 
+  // Nothing blocked in the window and no older block to list: the three
+  // blocked cards would each say so; one line does, and the chart takes the row.
+  const noBlocks = !loading && !summary.isError && blocked === 0 && !s?.top_blocked?.length && !s?.recent_blocks?.length;
+
   const updated = summary.dataUpdatedAt ? ` · updated ${formatClock(summary.dataUpdatedAt)}` : '';
   // What needs attention first: it says why the numbers below may mislead.
   const pageNotices = [...trajectoryNotice(trajectories.data), ...attentionNotices(attention.items), ...notices(summary)];
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Overview" description={`Last 24 hours${updated}`} actions={<ProxyChip />} />
+      <PageHeader title="Overview" describe="inline" description={`Last 24 hours${updated}`} actions={<ProxyChip />} />
 
       {pageNotices.length > 0 && <div className="flex flex-col gap-3">{pageNotices}</div>}
 
@@ -304,6 +320,7 @@ export function Dashboard() {
           label="Client requests"
           loading={loading}
           value={requests}
+          to="/logs"
         />
         <StatCard label="Blocked" tone={blocked ? 'danger' : 'default'} loading={loading} value={blocked} sub={blockedSub} to={blockedLogsLink()} />
         <StatCard label="Active clients" loading={loading} value={clients} sub={clientsSub} to="/clients" />
@@ -323,25 +340,27 @@ export function Dashboard() {
           loading={timeline.isPending}
           error={timeline.isError}
         />
-        <BlockedByRule reasons={s?.blocked_by_reason_24h} loading={loading} />
+        {!noBlocks && <BlockedByRule reasons={s?.blocked_by_reason_24h} loading={loading} />}
       </div>
 
-      <div className="flex flex-wrap gap-4">
-        {/* Not on a phone, as in Mobile.dc.html: the Access logs list every block. */}
-        <Section title="Most blocked destinations" flush action={{ label: 'Open blocked requests', to: blockedLogsLink() }} className="hidden flex-[1_1_420px] sm:block">
-          <DataTable
-            caption="Most blocked destinations in the last 24 hours"
-            columns={TOP_COLUMNS}
-            rows={s?.top_blocked ?? []}
-            rowKey={(r) => r.dest}
-            loading={loading}
-            error={summary.isError ? 'dashboard/summary did not answer.' : null}
-            onRetry={() => { void summary.refetch(); }}
-            empty={{ title: 'No blocked requests in the last 24 hours', description: 'Destinations appear here when a rule blocks a client request.' }}
-          />
-        </Section>
-        <LatestBlocks rows={s?.recent_blocks} loading={loading} error={summary.isError} now={summary.dataUpdatedAt} />
-      </div>
+      {noBlocks ? <NoBlocks /> : (
+        <div className="flex flex-wrap gap-4">
+          {/* Not on a phone, as in Mobile.dc.html: the Access logs list every block. */}
+          <Section title="Most blocked destinations" flush action={{ label: 'Open blocked requests', to: blockedLogsLink() }} className="hidden flex-[1_1_420px] sm:block">
+            <DataTable
+              caption="Most blocked destinations in the last 24 hours"
+              columns={TOP_COLUMNS}
+              rows={s?.top_blocked ?? []}
+              rowKey={(r) => r.dest}
+              loading={loading}
+              error={summary.isError ? 'dashboard/summary did not answer.' : null}
+              onRetry={() => { void summary.refetch(); }}
+              empty={{ title: 'No blocked requests in the last 24 hours', description: 'Destinations appear here when a rule blocks a client request.' }}
+            />
+          </Section>
+          <LatestBlocks rows={s?.recent_blocks} loading={loading} error={summary.isError} now={summary.dataUpdatedAt} />
+        </div>
+      )}
 
       <ServicesPanel rows={serviceRows(status, summary, cache)} proxyCves={cveCount > 0 ? cve.data?.cves : undefined} />
     </div>

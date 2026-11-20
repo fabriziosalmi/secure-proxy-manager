@@ -123,8 +123,8 @@ export function Analytics() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="Insights"
         title="Analytics"
+        describe="inline"
         description="Client traffic of the last 7 days, and what protection is on now. Each section says what it counts. Times are your local time."
         actions={
           <nav aria-label="Related pages" className="flex flex-wrap gap-4">

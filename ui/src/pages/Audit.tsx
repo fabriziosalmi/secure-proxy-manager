@@ -157,7 +157,6 @@ export function Audit() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="System"
         title="Audit log"
         description={description}
         actions={

@@ -106,8 +106,8 @@ describe('Clients', () => {
   it('shows the header from the mockup, and Connect a device opens the device setup', async () => {
     renderWithProviders(<Clients />)
     expect(screen.getByRole('heading', { level: 1, name: 'Clients' })).toBeInTheDocument()
-    expect(screen.getByText('Traffic')).toBeInTheDocument()
-    expect(screen.getByText('Devices that sent traffic through the proxy in the last 7 days.')).toBeInTheDocument()
+    // It says the window the counts cover, so it is a visible line, not a tooltip.
+    expect(screen.getByText('Devices that sent traffic through the proxy in the last 7 days.')).toHaveAttribute('data-testid', 'page-description')
     const connect = screen.getByRole('button', { name: 'Connect a device' })
     expect(connect).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByRole('tablist', { name: 'Operating system' })).not.toBeInTheDocument()
@@ -261,9 +261,13 @@ describe('Clients', () => {
       expect(within(panel).getByText('These counts cover the last 7 days, as the table does.')).toBeInTheDocument()
       expect(within(panel).getByText('8 of the 908 blocked requests were logged before the proxy recorded why it blocked a request, so the rule is not known.')).toBeInTheDocument()
       const dest = within(panel).getByRole('table', { name: 'Top destinations of 192.168.1.109' })
-      // The whole name, wrapped; it was cut, whole only in a tooltip.
-      expect(within(dest).getByText('ads.example.test')).toHaveClass('break-all')
-      expect(within(dest).getByText('ads.example.test')).not.toHaveClass('truncate')
+      // The whole name, wrapped after a dot only; it was cut, whole only in a
+      // tooltip, and then broken in the middle of a label (break-all).
+      const host = dest.querySelector('[data-hostname="ads.example.test"]') as HTMLElement
+      expect(host).toHaveTextContent(/^ads\.example\.test$/)
+      expect(host).not.toHaveClass('break-all')
+      expect(host).not.toHaveClass('truncate')
+      expect(host.querySelectorAll('wbr')).toHaveLength(2)
       expect(within(dest).getAllByText('700')).toHaveLength(2)
       expect(within(panel).getByText('Domain blacklist')).toBeInTheDocument()
       // "Not blocked" here, "Allowed" in the access log: one word now.

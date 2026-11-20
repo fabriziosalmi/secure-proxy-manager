@@ -8,6 +8,7 @@ import { useId } from 'react';
 import { useTheme, type Theme } from '../../ThemeProvider';
 import { Section } from '../../ui/Section';
 import { cn } from '../../../lib/utils';
+import { ROW_WIDTH } from '../fields';
 
 const OPTIONS: { value: Theme; label: string; help: string }[] = [
   { value: 'auto', label: 'System', help: "Follows the device's light or dark setting, also when it changes." },
@@ -20,7 +21,7 @@ export function AppearanceSection() {
   const id = useId();
   return (
     <Section level={3} title="Theme">
-      <fieldset className="flex flex-col gap-3" aria-describedby={`${id}-note`}>
+      <fieldset className={cn('flex flex-col gap-3', ROW_WIDTH)} aria-describedby={`${id}-note`}>
         <legend className="sr-only">Theme</legend>
         {OPTIONS.map((o) => (
           <label

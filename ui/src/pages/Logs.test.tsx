@@ -155,8 +155,8 @@ describe('Logs', () => {
   it('shows the header from the mockup, with the live toggle and the export', async () => {
     renderWithProviders(<Logs />)
     expect(screen.getByRole('heading', { level: 1, name: 'Access logs' })).toBeInTheDocument()
-    expect(screen.getByText('Traffic')).toBeInTheDocument()
-    expect(screen.getByText('Every request the proxy handled, newest first, with the rule that blocked it.')).toBeInTheDocument()
+    // The nav group over the title is the band's (App.test); the description is the info button's tooltip.
+    expect(screen.getByRole('button', { name: 'About Access logs' })).toHaveAccessibleDescription('Every request the proxy handled, newest first, with the rule that blocked it.')
     expect(screen.getByRole('button', { name: 'Export CSV' })).toBeInTheDocument()
     // The headings run in order: the page's h1, then its sections' h2.
     const levels = screen.getAllByRole('heading').map((h) => Number(h.tagName.slice(1)))
@@ -182,7 +182,9 @@ describe('Logs', () => {
     // Every LAN client is a private network address: the row does not say it.
     expect(within(a).queryByText('Private network address')).toBeNull()
     expect(within(a).getByText('CONNECT')).toBeInTheDocument()
-    expect(within(a).getByRole('button', { name: 'example.com:443' })).toHaveAttribute('title', 'example.com:443')
+    // Cut to the column, whole in the title.
+    const destination = within(a).getByRole('button', { name: 'example.com:443' })
+    expect(within(destination).getByTitle('example.com:443')).toHaveClass('truncate')
     expect(within(a).getByText('200')).toHaveClass('text-success')
     expect(within(a).getByText('HTTPS tunnel')).toHaveAttribute('title', 'TCP_TUNNEL/200')
     expect(within(cellOf(a, 'Outcome')).getByText('Allowed')).toHaveAttribute('data-tone', 'success')
@@ -211,6 +213,32 @@ describe('Logs', () => {
     expect(within(dns).getByText('Refused by the proxy')).toBeInTheDocument()
     expect(within(waf).getByText('Not forwarded')).toBeInTheDocument()
     for (const r of bodyRows()) expect(r.textContent).not.toMatch(/TCP_|NONE_NONE/)
+  })
+
+  // A request no rule blocked that failed beyond the proxy (a name that does
+  // not resolve, a refused connection, a late answer) read "Allowed" in green.
+  it('shows a request that failed beyond the proxy as Upstream error, in the table and in the details, and leaves blocks alone', async () => {
+    const dnsFail = row({ id: 9, destination: 'no-such-host.example:443', status: 'TCP_TUNNEL/503', bytes: 0 })
+    const badGateway = row({ id: 8, method: 'GET', destination: 'http://broken.example/', status: 'TCP_MISS/502' })
+    const late = row({ id: 7, method: 'GET', destination: 'http://slow.example/', status: 'TCP_MISS/504' })
+    logsBody = () => page([dnsFail, badGateway, late, allowed, dnsBlock])
+    renderWithProviders(<Logs />)
+    await waitFor(() => expect(bodyRows()).toHaveLength(5))
+    const [d, b, l, a, blk] = bodyRows()
+    for (const r of [d, b, l]) {
+      expect(within(cellOf(r, 'Outcome')).getByText('Upstream error')).toHaveAttribute('data-tone', 'warning')
+      expect(within(r).queryByText('Allowed')).toBeNull()
+    }
+    expect(within(cellOf(a, 'Outcome')).getByText('Allowed')).toHaveAttribute('data-tone', 'success')
+    expect(within(cellOf(blk, 'Outcome')).getByText('Domain blacklist (DNS)')).toHaveAttribute('data-tone', 'danger')
+
+    fireEvent.click(screen.getByRole('button', { name: dnsFail.destination }))
+    const details = screen.getByRole('region', { name: 'Request details' })
+    const outcome = within(details).getByText('Outcome').nextElementSibling as HTMLElement
+    expect(within(outcome).getByText('Upstream error')).toHaveAttribute('data-tone', 'warning')
+    expect(within(details).getByText(/^No rule blocked it, but it failed beyond the proxy \(HTTP 503\)/)).toBeInTheDocument()
+    expect(within(details).queryByText('Allowed: no rule blocked it.')).toBeNull()
+    logsBody = () => page([allowed, dnsBlock, wafBlock, oldBlock])
   })
 
   // A DNS sinkhole row carries the answer, not an HTTP code: "0.0.0.0" was
@@ -247,7 +275,8 @@ describe('Logs', () => {
     const [failed] = bodyRows()
     expect(within(failed).getByText('503')).toHaveClass('text-warning')
     expect(within(failed).getByText('503')).not.toHaveClass('text-success')
-    expect(within(cellOf(failed, 'Outcome')).getByText('Allowed')).toHaveAttribute('data-tone', 'success')
+    // No rule blocked it, and it is not a success either: the outcome says so.
+    expect(within(cellOf(failed, 'Outcome')).getByText('Upstream error')).toHaveAttribute('data-tone', 'warning')
     logsBody = () => page([allowed, dnsBlock, wafBlock, oldBlock])
   })
 
@@ -318,6 +347,55 @@ describe('Logs', () => {
     expect(new URLSearchParams(window.location.search).get('client')).toBe('192.168.1.10')
   })
 
+  // The From and Until pair took a row of its own, and the browser wrote its
+  // own locale's placeholder (gg/mm/aaaa) in an English page. A preset writes
+  // since as From did, now minus its span, with until open.
+  it('picks a time range from presets that send what From did, and shows the two times only for a custom range', async () => {
+    const now = Date.UTC(2026, 10, 2, 14, 0, 30)
+    vi.spyOn(Date, 'now').mockReturnValue(now)
+    const nowSec = Math.floor(now / 1000)
+    renderWithProviders(<Logs />)
+    await waitFor(() => expect(logCalls().length).toBe(1))
+    const range = screen.getByRole('combobox', { name: 'Time range' })
+    expect(range).toHaveValue('any')
+    expect(within(range).getAllByRole('option').map((o) => o.textContent)).toEqual(['Any time', 'Last hour', 'Last 24 hours', 'Last 7 days', 'Custom range'])
+    expect(screen.queryByLabelText('From')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Until')).not.toBeInTheDocument()
+
+    for (const [value, span] of [['1h', 3600], ['24h', 86400], ['7d', 604800]] as const) {
+      fireEvent.change(range, { target: { value } })
+      await waitFor(() => expect(lastLogParams().get('since')).toBe(String(nowSec - span)))
+      expect(lastLogParams().has('until')).toBe(false)
+      expect(new URLSearchParams(window.location.search).get('since')).toBe(String(nowSec - span))
+      expect(new URLSearchParams(window.location.search).has('until')).toBe(false)
+      expect(range).toHaveValue(value)
+      expect(screen.queryByLabelText('From')).not.toBeInTheDocument()
+    }
+
+    fireEvent.change(range, { target: { value: 'any' } })
+    await waitFor(() => expect(lastLogParams().has('since')).toBe(false))
+    expect(window.location.search).not.toContain('since')
+
+    fireEvent.change(range, { target: { value: 'custom' } })
+    expect(range).toHaveValue('custom')
+    expect(screen.getByLabelText('From')).toHaveValue('')
+    expect(screen.getByLabelText('Until')).toHaveValue('')
+  })
+
+  it('reads a range from a link as a custom range, with its two times filled in', async () => {
+    const restoreTz = setRomeTimeZone()
+    try {
+      window.history.replaceState({}, '', `/logs?since=${Date.UTC(2026, 10, 2, 13, 0) / 1000}`)
+      renderWithProviders(<Logs />)
+      await waitFor(() => expect(lastLogParams().get('since')).toBe(String(Date.UTC(2026, 10, 2, 13, 0) / 1000)))
+      expect(screen.getByRole('combobox', { name: 'Time range' })).toHaveValue('custom')
+      expect(screen.getByLabelText('From')).toHaveValue('2026-11-02T14:00')
+      expect(screen.getByLabelText('Until')).toHaveValue('')
+    } finally {
+      restoreTz()
+    }
+  })
+
   // "What happened yesterday at 14:00": a range on the browser clock, sent
   // as Unix seconds; a range that can hold nothing is not sent.
   it('filters a time range on the browser clock, and says when the range is empty', async () => {
@@ -325,6 +403,7 @@ describe('Logs', () => {
     try {
       renderWithProviders(<Logs />)
       await waitFor(() => expect(logCalls().length).toBe(1))
+      fireEvent.change(screen.getByRole('combobox', { name: 'Time range' }), { target: { value: 'custom' } })
       fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-11-02T14:00' } })
       await waitFor(() => expect(lastLogParams().get('since')).toBe(String(Date.UTC(2026, 10, 2, 13, 0) / 1000)))
       fireEvent.change(screen.getByLabelText('Until'), { target: { value: '2026-11-02T15:00' } })
