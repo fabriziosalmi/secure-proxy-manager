@@ -15,6 +15,17 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The canary retries a failed `git fetch` before it gives up.** A resolver
+  outage of about one second ("Could not resolve host: github.com") failed a
+  release-track run before it aligned, and a nightly run would stay red until
+  the next one. `scripts/canary.sh` now tries the fetch `FETCH_ATTEMPTS`
+  times (3), `FETCH_RETRY_DELAY` seconds apart (10), on both tracks, and says
+  so when it retries; after the last failure it is refused and nothing moves,
+  as before. Only the fetch is retried: every check of the run still runs
+  once.
+
 ## [3.43.2] - 2026-11-20
 
 Maintenance: newer bases and dependencies, and a release dry run and CI that

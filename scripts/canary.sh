@@ -41,6 +41,9 @@ PROBE_HOST="${PROBE_HOST:-http://example.com}"
 COMPOSE="${COMPOSE:-docker compose}"
 PROBE_ATTEMPTS="${PROBE_ATTEMPTS:-10}"
 PROBE_RETRY_DELAY="${PROBE_RETRY_DELAY:-3}"
+FETCH_ATTEMPTS="${FETCH_ATTEMPTS:-3}"
+FETCH_RETRY_DELAY="${FETCH_RETRY_DELAY:-10}"
+[[ "$FETCH_ATTEMPTS" =~ ^[1-9][0-9]*$ ]] || FETCH_ATTEMPTS=3
 
 PASS=0; FAIL=0; NOTES=""
 ok()  { PASS=$((PASS+1)); printf '  PASS %s\n' "$1"; }
@@ -57,15 +60,31 @@ finish() {
   [ "$FAIL" -eq 0 ]
 }
 
+# git fetch, retried: on 2026-11-20 a resolver outage of about one second
+# ("Could not resolve host: github.com") failed a release-track run before it
+# aligned. Only the fetch is retried, never a verdict: every check below runs
+# once, on what was fetched.
+fetch() { # description, then the arguments of git fetch
+  local what=$1 i; shift
+  for i in $(seq 1 "$FETCH_ATTEMPTS"); do
+    git fetch "$@" && return 0
+    if [ "$i" -lt "$FETCH_ATTEMPTS" ]; then
+      echo "  $what failed (attempt $i of $FETCH_ATTEMPTS); retrying in ${FETCH_RETRY_DELAY}s"
+      sleep "$FETCH_RETRY_DELAY"
+    fi
+  done
+  bad "$what failed $FETCH_ATTEMPTS times"; finish; exit 1
+}
+
 case "$CANARY_TRACK" in
   main)
     echo "── aligning to origin/main ──"
-    git fetch -q origin main || { bad "git fetch failed"; finish; exit 1; }
+    fetch "git fetch of origin/main" -q origin main
     TARGET_REF=origin/main
     ;;
   release)
     echo "── aligning to the newest release ──"
-    git fetch -q --force origin 'refs/tags/v*:refs/tags/v*' || { bad "git fetch of the release tags failed"; finish; exit 1; }
+    fetch "git fetch of the release tags" -q --force origin 'refs/tags/v*:refs/tags/v*'
     TAGS=$(git tag -l 'v*' | grep -Ex 'v[0-9]+\.[0-9]+\.[0-9]+' | sort -t. -k1.2,1nr -k2,2nr -k3,3nr)
     [ -n "$TAGS" ] || { bad "no release tag (vX.Y.Z) to align to"; finish; exit 1; }
     # A release is one whose five images are published, as for the installer:
