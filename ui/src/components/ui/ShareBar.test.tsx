@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { ShareBar } from './ShareBar'
 import { fillWidth, shareText } from '../../lib/share'
+import { expectMaxLength } from '../../test/helpers'
 
 describe('ShareBar', () => {
   // 145 of 6,539 is 2.2%: on an 80 px track the fill was 1.75 px, clipped
@@ -9,7 +10,7 @@ describe('ShareBar', () => {
   it('draws any share above zero at least two pixels wide', () => {
     expect(fillWidth(145, 6539)).toBe('max(2px, 2.217464444104603%)')
     render(<ShareBar part={145} total={6539} />)
-    expect(screen.getByTestId('share-fill').style.width).toBe('max(2px, 2.217464444104603%)')
+    expectMaxLength(screen.getByTestId('share-fill').style.width, 2, (145 / 6539) * 100)
     expect(screen.getByText('2.2%')).toBeInTheDocument()
   })
 
