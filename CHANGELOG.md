@@ -44,6 +44,15 @@ for at least one minor release before disappearing.
   so when it retries; after the last failure it is refused and nothing moves,
   as before. Only the fetch is retried: every check of the run still runs
   once.
+- **Access logs: a request that failed beyond the proxy reads "Upstream
+  error", not "Allowed".** A request no rule blocked that ended in 502, 503
+  or 504 (`TCP_TUNNEL/503` for a name that does not resolve or a server that
+  refuses, `TCP_MISS/502` or `/504` for a broken or late answer) had a green
+  "Allowed" badge, as if it had worked. It now has an amber "Upstream error"
+  badge in the table and in the request details, whose "Why" says no rule
+  blocked it and gives the code. Blocked requests are unchanged, and so is
+  the Allowed filter: it still lists every request no rule blocked, these
+  included.
 
 ## [3.43.2] - 2026-11-20
 

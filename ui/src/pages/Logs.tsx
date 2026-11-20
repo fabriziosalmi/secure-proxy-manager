@@ -30,7 +30,7 @@ import { useMediaQuery, DESKTOP_QUERY } from '../hooks/useMediaQuery';
 import { api, getData, getErrorMessage } from '../lib/api';
 import { formatBytes, formatCount, formatWhen, formatWhenExact, viewerZone } from '../lib/format';
 import {
-  allowableDomain, allowableEgress, apiParams, emptyRange, fromLocalInput, hasFilters, ipBlacklistLink, isBlocked, isHttpCode, maskedToNetwork, matchesFilters, readFilters, splitStatus, squidResultText, statusTone, toLocalInput, whyText,
+  allowableDomain, allowableEgress, apiParams, emptyRange, fromLocalInput, hasFilters, ipBlacklistLink, isBlocked, isHttpCode, maskedToNetwork, matchesFilters, outcomeOf, readFilters, splitStatus, squidResultText, statusTone, toLocalInput, whyText,
   writeFilters,
   NO_FILTERS, type LogFilters, type Outcome,
 } from '../lib/accessLog';
@@ -94,13 +94,16 @@ function rowTime(ts: string): string {
 }
 
 /**
- * What happened to the request: "Allowed", or the rule that blocked it. The
- * column was headed "Rule" and said "Allowed" for every request no rule
- * touched. A block is named "Blocked by <rule>" to a screen reader, as the
- * colour says it to the eye.
+ * What happened to the request: "Allowed", "Upstream error", or the rule
+ * that blocked it. The column was headed "Rule" and said "Allowed" for every
+ * request no rule touched, in green even when the proxy could not reach the
+ * destination (TCP_TUNNEL/503). A block is named "Blocked by <rule>" to a
+ * screen reader, as the colour says it to the eye.
  */
 function OutcomeBadge({ r }: { r: LogEntry }) {
-  if (!isBlocked(r)) return <Badge tone="success">Allowed</Badge>;
+  const outcome = outcomeOf(r);
+  if (outcome === 'allowed') return <Badge tone="success">Allowed</Badge>;
+  if (outcome === 'upstream_error') return <Badge tone="warning">Upstream error</Badge>;
   const unknown = r.reason === 'unclassified' || !r.reason;
   const label = r.reason_label || r.reason || 'Rule not reported';
   return (

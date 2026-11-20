@@ -288,6 +288,27 @@ export function squidResultText(squid: string): string {
 export const isHttpCode = (code: string) => /^\d{3}$/.test(code);
 
 /**
+ * The codes of a request that failed beyond the proxy. Squid answers 503
+ * when a name does not resolve or the server refuses the connection (a
+ * CONNECT logs TCP_TUNNEL/503), 502 when the answer breaks off or cannot be
+ * read, 504 when it does not come in time; a server can send them itself.
+ */
+const UPSTREAM_ERRORS = new Set(['502', '503', '504']);
+
+export type RequestOutcome = 'allowed' | 'upstream_error' | 'blocked';
+
+/**
+ * What happened to r: blocked by a rule, failed beyond the proxy (no rule
+ * blocked it, but it ended in 502, 503 or 504), or allowed. The Allowed and
+ * Blocked filters still split rows by the blocked flag alone, so an upstream
+ * error is among the Allowed ones.
+ */
+export function outcomeOf(r: LogEntry): RequestOutcome {
+  if (isBlocked(r)) return 'blocked';
+  return UPSTREAM_ERRORS.has(splitStatus(r.status).code) ? 'upstream_error' : 'allowed';
+}
+
+/**
  * The tone of a row's HTTP code. A block is danger. A request the proxy let
  * through can still fail: a 503 to a name that does not resolve, a 404 from
  * the origin, a 000 when the client went away. Those are warning, so a
@@ -394,6 +415,10 @@ const WHY: Record<string, string> = {
 
 /** One sentence on why r was or was not blocked. */
 export function whyText(r: LogEntry): string {
+  if (outcomeOf(r) === 'upstream_error') {
+    return `No rule blocked it, but it failed beyond the proxy (HTTP ${splitStatus(r.status).code}): the name did not resolve, ` +
+      'the server could not be reached or did not answer in time, or the server sent this error itself.';
+  }
   if (!isBlocked(r)) return 'Allowed: no rule blocked it.';
   const reason = r.reason ?? '';
   if (WHY[reason]) return WHY[reason];

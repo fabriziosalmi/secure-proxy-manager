@@ -213,6 +213,32 @@ describe('Logs', () => {
     for (const r of bodyRows()) expect(r.textContent).not.toMatch(/TCP_|NONE_NONE/)
   })
 
+  // A request no rule blocked that failed beyond the proxy (a name that does
+  // not resolve, a refused connection, a late answer) read "Allowed" in green.
+  it('shows a request that failed beyond the proxy as Upstream error, in the table and in the details, and leaves blocks alone', async () => {
+    const dnsFail = row({ id: 9, destination: 'no-such-host.example:443', status: 'TCP_TUNNEL/503', bytes: 0 })
+    const badGateway = row({ id: 8, method: 'GET', destination: 'http://broken.example/', status: 'TCP_MISS/502' })
+    const late = row({ id: 7, method: 'GET', destination: 'http://slow.example/', status: 'TCP_MISS/504' })
+    logsBody = () => page([dnsFail, badGateway, late, allowed, dnsBlock])
+    renderWithProviders(<Logs />)
+    await waitFor(() => expect(bodyRows()).toHaveLength(5))
+    const [d, b, l, a, blk] = bodyRows()
+    for (const r of [d, b, l]) {
+      expect(within(cellOf(r, 'Outcome')).getByText('Upstream error')).toHaveAttribute('data-tone', 'warning')
+      expect(within(r).queryByText('Allowed')).toBeNull()
+    }
+    expect(within(cellOf(a, 'Outcome')).getByText('Allowed')).toHaveAttribute('data-tone', 'success')
+    expect(within(cellOf(blk, 'Outcome')).getByText('Domain blacklist (DNS)')).toHaveAttribute('data-tone', 'danger')
+
+    fireEvent.click(screen.getByRole('button', { name: dnsFail.destination }))
+    const details = screen.getByRole('region', { name: 'Request details' })
+    const outcome = within(details).getByText('Outcome').nextElementSibling as HTMLElement
+    expect(within(outcome).getByText('Upstream error')).toHaveAttribute('data-tone', 'warning')
+    expect(within(details).getByText(/^No rule blocked it, but it failed beyond the proxy \(HTTP 503\)/)).toBeInTheDocument()
+    expect(within(details).queryByText('Allowed: no rule blocked it.')).toBeNull()
+    logsBody = () => page([allowed, dnsBlock, wafBlock, oldBlock])
+  })
+
   // A DNS sinkhole row carries the answer, not an HTTP code: "0.0.0.0" was
   // drawn in the code's place.
   it('draws a DNS sinkhole row without an HTTP code', async () => {
@@ -247,7 +273,8 @@ describe('Logs', () => {
     const [failed] = bodyRows()
     expect(within(failed).getByText('503')).toHaveClass('text-warning')
     expect(within(failed).getByText('503')).not.toHaveClass('text-success')
-    expect(within(cellOf(failed, 'Outcome')).getByText('Allowed')).toHaveAttribute('data-tone', 'success')
+    // No rule blocked it, and it is not a success either: the outcome says so.
+    expect(within(cellOf(failed, 'Outcome')).getByText('Upstream error')).toHaveAttribute('data-tone', 'warning')
     logsBody = () => page([allowed, dnsBlock, wafBlock, oldBlock])
   })
 
