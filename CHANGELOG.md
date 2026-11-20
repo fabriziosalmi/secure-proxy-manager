@@ -57,6 +57,19 @@ for at least one minor release before disappearing.
   destinations and Latest blocks, three cards that each said so, are one
   line ("No client request was blocked in the last 24 hours."), and the
   requests chart takes the whole row.
+- **Settings: each row keeps its control by its text, and every description
+  is written the same way.** On a 1512 px screen the "Require proxy login"
+  switch ended 886 px from the start of its label; each row (label,
+  description and control)
+  is now at most 768 px wide, in every section, so the switch or choice is
+  next to what it sets. The help under a narrow field ("Refresh provider
+  lists every (hours)", "Keep logs for (days)") was cut to the field's
+  width in smaller type; field help, and the notes under a field, now have
+  the size and the width of every other description. Two sections that
+  looked selected at once were investigated: it happens only while the
+  pointer is over the second one (its hover ground) or the keyboard focus
+  is on it; once the pointer leaves, only the current section is
+  highlighted, so nothing was changed there.
 
 ### Fixed
 

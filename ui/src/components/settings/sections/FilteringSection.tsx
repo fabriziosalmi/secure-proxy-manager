@@ -6,7 +6,7 @@
 import { Link } from 'react-router';
 import { Section } from '../../ui/Section';
 import { Notice } from '../../ui/Notice';
-import { TextField, ToggleRow } from '../fields';
+import { HELP_TEXT, TextField, ToggleRow } from '../fields';
 import { formatEgressBreakdown, useEgressSummary } from '../../../lib/queries';
 import { formatCount } from '../../../lib/format';
 import { extensionPatterns } from '../../../lib/settingsValidation';
@@ -50,7 +50,7 @@ export function FilteringSection({ form }: { form: SectionForm }) {
             setting="egress_provider_refresh_hours"
             label="Refresh provider lists every (hours)"
             inputMode="numeric"
-            className="sm:max-w-[240px]"
+            inputWidth="sm:max-w-[240px]"
             hint="From 6 to 168. How often enabled provider lists are fetched and checked against their safety rules; the worker sleeps for the full interval between cycles, even when egress default-deny is off."
           />
         </div>
@@ -71,7 +71,7 @@ export function FilteringSection({ form }: { form: SectionForm }) {
             hint="Separated by commas."
           />
           {patterns.length > 0 && (
-            <p className="text-xs text-ink-muted">
+            <p className={HELP_TEXT}>
               The proxy matches:{' '}
               {patterns.map((p, i) => <span key={p}><Code>{p}</Code>{i < patterns.length - 1 ? ' ' : ''}</span>)}
             </p>
@@ -106,7 +106,7 @@ export function FilteringSection({ form }: { form: SectionForm }) {
             setting="auto_refresh_hours"
             label="Every (hours)"
             inputMode="numeric"
-            className="sm:max-w-[200px]"
+            inputWidth="sm:max-w-[200px]"
             hint="From 1 to 168. The first refresh runs one interval after the worker picks the setting up."
           />
         </ToggleRow>

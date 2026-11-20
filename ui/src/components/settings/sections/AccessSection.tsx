@@ -17,7 +17,7 @@
  */
 import { Section } from '../../ui/Section';
 import { Notice } from '../../ui/Notice';
-import { ChoiceRow, SecretRow, TextField, ToggleRow } from '../fields';
+import { ChoiceRow, HELP_TEXT, SecretRow, TextField, ToggleRow } from '../fields';
 import type { SectionForm } from '../sectionForm';
 import type { ProxyAuthStatus } from '../../../lib/queries';
 import { PROXY_LOGIN_NO_CREDENTIALS, proxyLoginWithoutCredentials } from '../../../lib/attention';
@@ -222,7 +222,7 @@ export function AccessSection({ form, proxyAuth }: { form: SectionForm; proxyAut
             <TextField form={form} setting="time_restriction_end" label="Until (UTC)" type="time" hint="Must be later than From, on the same day." />
           </div>
           {localHours && (
-            <p className="mt-2 text-xs text-ink-muted">On this browser&apos;s clock ({zone}) that is {localHours} today; it moves by an hour when daylight saving time changes.</p>
+            <p className={`mt-2 ${HELP_TEXT}`}>On this browser&apos;s clock ({zone}) that is {localHours} today; it moves by an hour when daylight saving time changes.</p>
           )}
         </ToggleRow>
         {turningHoursOn && (

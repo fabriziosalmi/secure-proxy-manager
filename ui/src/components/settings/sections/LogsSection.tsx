@@ -64,7 +64,7 @@ export function LogsSection({ form, unsaved = 0 }: { form: SectionForm; unsaved?
           setting="log_retention_days"
           label="Keep logs for (days)"
           inputMode="numeric"
-          className="sm:max-w-[240px]"
+          inputWidth="sm:max-w-[240px]"
           hint="When the backend starts and then every 24 hours, requests older than this are deleted. The Logs, Clients and Overview figures are worked out from these requests, so they reach back at most this far. The audit log is kept for 365 days, whatever this says."
         />
       </Section>
@@ -125,7 +125,7 @@ export function LogsSection({ form, unsaved = 0 }: { form: SectionForm; unsaved?
           setting="log_forward_hostname"
           label="Host name in each event"
           placeholder="e.g. proxy-1.lan"
-          className="sm:max-w-[320px]"
+          inputWidth="sm:max-w-[320px]"
           hint="How the target tells this proxy apart from other senders. Empty sends secure-proxy-manager."
         />
         <TestForward unsaved={unsaved} />

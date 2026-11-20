@@ -17,7 +17,7 @@ import { api, getData, getErrorMessage } from '../../../lib/api';
 import { Section } from '../../ui/Section';
 import { Notice } from '../../ui/Notice';
 import { Button } from '../../ui/Button';
-import { ToggleRow } from '../fields';
+import { HELP_TEXT, ToggleRow } from '../fields';
 import { RegexPlayground } from '../../RegexPlayground';
 import { WafPolicySection } from './WafPolicySection';
 import { WafRunning } from './WafRunning';
@@ -179,7 +179,7 @@ function CertificateAuthority() {
 function RunningState({ stored, running }: { stored: boolean; running: boolean | undefined }) {
   if (running === undefined) return null;
   return (
-    <p className="text-xs text-ink-muted">
+    <p className={HELP_TEXT}>
       The WAF runs it <span className="font-semibold">{running ? 'on' : 'off'}</span>
       {running !== stored && ', not as saved here'}.
     </p>
@@ -224,7 +224,7 @@ export function InspectionSection({ form }: { form: SectionForm }) {
             help="The proxy reads the server name each client puts in its TLS handshake and lets the connection through still encrypted. The WAF checks that name, and flags one other than the host the client asked the proxy for. Clients need no certificate. While HTTPS inspection is on, the proxy decrypts instead and this setting has no effect."
           />
           {v.tls_peek_enabled === 'true' && v.ssl_bump_enabled === 'true' && (
-            <p className="mt-2 text-xs text-ink-muted">HTTPS inspection is on: the proxy decrypts, and this setting has no effect until it is off.</p>
+            <p className={`mt-2 ${HELP_TEXT}`}>HTTPS inspection is on: the proxy decrypts, and this setting has no effect until it is off.</p>
           )}
         </div>
         <div className="mt-4 border-t border-line-subtle pt-4">
