@@ -341,7 +341,7 @@ var logQuery = []oaParam{
 	{name: "sort", schema: map[string]any{"type": "string", "enum": []string{"timestamp", "source_ip", "destination", "status", "bytes", "method", "id"}, "default": "timestamp"}},
 	{name: "order", schema: map[string]any{"type": "string", "enum": []string{"asc", "desc"}, "default": "desc"}},
 	{name: "source_ip", schema: map[string]any{"type": "string"}, desc: "only the requests of this client"},
-	{name: "outcome", schema: map[string]any{"type": "string", "enum": []string{"all", "allowed", "blocked"}}, desc: "only the allowed or only the blocked requests"},
+	{name: "outcome", schema: map[string]any{"type": "string", "enum": []string{"all", "allowed", "upstream_error", "blocked"}}, desc: "only the allowed requests, only the ones no rule blocked that ended in 502, 503 or 504 (upstream_error), or only the blocked ones"},
 	{name: "reason", schema: map[string]any{"type": "string"}, desc: "only the requests blocked for this reason key"},
 	{name: "q", schema: map[string]any{"type": "string"}, desc: "only the rows containing this text"},
 	{name: "include_internal", schema: map[string]any{"type": "boolean", "default": false}, desc: "also the requests of the stack's own services"},

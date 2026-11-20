@@ -11,12 +11,32 @@ function controls(page: Page): [string, Locator][] {
   const bar = page.getByRole('region', { name: 'Filters' });
   return [
     ['search', bar.getByRole('searchbox', { name: 'Search destinations' })],
-    ['outcome', bar.getByRole('group', { name: 'Outcome' })],
+    ['outcome', bar.getByRole('combobox', { name: 'Outcome' })],
     ['client', bar.getByRole('combobox', { name: 'Client' })],
     ['rule', bar.getByRole('combobox', { name: 'Rule' })],
     ['time range', bar.getByRole('combobox', { name: 'Time range' })],
     ['internal traffic', bar.getByRole('switch', { name: 'Show internal traffic' })],
   ];
+}
+
+/**
+ * What the shown option of a select needs and what the select has: the
+ * browser measures a copy of the select holding only that option, at its
+ * natural width.
+ */
+function fitOf(select: Locator): Promise<{ text: string; need: number; has: number }> {
+  return select.evaluate((el) => {
+    const s = el as HTMLSelectElement;
+    const copy = s.cloneNode(false) as HTMLSelectElement;
+    copy.appendChild(s.options[s.selectedIndex].cloneNode(true));
+    copy.style.width = 'auto';
+    copy.style.maxWidth = 'none';
+    copy.style.position = 'absolute';
+    s.parentElement!.appendChild(copy);
+    const need = copy.getBoundingClientRect().width;
+    copy.remove();
+    return { text: s.options[s.selectedIndex].text, need, has: s.getBoundingClientRect().width };
+  });
 }
 
 for (const viewport of [{ width: 1512, height: 805 }, { width: 1280, height: 800 }]) {
@@ -55,30 +75,29 @@ for (const viewport of [{ width: 1512, height: 805 }, { width: 1280, height: 800
       expect(fit.scroll, `"${placeholder}" needs ${fit.scroll} px, the box has ${fit.client}`).toBeLessThanOrEqual(fit.client);
     });
 
+    // "Any outco…": a select is compact while it shows its own name, and
+    // that name must still fit.
+    test('with nothing chosen, each select shows its whole name', async ({ page }) => {
+      const bar = page.getByRole('region', { name: 'Filters' });
+      for (const [name, want] of [['Outcome', 'Any outcome'], ['Client', 'All clients'], ['Rule', 'Any rule'], ['Time range', 'Any time']]) {
+        const fit = await fitOf(bar.getByRole('combobox', { name }));
+        expect(fit.text).toBe(want);
+        expect(fit.has, `"${fit.text}" needs ${Math.round(fit.need)} px, the ${name} select has ${Math.round(fit.has)}`).toBeGreaterThanOrEqual(fit.need - 0.5);
+      }
+    });
+
     // "10.20.0.1…" and "Domain b…": a chosen client or rule was cut to the
-    // compact width that fits the select's own name. The browser measures
-    // what the value needs: a copy of the select holding only that option,
-    // at its natural width.
-    test('a chosen client and rule show their whole value', async ({ page }) => {
-      await page.goto('/logs?client=10.20.0.109&rule=domain_blacklist');
+    // compact width that fits the select's own name.
+    test('a chosen outcome, client and rule show their whole value', async ({ page }) => {
+      await page.goto('/logs?outcome=upstream_error&client=10.20.0.109&rule=domain_blacklist');
       await expect(page.getByRole('table', { name: 'Access log requests' })).toBeVisible();
       await page.waitForLoadState('networkidle');
       const bar = page.getByRole('region', { name: 'Filters' });
-      for (const [name, want] of [['Client', '10.20.0.109'], ['Rule', 'Domain blacklist (proxy)']]) {
+      const values: Record<string, string> = { Outcome: 'upstream_error', Client: '10.20.0.109', Rule: 'domain_blacklist' };
+      for (const [name, want] of [['Outcome', 'Upstream error'], ['Client', '10.20.0.109'], ['Rule', 'Domain blacklist (proxy)']]) {
         const select = bar.getByRole('combobox', { name });
-        await expect(select).toHaveValue(name === 'Client' ? '10.20.0.109' : 'domain_blacklist');
-        const fit = await select.evaluate((el) => {
-          const s = el as HTMLSelectElement;
-          const copy = s.cloneNode(false) as HTMLSelectElement;
-          copy.appendChild(s.options[s.selectedIndex].cloneNode(true));
-          copy.style.width = 'auto';
-          copy.style.maxWidth = 'none';
-          copy.style.position = 'absolute';
-          s.parentElement!.appendChild(copy);
-          const need = copy.getBoundingClientRect().width;
-          copy.remove();
-          return { text: s.options[s.selectedIndex].text, need, has: s.getBoundingClientRect().width };
-        });
+        await expect(select).toHaveValue(values[name]);
+        const fit = await fitOf(select);
         expect(fit.text).toBe(want);
         expect(fit.has, `"${fit.text}" needs ${Math.round(fit.need)} px, the ${name} select has ${Math.round(fit.has)}`).toBeGreaterThanOrEqual(fit.need - 0.5);
       }

@@ -9,7 +9,8 @@
 import type { LogEntry } from '../types';
 import { parseUtc } from './utils';
 
-export type Outcome = 'all' | 'allowed' | 'blocked';
+/** The outcome filter: GET /api/logs?outcome= splits the log into these three, each row in one. */
+export type Outcome = 'all' | 'allowed' | 'upstream_error' | 'blocked';
 
 export interface LogFilters {
   /** A substring of the destination (host or URL). */
@@ -77,7 +78,7 @@ export function readFilters(params: URLSearchParams): LogFilters {
   const outcome = params.get('outcome');
   return {
     q: params.get('q')?.trim() ?? '',
-    outcome: outcome === 'allowed' || outcome === 'blocked' ? outcome : 'all',
+    outcome: outcome === 'allowed' || outcome === 'upstream_error' || outcome === 'blocked' ? outcome : 'all',
     client: params.get('client')?.trim() ?? '',
     rule: params.get('rule')?.trim() ?? '',
     since: seconds(params.get('since')),
@@ -240,14 +241,13 @@ export function maskedToNetwork(raw: string | undefined): string | null {
 /**
  * Whether a row from the live feed belongs in the view f selects, by the
  * rules GET /api/logs applies: a client by exact address or network CIDR, the
- * outcome by the blocked flag, a rule among blocked rows, the destination by
+ * outcome as outcomeOf draws it, a rule among blocked rows, the destination by
  * substring (SQLite's LIKE ignores ASCII case), and the stack's own traffic
  * only when shown or when the client filter names it.
  */
 export function matchesFilters(r: LogEntry, f: LogFilters, showInternal: boolean): boolean {
   if (f.client && !matchesClientFilter(r.source_ip, f.client)) return false;
-  if (f.outcome === 'blocked' && !isBlocked(r)) return false;
-  if (f.outcome === 'allowed' && isBlocked(r)) return false;
+  if (f.outcome !== 'all' && outcomeOf(r) !== f.outcome) return false;
   if (f.rule && !(isBlocked(r) && r.reason === f.rule)) return false;
   if (f.q && !(r.destination ?? '').toLowerCase().includes(f.q.toLowerCase())) return false;
   if (f.since !== null || f.until !== null) {
@@ -321,10 +321,11 @@ export type RequestOutcome = 'allowed' | 'upstream_error' | 'blocked';
 
 /**
  * What happened to r: blocked by a rule, failed beyond the proxy (no rule
- * blocked it, but it ended in 502, 503 or 504), or allowed. The Allowed and
- * Blocked filters still split rows by the blocked flag alone, so an upstream
- * error is among the Allowed ones. It takes any row with the two fields, so
- * a client's recent requests read the same as the access log.
+ * blocked it, but it ended in 502, 503 or 504), or allowed. The server's
+ * outcome filter draws the same line (database.UpstreamErrorCond: the status
+ * ends in /502, /503 or /504), so a row's badge and the filter that lists it
+ * agree. It takes any row with the two fields, so a client's recent requests
+ * read the same as the access log.
  */
 export function outcomeOf(r: Pick<LogEntry, 'blocked' | 'status'>): RequestOutcome {
   if (isBlocked(r)) return 'blocked';

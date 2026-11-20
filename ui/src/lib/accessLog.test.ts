@@ -48,6 +48,11 @@ describe('filters in the URL', () => {
     expect(readFilters(new URLSearchParams('outcome=denied')).outcome).toBe('all')
   })
 
+  it('reads and writes the upstream_error outcome', () => {
+    expect(readFilters(new URLSearchParams('outcome=upstream_error')).outcome).toBe('upstream_error')
+    expect(writeFilters({ ...NO_FILTERS, outcome: 'upstream_error' }).toString()).toBe('outcome=upstream_error')
+  })
+
   it('names the API parameters', () => {
     const p = apiParams({ q: 'x', outcome: 'allowed', client: '10.0.0.1', rule: 'waf', since: 10, until: 20 }, true)
     expect(p.toString()).toBe('q=x&outcome=allowed&source_ip=10.0.0.1&reason=waf&since=10&until=20&include_internal=true')
@@ -56,6 +61,25 @@ describe('filters in the URL', () => {
 })
 
 describe('matchesFilters (live rows)', () => {
+  // As GET /api/logs splits them: each row is in exactly one outcome, a
+  // blocked 503 is blocked, and an address that ends in 503 is not a 503.
+  it('puts each live row in exactly one outcome, as the server does', () => {
+    const rows = {
+      ok: entry(),
+      gone: entry({ status: 'TCP_TUNNEL/503' }),
+      broken: entry({ status: 'TCP_MISS/502' }),
+      late: entry({ status: 'TCP_MISS/504' }),
+      v6: entry({ status: '2001:db8::503' }),
+      denied: entry({ status: 'TCP_DENIED/403', blocked: 1, reason: 'domain_blacklist' }),
+      sinkholed: entry({ status: 'TCP_TUNNEL/503', blocked: 1, reason: 'domain_blacklist_dns_reconstructed' }),
+    }
+    const pick = (outcome: 'allowed' | 'upstream_error' | 'blocked') =>
+      Object.entries(rows).filter(([, r]) => matchesFilters(r, { ...NO_FILTERS, outcome }, false)).map(([k]) => k)
+    expect(pick('allowed')).toEqual(['ok', 'v6'])
+    expect(pick('upstream_error')).toEqual(['gone', 'broken', 'late'])
+    expect(pick('blocked')).toEqual(['denied', 'sinkholed'])
+  })
+
   it('applies each filter as the server does', () => {
     expect(matchesFilters(entry(), NO_FILTERS, false)).toBe(true)
     // The range as the server applies it: since included, until left out.

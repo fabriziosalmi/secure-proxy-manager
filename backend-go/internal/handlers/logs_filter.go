@@ -18,7 +18,9 @@ import (
 //
 //   - source_ip: one source address (exact) or a network CIDR (/24, /64).
 //     With gdpr_mode on, only a network CIDR is accepted.
-//   - outcome: "allowed" or "blocked", from the blocked flag.
+//   - outcome: "blocked" (the blocked flag), "upstream_error" (not blocked,
+//     and the status ends in /502, /503 or /504: database.UpstreamErrorCond)
+//     or "allowed" (every other row). Each row is in exactly one.
 //   - reason: the rule that blocked the request (a block_reason key, as in
 //     docs/design/block-reasons.md). It selects blocked rows only.
 //   - q: a substring of the destination, case-insensitive for ASCII as
@@ -65,9 +67,9 @@ func parseLogFilter(r *http.Request) (logFilter, error) {
 	switch f.outcome {
 	case "", "all":
 		f.outcome = ""
-	case "allowed", "blocked":
+	case "allowed", "upstream_error", "blocked":
 	default:
-		return f, errors.New("outcome must be allowed or blocked")
+		return f, errors.New("outcome must be allowed, upstream_error or blocked")
 	}
 	if f.reason != "" && !reasonKeyRE.MatchString(f.reason) {
 		return f, errors.New("reason must be a block reason key")
@@ -203,8 +205,11 @@ func (f logFilter) conds() ([]database.SQLText, []any) {
 		c = append(c, "blocked = 1")
 	case "allowed":
 		// != 1 rather than = 0: the complement of blocked = 1 exactly, which
-		// countLogs relies on (blocked is NOT NULL).
-		c = append(c, "blocked != 1")
+		// countLogs relies on (blocked is NOT NULL); and not an upstream error.
+		c = append(c, "blocked != 1", database.NotUpstreamErrorCond)
+	case "upstream_error":
+		// The two terms of idx_proxy_logs_upstream_error's WHERE, as written there.
+		c = append(c, "blocked != 1", database.UpstreamErrorCond)
 	}
 	if f.reason != "" {
 		// blocked = 1 is what lets idx_proxy_logs_blocked_reason (a partial
@@ -310,13 +315,16 @@ func (f logFilter) countTerms(internal []string) []countTerm {
 			internal: isInternal,
 		}
 	}
-	// with adds the rows meeting extra, less the blocked ones among them when
-	// the filter asks for allowed rows.
+	// with adds the rows meeting extra, less the blocked ones and the upstream
+	// errors among them when the filter asks for allowed rows: each is a
+	// partial index (idx_proxy_logs_blocked, idx_proxy_logs_upstream_error).
 	var terms []countTerm
 	with := func(isInternal bool, extra []database.SQLText, extraArgs []any) {
 		terms = append(terms, term(1, isInternal, extra, extraArgs))
 		if allowed {
-			terms = append(terms, term(-1, isInternal, append([]database.SQLText{"blocked = 1"}, extra...), extraArgs))
+			terms = append(terms,
+				term(-1, isInternal, append([]database.SQLText{"blocked = 1"}, extra...), extraArgs),
+				term(-1, isInternal, append([]database.SQLText{"blocked != 1", database.UpstreamErrorCond}, extra...), extraArgs))
 		}
 	}
 	const everyRow, internalRows = false, true

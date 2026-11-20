@@ -384,6 +384,9 @@ test.describe('API — logs, stats, security score', () => {
     const body = (await ok.json()) as { data: unknown[]; meta: { total: number } };
     expect(Array.isArray(body.data)).toBeTruthy();
     expect(typeof body.meta.total).toBe('number');
+    // The upstream errors are an outcome of their own (the partial index is created at start-up).
+    const upstream = await request.get(`${API_URL}/api/logs?limit=5&outcome=upstream_error`, { headers });
+    expect(upstream.status()).toBe(200);
     const bad = await request.get(`${API_URL}/api/logs?outcome=denied`, { headers });
     expect(bad.status()).toBe(400);
   });
@@ -553,10 +556,11 @@ test.describe('UI: Access logs', () => {
   test('the filters are read from the URL and written to it', async ({ page }) => {
     await page.goto('/logs?outcome=blocked&q=example');
     await page.waitForSelector('h1:has-text("Access logs")', { timeout: 15_000 });
-    await expect(page.getByRole('button', { name: 'Blocked', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    const outcome = page.getByRole('combobox', { name: 'Outcome' });
+    await expect(outcome).toHaveValue('blocked');
     await expect(page.getByRole('searchbox', { name: 'Search destinations' })).toHaveValue('example');
-    await page.getByRole('button', { name: 'Allowed', exact: true }).click();
-    await expect(page).toHaveURL(/[?&]outcome=allowed/);
+    await outcome.selectOption('upstream_error');
+    await expect(page).toHaveURL(/[?&]outcome=upstream_error/);
     await expect(page.getByRole('table', { name: 'Access log requests' })).toBeVisible();
   });
 });

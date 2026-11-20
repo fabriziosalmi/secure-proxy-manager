@@ -6383,7 +6383,7 @@
             }
           },
           {
-            "description": "only the allowed or only the blocked requests",
+            "description": "only the allowed requests, only the ones no rule blocked that ended in 502, 503 or 504 (upstream_error), or only the blocked ones",
             "in": "query",
             "name": "outcome",
             "required": false,
@@ -6391,6 +6391,7 @@
               "enum": [
                 "all",
                 "allowed",
+                "upstream_error",
                 "blocked"
               ],
               "type": "string"

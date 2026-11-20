@@ -317,6 +317,32 @@ func applyColumnMigrations(db *sql.DB) error {
 	return nil
 }
 
+// upstreamErrorCodes are the endings of the status of a request that failed
+// beyond the proxy. The slash is kept: a DNS row's status is an address, and
+// an IPv6 address may end in 503.
+const upstreamErrorCodes = "('/502', '/503', '/504')"
+
+// UpstreamErrorCond holds for a row whose status ends in /502, /503 or /504:
+// the name did not resolve, the server refused or broke off the connection
+// or did not answer in time, or the server sent that code itself. With
+// blocked != 1 it is the access log's outcome=upstream_error, written term
+// for term as the WHERE of idx_proxy_logs_upstream_error so that SQLite can
+// use the partial index. The UI's outcomeOf (ui/src/lib/accessLog.ts) draws
+// the same line.
+const UpstreamErrorCond SQLText = "substr(status, -4) IN " + upstreamErrorCodes
+
+// NotUpstreamErrorCond is the exact complement of UpstreamErrorCond: a NULL
+// status is not an upstream error, and NOT IN alone would drop its row from
+// both sides.
+const NotUpstreamErrorCond SQLText = "IFNULL(substr(status, -4), '') NOT IN " + upstreamErrorCodes
+
+// UpstreamErrorIndex creates idx_proxy_logs_upstream_error. Its WHERE is
+// blocked != 1 and UpstreamErrorCond, written out in one literal so the
+// statement is not built at run time: TestUpstreamErrorIndexIsItsCondition
+// holds the two texts together, and TestLogFiltersUseIndexes fails if SQLite
+// stops using the index for the query built from UpstreamErrorCond.
+const UpstreamErrorIndex = `CREATE INDEX IF NOT EXISTS idx_proxy_logs_upstream_error ON proxy_logs(id, source_ip, blocked, status) WHERE blocked != 1 AND substr(status, -4) IN ('/502', '/503', '/504')`
+
 // createPostMigrationIndexes creates the indexes that depend on migrated columns.
 func createPostMigrationIndexes(db *sql.DB) error {
 	// Indexes on migrated columns must be created AFTER the ALTERs above add the
@@ -343,6 +369,13 @@ func createPostMigrationIndexes(db *sql.DB) error {
 		// the newest page of one rule is read straight from it and its count
 		// never touches the table. Measured on 1M rows: docs/api/logs.md.
 		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_blocked_reason ON proxy_logs(block_reason) WHERE blocked = 1`,
+		// The access log's outcome=upstream_error: requests no rule blocked
+		// that failed beyond the proxy, a few percent of the rows. On id
+		// first, so the newest page is read from it in order; with the
+		// columns its WHERE and the internal-source condition read, so its
+		// counts (outcome=allowed subtracts them) never touch the table.
+		// Measured on 1M rows: docs/api/logs.md.
+		UpstreamErrorIndex,
 		// The domain blacklist entries with an upper-case letter, which the
 		// UNIQUE index cannot find from a lower-case allowed name: the count
 		// of entries the allowed list takes out (BlockedOnAllowed) reads them

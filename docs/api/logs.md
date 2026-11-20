@@ -22,7 +22,7 @@ Returns access log rows matching the filters, with pagination metadata.
 | `sort` | `timestamp` | `timestamp`, `source_ip`, `destination`, `status`, `bytes`, `method` or `id`; anything else is `timestamp` |
 | `order` | `desc` | `asc` or `desc` |
 | `source_ip` | | One source address, exact, or a `/24` (IPv4) or `/64` (IPv6) network CIDR. With `gdpr_mode` on, a single address is refused with `400`; pass the network CIDR. A named source is listed even when it is internal |
-| `outcome` | | `allowed` or `blocked` (`all` or empty: both), from the `blocked` flag |
+| `outcome` | | `blocked` (the `blocked` flag), `upstream_error` (not blocked, and `status` ends in `/502`, `/503` or `/504`: the request failed beyond the proxy) or `allowed` (every other row); `all` or empty: every row. Each row is in exactly one. In 3.43 and earlier, `allowed` also held the upstream errors |
 | `reason` | | The rule that blocked the request (a `reason` value below); selects blocked rows only |
 | `q` | | A substring of `destination`, case-insensitive for ASCII; `%` and `_` match themselves. At most 256 bytes |
 | `include_internal` | `false` | `true` includes the stack's own traffic (see below) |
@@ -106,23 +106,25 @@ statistic counts.
 **Cost, measured on 1,000,000 rows.** `TestLogFilters1M` in
 `backend-go/internal/handlers/logs_plan_test.go` (`SPM_LOGS_1M=1`): 20
 devices, two internal sources holding 10% of the rows, 10% blocked over five
-rules, `limit=100`, best of three. Run on 2026-10-25 on an Apple M4 with
-go1.27.2:
+rules, 3% upstream errors (502, 503), `limit=100`, best of three. Run on
+2026-11-20 on an Apple M4 Pro with go1.27.4:
 
 | Filter | Plan (page; count) | Time |
 |---|---|---|
-| none (internal sources left out) | scan; covering index count minus `idx_proxy_logs_source_ip` | 17.4 ms |
-| `include_internal=true` | scan; covering index count | 12.4 ms |
-| `source_ip` | `idx_proxy_logs_source_ip` | 2.7 ms |
-| `reason=waf` (1% of rows) | `idx_proxy_logs_blocked_reason` | 10.2 ms |
-| `reason=ip_blacklist` (0.1%) | `idx_proxy_logs_blocked_reason` | 1.2 ms |
-| `outcome=blocked` | `idx_proxy_logs_blocked` | 70.6 ms |
-| `outcome=allowed` | scan; every row less the blocked ones | 88.0 ms |
-| `before_id` (deep) | rowid range | 17.2 ms |
-| `q` | no index serves `LIKE '%x%'`: the table is read | 208 to 287 ms |
+| none (internal sources left out) | scan; covering index count minus `idx_proxy_logs_source_ip` | 15.6 ms |
+| `include_internal=true` | scan; covering index count | 11.9 ms |
+| `source_ip` | `idx_proxy_logs_source_ip` | 2.1 ms |
+| `reason=waf` (1% of rows) | `idx_proxy_logs_blocked_reason` | 9.5 ms |
+| `reason=ip_blacklist` (0.1%) | `idx_proxy_logs_blocked_reason` | 0.9 ms |
+| `outcome=blocked` | `idx_proxy_logs_blocked` | 58.8 ms |
+| `outcome=upstream_error` | `idx_proxy_logs_upstream_error`, covering for the count | 2.1 ms |
+| `outcome=allowed` | scan; every row less the blocked ones and the upstream errors | 76.0 ms |
+| `before_id` (deep) | rowid range | 15.5 ms |
+| `q` | no index serves `LIKE '%x%'`: the table is read | 157 to 249 ms |
 
-Creating `idx_proxy_logs_blocked_reason`, which start-up does once after an
-upgrade, took 126 ms on the same rows.
+Start-up creates each new index once after an upgrade: on the same rows,
+`idx_proxy_logs_blocked_reason` took 101 ms and
+`idx_proxy_logs_upstream_error` 385 ms.
 
 ---
 

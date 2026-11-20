@@ -20,7 +20,6 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { Section } from '../components/ui/Section';
 import { DataTable, type Column } from '../components/ui/DataTable';
 import { SearchInput } from '../components/ui/SearchInput';
-import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { Switch } from '../components/ui/Switch';
 import { Button, IconButton } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -132,7 +131,7 @@ const SELECT_CLASS =
 
 /**
  * The filter row's selects are compact while they show their own name
- * (All clients, Any rule, Any time: their first option, and their
+ * (Any outcome, All clients, Any rule, Any time: their first option, and their
  * aria-label), so the six filters keep one row from a 948px column up
  * (1280px with the sidebar open). A chosen client or rule takes the select's
  * natural width, up to 14rem, so the value reads whole ("10.20.0.1..." was
@@ -140,6 +139,13 @@ const SELECT_CLASS =
  * value longer than that ends in an ellipsis and is whole in the title.
  */
 const filterWidth = (chosen: string, compact: string) => (chosen ? 'w-auto max-w-56' : compact);
+
+const OUTCOME_OPTIONS: { value: Outcome; label: string }[] = [
+  { value: 'all', label: 'Any outcome' },
+  { value: 'allowed', label: 'Allowed' },
+  { value: 'upstream_error', label: 'Upstream error' },
+  { value: 'blocked', label: 'Blocked' },
+];
 
 const FILTER_SELECT_CLASS =
   'h-9 shrink-0 truncate rounded-control border border-line-strong bg-surface pl-2.5 pr-1 text-sm text-ink ' +
@@ -603,12 +609,15 @@ export function Logs() {
             maxLength={MAX_QUERY_LEN}
             className="w-full sm:w-auto sm:flex-[1_1_8rem] sm:max-w-[320px]"
           />
-          <SegmentedControl<Outcome>
-            label="Outcome"
+          {/* The words of the Outcome badge; the server splits the log the same way. */}
+          <select
+            aria-label="Outcome"
+            className={cn(FILTER_SELECT_CLASS, filterWidth(filters.outcome === 'all' ? '' : filters.outcome, 'w-34'))}
             value={filters.outcome}
-            onChange={(outcome) => setFilters({ outcome })}
-            options={[{ value: 'all', label: 'All' }, { value: 'allowed', label: 'Allowed' }, { value: 'blocked', label: 'Blocked' }]}
-          />
+            onChange={(e) => setFilters({ outcome: e.target.value as Outcome })}
+          >
+            {OUTCOME_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
           <select
             aria-label="Client"
             title={clientOptions.find((o) => o.value === filters.client)?.label ?? 'All clients'}
