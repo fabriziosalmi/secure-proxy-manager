@@ -106,8 +106,8 @@ describe('Clients', () => {
   it('shows the header from the mockup, and Connect a device opens the device setup', async () => {
     renderWithProviders(<Clients />)
     expect(screen.getByRole('heading', { level: 1, name: 'Clients' })).toBeInTheDocument()
-    expect(screen.getByText('Traffic')).toBeInTheDocument()
-    expect(screen.getByText('Devices that sent traffic through the proxy in the last 7 days.')).toBeInTheDocument()
+    // It says the window the counts cover, so it is a visible line, not a tooltip.
+    expect(screen.getByText('Devices that sent traffic through the proxy in the last 7 days.')).toHaveAttribute('data-testid', 'page-description')
     const connect = screen.getByRole('button', { name: 'Connect a device' })
     expect(connect).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByRole('tablist', { name: 'Operating system' })).not.toBeInTheDocument()

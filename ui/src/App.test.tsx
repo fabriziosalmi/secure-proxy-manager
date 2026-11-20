@@ -3,6 +3,7 @@ import { render, screen, waitFor, fireEvent, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event'
 import toast from 'react-hot-toast'
 import App from './App'
+import { NAV_GROUPS } from './components/layout/nav'
 
 vi.mock('./lib/api', () => ({
   api: {
@@ -143,6 +144,32 @@ describe('App', () => {
       window.history.pushState({}, '', '/')
     }
   })
+
+  // The eyebrow over each page's title is the group the page sits in on the
+  // sidebar, read from nav.ts for the route: a page cannot name another group.
+  it.each(NAV_GROUPS.flatMap((g) => g.items.map((i) => [i.to === '/settings' ? '/settings/overview' : i.to, i.label, g.label] as const)))(
+    '%s shows its title in the band under its nav group',
+    async (path, label, group) => {
+      signedIn()
+      vi.mocked(api.get).mockImplementation((url: string) => {
+        if (url === 'settings') return Promise.resolve({ data: { data: [{ setting_name: 'wizard_completed', setting_value: 'true' }] } })
+        // The Analytics sections take objects, not lists: none sent is "not reported".
+        if (url.startsWith('analytics/')) return Promise.resolve({ data: { data: null } })
+        return Promise.resolve({ data: { data: [], meta: { total: 0 } } })
+      })
+      window.history.pushState({}, '', path)
+      try {
+        render(<App />)
+        const band = await screen.findByTestId('page-band', {}, { timeout: 5000 })
+        const h1 = await within(band).findByRole('heading', { level: 1 }, { timeout: 5000 })
+        expect(h1).toHaveTextContent(label)
+        expect(within(band).getByTestId('page-eyebrow')).toHaveTextContent(group)
+      } finally {
+        window.history.pushState({}, '', '/')
+      }
+    },
+    10000,
+  )
 
   it('shows the sign-in screen when GET /api/session has no session, and never reads localStorage for one', async () => {
     localStorage.setItem('auth_token', 'left-by-an-old-version')

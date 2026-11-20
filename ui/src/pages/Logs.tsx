@@ -542,7 +542,6 @@ export function Logs() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Traffic"
         title="Access logs"
         description="Every request the proxy handled, newest first, with the rule that blocked it."
         actions={

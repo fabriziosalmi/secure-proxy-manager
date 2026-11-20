@@ -197,7 +197,6 @@ export function Blacklists() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Protection"
         title="Blacklists"
         description="Destinations the proxy refuses, and the ones it lets through."
         actions={

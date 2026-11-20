@@ -61,6 +61,16 @@ export function pageLabel(pathname: string): string | undefined {
   return undefined;
 }
 
+/**
+ * The sidebar group of the page at this path ("Traffic" for /logs), the
+ * eyebrow over its title in the page band. Read from NAV_GROUPS, so a page
+ * cannot name a group it is not in.
+ */
+export function navGroupOf(pathname: string): string | undefined {
+  const group = NAV_GROUPS.find((candidate) => candidate.items.some((item) => isActivePath(pathname, item.to)));
+  return group?.label;
+}
+
 // Collapsed sidebar preference. Storage can be missing or throw (private
 // mode, blocked site data); the sidebar then starts expanded and still works.
 const COLLAPSED_KEY = 'spm.sidebar.collapsed';

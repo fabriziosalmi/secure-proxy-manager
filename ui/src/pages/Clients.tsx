@@ -194,8 +194,8 @@ export function Clients() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Traffic"
         title="Clients"
+        describe="inline"
         description="Devices that sent traffic through the proxy in the last 7 days."
         actions={connect}
       />

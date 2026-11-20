@@ -10,9 +10,10 @@ import { isActivePath, summarizeHealth, NAV_GROUPS } from './nav'
 import { createTestQueryClient } from '../../test/helpers'
 import { expectNoAxeViolations } from '../../test/axe'
 import { DESKTOP_QUERY } from '../../hooks/useMediaQuery'
-import { useEffect } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { SettingsDraftsProvider } from '../settings/SettingsDrafts'
 import { useSettingsDrafts } from '../../hooks/useSettingsDrafts'
+import { PageHeader } from '../ui/PageHeader'
 
 const get = vi.fn()
 
@@ -324,6 +325,69 @@ describe('shell on a wide screen', () => {
     shell('/')
     expect(await within(sidebar()).findByText('Backend not reachable')).toBeInTheDocument()
     expect(within(sidebar()).queryByText(/running|healthy/)).not.toBeInTheDocument()
+  })
+})
+
+describe('page band', () => {
+  beforeEach(() => setViewport(true))
+
+  function bandShell(path: string, element: ReactNode) {
+    const client = createTestQueryClient()
+    return render(
+      <QueryClientProvider client={client}>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={[path]}>
+            <Routes>
+              <Route path="/" element={<Layout />}>
+                <Route path="*" element={element} />
+                <Route index element={element} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </QueryClientProvider>,
+    )
+  }
+
+  it("shows the page's title and actions in the band, under the nav group of the route, whatever eyebrow the page passes", async () => {
+    bandShell('/logs', (
+      <div>
+        <PageHeader eyebrow="Wrong group" title="Access logs" description="Every request the proxy handled." actions={<button type="button">Export CSV</button>} />
+        <p>Page body</p>
+      </div>
+    ))
+    const band = await screen.findByTestId('page-band')
+    expect(within(band).getByRole('heading', { level: 1, name: 'Access logs' })).toBeInTheDocument()
+    expect(within(band).getByText('Traffic')).toBeInTheDocument()
+    expect(screen.queryByText('Wrong group')).not.toBeInTheDocument()
+    expect(within(band).getByRole('button', { name: 'Export CSV' })).toBeInTheDocument()
+    // The description is the tooltip of the info button next to the title.
+    expect(within(band).getByRole('button', { name: 'About Access logs' })).toHaveAccessibleDescription('Every request the proxy handled.')
+    // The band sits outside the page container, so it spans the main column.
+    expect(band.contains(screen.getByText('Page body'))).toBe(false)
+    expect(band.closest('main')).not.toBeNull()
+  })
+
+  it('names Overview by its nav group too', async () => {
+    bandShell('/', <PageHeader title="Overview" />)
+    const band = await screen.findByTestId('page-band')
+    expect(within(band).getByText('Insights')).toBeInTheDocument()
+    expect(within(band).getByRole('heading', { level: 1, name: 'Overview' })).toBeInTheDocument()
+  })
+
+  it('writes an inline description in the content, under the band, and not in it', async () => {
+    bandShell('/', <PageHeader title="Overview" describe="inline" description="Last 24 hours · updated 08:52" />)
+    const band = await screen.findByTestId('page-band')
+    await within(band).findByRole('heading', { level: 1, name: 'Overview' })
+    const line = screen.getByText('Last 24 hours · updated 08:52')
+    expect(band.contains(line)).toBe(false)
+    expect(line.closest('.page-enter')).not.toBeNull()
+    expect(within(band).queryByRole('button', { name: /^About/ })).not.toBeInTheDocument()
+  })
+
+  it('keeps a scrollbar gutter on the scrolling main column, so a page that does not scroll is as wide as one that does', () => {
+    bandShell('/', <PageHeader title="Overview" />)
+    expect(document.querySelector('main')!.className).toContain('[scrollbar-gutter:stable]')
   })
 })
 

@@ -78,7 +78,7 @@ describe('Blacklists', () => {
   it('shows the header from the mockup, four tabs and the sections, with headings in order', async () => {
     renderWithProviders(<Blacklists />)
     expect(screen.getByRole('heading', { level: 1, name: 'Blacklists' })).toBeInTheDocument()
-    expect(screen.getByText('Protection')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'About Blacklists' })).toHaveAccessibleDescription('Destinations the proxy refuses, and the ones it lets through.')
     expect(screen.getAllByRole('tab').map((t) => t.textContent?.replace(/[\d,]/g, ''))).toEqual(['Blocked IPs', 'Blocked domains', 'IP exceptions', 'Domain exceptions'])
     expect(screen.getByRole('tab', { name: /Blocked IPs/ })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'bl-tab-blocked-ips')

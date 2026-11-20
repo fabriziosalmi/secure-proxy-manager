@@ -15,6 +15,25 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Changed
+
+- **Every page's title sits in a band across the top of the main column,
+  on the line under the sidebar's brand.** The band is 64 px high on wide
+  screens, as the sidebar header is, with the same border, so the two lines
+  are one; it stays at the top while the page scrolls, and its title starts
+  where the content starts. Over the title is the page's group in the
+  sidebar (Insights, Traffic, Protection, System), read from the navigation
+  for the route, so the Overview now shows "Insights" too and no page can
+  name a group it is not in. The page's buttons are on the right of the
+  band. A page description that says what the numbers count or over which
+  time window (Overview, Analytics, Clients) is a line at the top of the
+  content; the others (Access logs, Blacklists, Default-deny allowlist,
+  Audit log) are the tooltip of an info button next to the title, shown on
+  hover and on keyboard focus. The main column keeps its scrollbar gutter
+  when a page does not scroll, so the content no longer moves sideways from
+  one page to the next (Settings, Appearance was 4 px wider than every other
+  page), and the Settings section list stays in view under the band.
+
 ### Fixed
 
 - **The canary retries a failed `git fetch` before it gives up.** A resolver

@@ -9,6 +9,16 @@
  * close button or any route change close it, and focus returns to the menu
  * button. The closed drawer is inert, so its links are not in the tab order.
  *
+ * The page band runs across the top of the main column, outside the page's
+ * width cap: as high as the sidebar's brand header (64px) with the same
+ * border, so the two lines are one. It stays at the top while the page
+ * scrolls (lg and up; below lg it scrolls away under the top bar). Its inner
+ * row is as wide as the page container and padded the same, so the title
+ * starts where the content does. PageHeader draws into it through
+ * PageBandContext, with the route's nav group as the eyebrow. The main
+ * column keeps a scrollbar gutter even when the page does not scroll, so the
+ * content does not move sideways from one page to the next.
+ *
  * The page is keyed by the first path segment, so each page mounts fresh
  * with its entrance animation, while moving between the sections of one page
  * (/settings/access to /settings/alerts) keeps it mounted, with whatever was
@@ -17,11 +27,12 @@
  * Signing out ends the Settings drafts with the session, so with any unsaved
  * change it asks first, naming how many changes and in which sections.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import { Menu, Search, X } from 'lucide-react';
 import { Sidebar, SIDEBAR_ID } from './Sidebar';
-import { firstSegment, pageLabel, readCollapsed, writeCollapsed } from './nav';
+import { firstSegment, navGroupOf, pageLabel, readCollapsed, writeCollapsed } from './nav';
+import { PageBandContext } from './pageBand';
 import { useMediaQuery, DESKTOP_QUERY } from '../../hooks/useMediaQuery';
 import { useModal } from '../../hooks/useModal';
 import { useConfirm } from '../../hooks/useConfirm';
@@ -85,6 +96,9 @@ export function Layout({ onLogout }: { onLogout?: () => void }) {
   };
 
   const title = pageLabel(location.pathname);
+  const eyebrow = navGroupOf(location.pathname);
+  const [bandSlot, setBandSlot] = useState<HTMLDivElement | null>(null);
+  const band = useMemo(() => ({ slot: bandSlot, eyebrow }), [bandSlot, eyebrow]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-ground text-ink">
@@ -114,7 +128,7 @@ export function Layout({ onLogout }: { onLogout?: () => void }) {
         />
       </div>
 
-      <main className="min-w-0 flex-1 overflow-y-auto custom-scrollbar">
+      <main className="min-w-0 flex-1 overflow-y-auto custom-scrollbar [scrollbar-gutter:stable]">
         {/* Small-screen top bar */}
         <div className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-line bg-surface pl-1 pr-2 lg:hidden">
           <button
@@ -138,10 +152,23 @@ export function Layout({ onLogout }: { onLogout?: () => void }) {
           </button>
         </div>
 
+        {/* Page band: the page's nav group, title and actions (PageHeader draws into the row) */}
+        <header
+          data-testid="page-band"
+          className="relative z-20 flex min-h-16 items-center border-b border-line-subtle bg-surface lg:sticky lg:top-0 lg:h-16"
+        >
+          <div
+            ref={setBandSlot}
+            className="mx-auto flex w-full max-w-[1320px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2 lg:flex-nowrap lg:px-10 lg:py-0"
+          />
+        </header>
+
         {/* Page content, keyed by page (first path segment) for the entrance animation */}
-        <div key={firstSegment(location.pathname)} className="page-enter mx-auto w-full max-w-[1320px] px-4 py-4 lg:px-10 lg:pb-12 lg:pt-8">
-          <Outlet />
-        </div>
+        <PageBandContext.Provider value={band}>
+          <div key={firstSegment(location.pathname)} data-testid="page-content" className="page-enter mx-auto w-full max-w-[1320px] px-4 py-4 lg:px-10 lg:pb-12 lg:pt-6">
+            <Outlet />
+          </div>
+        </PageBandContext.Provider>
       </main>
       {dialog}
     </div>

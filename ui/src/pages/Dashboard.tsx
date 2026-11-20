@@ -295,7 +295,7 @@ export function Dashboard() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Overview" description={`Last 24 hours${updated}`} actions={<ProxyChip />} />
+      <PageHeader title="Overview" describe="inline" description={`Last 24 hours${updated}`} actions={<ProxyChip />} />
 
       {pageNotices.length > 0 && <div className="flex flex-col gap-3">{pageNotices}</div>}
 

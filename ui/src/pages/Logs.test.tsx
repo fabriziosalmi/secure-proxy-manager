@@ -155,8 +155,8 @@ describe('Logs', () => {
   it('shows the header from the mockup, with the live toggle and the export', async () => {
     renderWithProviders(<Logs />)
     expect(screen.getByRole('heading', { level: 1, name: 'Access logs' })).toBeInTheDocument()
-    expect(screen.getByText('Traffic')).toBeInTheDocument()
-    expect(screen.getByText('Every request the proxy handled, newest first, with the rule that blocked it.')).toBeInTheDocument()
+    // The nav group over the title is the band's (App.test); the description is the info button's tooltip.
+    expect(screen.getByRole('button', { name: 'About Access logs' })).toHaveAccessibleDescription('Every request the proxy handled, newest first, with the rule that blocked it.')
     expect(screen.getByRole('button', { name: 'Export CSV' })).toBeInTheDocument()
     // The headings run in order: the page's h1, then its sections' h2.
     const levels = screen.getAllByRole('heading').map((h) => Number(h.tagName.slice(1)))

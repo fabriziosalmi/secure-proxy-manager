@@ -231,7 +231,7 @@ function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader eyebrow="System" title="Settings" />
+      <PageHeader title="Settings" />
       <div className={isDesktop ? 'flex items-start gap-8' : 'flex flex-col gap-4'}>
         <SettingsNav current={id} dirty={dirty} attention={settings.isSuccess ? warnings : undefined} />
         <section aria-labelledby="settings-section-title" className="flex min-w-0 flex-1 flex-col gap-4">
