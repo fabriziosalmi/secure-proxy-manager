@@ -45,6 +45,8 @@ const detailBody = (ip: string) => ({
     recent: [
       { timestamp: '2026-07-01 09:21:00', method: 'CONNECT', destination: 'ads.example.test:443', status: 'TCP_DENIED/403', bytes: 0, blocked: true, reason: 'domain_blacklist', reason_label: 'Domain blacklist' },
       { timestamp: '2026-07-01 09:20:00', method: 'GET', destination: 'http://news.example.test/', status: 'TCP_MISS/403', bytes: 10, blocked: false, reason: 'none', reason_label: 'Not blocked' },
+      // No rule blocked it; the proxy could not reach the server (TCP_TUNNEL/503).
+      { timestamp: '2026-07-01 09:19:00', method: 'CONNECT', destination: 'gsp57-ssl-background.ls.apple.com:443', status: 'TCP_TUNNEL/503', bytes: 0, blocked: false, reason: 'none', reason_label: 'Not blocked' },
       { timestamp: '2026-06-28 08:00:00', method: 'GET', destination: 'http://old.test/', status: 'NONE_NONE/403', bytes: 0, blocked: true, reason: 'unclassified', reason_label: 'Unclassified (no reason recorded)' },
     ],
     blocked_by_reason: [
@@ -272,6 +274,13 @@ describe('Clients', () => {
       expect(within(panel).getByText('Domain blacklist')).toBeInTheDocument()
       // "Not blocked" here, "Allowed" in the access log: one word now.
       expect(within(panel).getByText('Allowed')).toHaveAttribute('data-tone', 'success')
+      // A request that failed beyond the proxy reads as in the access log,
+      // not as a green Allowed.
+      expect(within(panel).getByText('Upstream error')).toHaveAttribute('data-tone', 'warning')
+      // Its destination wraps after a dot, as in Top destinations (it was break-all).
+      const recent = panel.querySelector('[data-hostname="gsp57-ssl-background.ls.apple.com:443"]') as HTMLElement
+      expect(recent).toHaveTextContent(/^gsp57-ssl-background\.ls\.apple\.com:443$/)
+      expect(recent.closest('.break-all')).toBeNull()
       // A recent request from another day carries its date, in the viewer's zone.
       expect(within(panel).getByText('2026-06-28 10:00')).toBeInTheDocument()
       // The access log filters by client now: the panel links to this

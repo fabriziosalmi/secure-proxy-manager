@@ -88,13 +88,14 @@ for at least one minor release before disappearing.
   refuses, `TCP_MISS/502` or `/504` for a broken or late answer) had a green
   "Allowed" badge, as if it had worked. It now has an amber "Upstream error"
   badge in the table and in the request details, whose "Why" says no rule
-  blocked it and gives the code. Blocked requests are unchanged, and so is
+  blocked it and gives the code, and in a client's recent requests on
+  Clients. Blocked requests are unchanged, and so is
   the Allowed filter: it still lists every request no rule blocked, these
   included.
 - **A host name no longer breaks in the middle of a label.** The top
   destinations of a client split "gsp57-ssl-background.ls.apple.c" from "om",
   and a source URL on Blacklists split "maste" from "r/hosts": both used
-  `break-all`. They now wrap only after a dot or a slash, each label with its
+  `break-all`, as did a client's recent requests. They now wrap only after a dot or a slash, each label with its
   hyphens on one line (a label longer than 24 characters may still break, so
   it cannot run out of its column). The access log's Request column keeps
   each destination on one line, cut with an ellipsis, whole in its tooltip.
