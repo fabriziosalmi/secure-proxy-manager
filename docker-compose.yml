@@ -391,7 +391,7 @@ services:
   # Prometheus scrapes backend:5000/metrics and waf:8080/metrics on the internal
   # network; Grafana is published on localhost only.
   prometheus:
-    image: prom/prometheus:v3.15.1@sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2
+    image: prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
     container_name: secure-proxy-manager-prometheus
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -413,7 +413,7 @@ services:
       - observability
 
   grafana:
-    image: grafana/grafana:13.3.0@sha256:488984b716c0862639f91a698adbe2862677a5a07bad42da5f03f3030883b205
+    image: grafana/grafana:13.3.1@sha256:0615ec4fbd4072004b7d86b46ded63013a74b7d6eb1119273dd89e8fa25c13cf
     container_name: secure-proxy-manager-grafana
     # Grafana refuses to start without an explicit admin password. This project
     # refuses to boot when BASIC_AUTH_PASSWORD is the literal string "admin";
