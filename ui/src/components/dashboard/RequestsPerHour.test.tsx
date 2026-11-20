@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, beforeEach } from 'vitest'
 import { screen } from '@testing-library/react'
-import { renderWithProviders, setRomeTimeZone } from '../../test/helpers'
+import { renderWithProviders, setRomeTimeZone, expectMaxLength } from '../../test/helpers'
 import { expectNoAxeViolations } from '../../test/axe'
 import { RequestsPerHour } from './RequestsPerHour'
 
@@ -36,8 +36,8 @@ describe('RequestsPerHour', () => {
     const blocked = busy.querySelector<HTMLElement>('[data-series="blocked"]')!
     const allowed = busy.querySelector<HTMLElement>('[data-series="allowed"]')!
     // The axis tops at 1,500: 908 / 1,500 and 238 / 1,500 of the height.
-    expect(blocked.style.height).toBe(`max(1px, ${(908 / 1500) * 100}%)`)
-    expect(allowed.style.height).toBe(`max(1px, ${(238 / 1500) * 100}%)`)
+    expectMaxLength(blocked.style.height, 1, (908 / 1500) * 100)
+    expectMaxLength(allowed.style.height, 1, (238 / 1500) * 100)
     expect(blocked.className).toContain('bg-danger-strong')
     expect(allowed.className).toContain('bg-chart-neutral')
     // 2026-10-25 is the day Rome leaves summer time: UTC+1 after 01:00 UTC.

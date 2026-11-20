@@ -1,4 +1,4 @@
-import { vi } from 'vitest'
+import { vi, expect } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router'
 import { render } from '@testing-library/react'
@@ -49,4 +49,15 @@ export function simulateItalianLocale() {
   vi.spyOn(Number.prototype, 'toLocaleString').mockImplementation(function (this: number, locale?: Locales, opts?: Intl.NumberFormatOptions) {
     return new real(locale ?? 'it-IT', opts).format(this)
   })
+}
+
+// A length the components write as `max(<floor>px, <percent>%)`, read back
+// from an element's style. jsdom 31 serializes the percentage to six
+// significant digits (60.5333%, not 60.53333333333333%), so the percentage is
+// compared as a number, to three decimals, and the floor exactly.
+export function expectMaxLength(value: string, floorPx: number, percent: number) {
+  const m = /^max\((\d+(?:\.\d+)?)px, (\d+(?:\.\d+)?)%\)$/.exec(value)
+  expect(m, `"${value}" is not max(<n>px, <n>%)`).not.toBeNull()
+  expect(Number(m![1])).toBe(floorPx)
+  expect(Number(m![2])).toBeCloseTo(percent, 3)
 }
