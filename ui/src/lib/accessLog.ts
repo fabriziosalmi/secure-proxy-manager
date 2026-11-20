@@ -41,6 +41,28 @@ export function fromLocalInput(value: string): number | null {
   return Number.isNaN(ms) ? null : Math.floor(ms / 1000);
 }
 
+/** The time range select: an open range, three spans back from now, or two times picked by hand. */
+export type TimeRange = 'any' | '1h' | '24h' | '7d' | 'custom';
+
+export const TIME_RANGES: { value: TimeRange; label: string; seconds?: number }[] = [
+  { value: 'any', label: 'Any time' },
+  { value: '1h', label: 'Last hour', seconds: 3600 },
+  { value: '24h', label: 'Last 24 hours', seconds: 86_400 },
+  { value: '7d', label: 'Last 7 days', seconds: 604_800 },
+  { value: 'custom', label: 'Custom range' },
+];
+
+/**
+ * The since and until a choice of the time range select writes, at nowSec:
+ * a span is since = now minus the span with until open, as typing that time
+ * into From did; Any time opens both. Custom range keeps what is set (null).
+ */
+export function rangeFilters(range: TimeRange, nowSec: number): Pick<LogFilters, 'since' | 'until'> | null {
+  if (range === 'custom') return null;
+  const span = TIME_RANGES.find((r) => r.value === range)?.seconds;
+  return { since: span ? nowSec - span : null, until: null };
+}
+
 /** Whether f's time range can hold no request: until is not later than since. */
 export const emptyRange = (f: LogFilters) => f.since !== null && f.until !== null && f.until <= f.since;
 

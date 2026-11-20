@@ -345,6 +345,55 @@ describe('Logs', () => {
     expect(new URLSearchParams(window.location.search).get('client')).toBe('192.168.1.10')
   })
 
+  // The From and Until pair took a row of its own, and the browser wrote its
+  // own locale's placeholder (gg/mm/aaaa) in an English page. A preset writes
+  // since as From did, now minus its span, with until open.
+  it('picks a time range from presets that send what From did, and shows the two times only for a custom range', async () => {
+    const now = Date.UTC(2026, 10, 2, 14, 0, 30)
+    vi.spyOn(Date, 'now').mockReturnValue(now)
+    const nowSec = Math.floor(now / 1000)
+    renderWithProviders(<Logs />)
+    await waitFor(() => expect(logCalls().length).toBe(1))
+    const range = screen.getByRole('combobox', { name: 'Time range' })
+    expect(range).toHaveValue('any')
+    expect(within(range).getAllByRole('option').map((o) => o.textContent)).toEqual(['Any time', 'Last hour', 'Last 24 hours', 'Last 7 days', 'Custom range'])
+    expect(screen.queryByLabelText('From')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Until')).not.toBeInTheDocument()
+
+    for (const [value, span] of [['1h', 3600], ['24h', 86400], ['7d', 604800]] as const) {
+      fireEvent.change(range, { target: { value } })
+      await waitFor(() => expect(lastLogParams().get('since')).toBe(String(nowSec - span)))
+      expect(lastLogParams().has('until')).toBe(false)
+      expect(new URLSearchParams(window.location.search).get('since')).toBe(String(nowSec - span))
+      expect(new URLSearchParams(window.location.search).has('until')).toBe(false)
+      expect(range).toHaveValue(value)
+      expect(screen.queryByLabelText('From')).not.toBeInTheDocument()
+    }
+
+    fireEvent.change(range, { target: { value: 'any' } })
+    await waitFor(() => expect(lastLogParams().has('since')).toBe(false))
+    expect(window.location.search).not.toContain('since')
+
+    fireEvent.change(range, { target: { value: 'custom' } })
+    expect(range).toHaveValue('custom')
+    expect(screen.getByLabelText('From')).toHaveValue('')
+    expect(screen.getByLabelText('Until')).toHaveValue('')
+  })
+
+  it('reads a range from a link as a custom range, with its two times filled in', async () => {
+    const restoreTz = setRomeTimeZone()
+    try {
+      window.history.replaceState({}, '', `/logs?since=${Date.UTC(2026, 10, 2, 13, 0) / 1000}`)
+      renderWithProviders(<Logs />)
+      await waitFor(() => expect(lastLogParams().get('since')).toBe(String(Date.UTC(2026, 10, 2, 13, 0) / 1000)))
+      expect(screen.getByRole('combobox', { name: 'Time range' })).toHaveValue('custom')
+      expect(screen.getByLabelText('From')).toHaveValue('2026-11-02T14:00')
+      expect(screen.getByLabelText('Until')).toHaveValue('')
+    } finally {
+      restoreTz()
+    }
+  })
+
   // "What happened yesterday at 14:00": a range on the browser clock, sent
   // as Unix seconds; a range that can hold nothing is not sent.
   it('filters a time range on the browser clock, and says when the range is empty', async () => {
@@ -352,6 +401,7 @@ describe('Logs', () => {
     try {
       renderWithProviders(<Logs />)
       await waitFor(() => expect(logCalls().length).toBe(1))
+      fireEvent.change(screen.getByRole('combobox', { name: 'Time range' }), { target: { value: 'custom' } })
       fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-11-02T14:00' } })
       await waitFor(() => expect(lastLogParams().get('since')).toBe(String(Date.UTC(2026, 10, 2, 13, 0) / 1000)))
       fireEvent.change(screen.getByLabelText('Until'), { target: { value: '2026-11-02T15:00' } })

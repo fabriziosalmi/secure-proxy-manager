@@ -30,9 +30,9 @@ import { useMediaQuery, DESKTOP_QUERY } from '../hooks/useMediaQuery';
 import { api, getData, getErrorMessage } from '../lib/api';
 import { formatBytes, formatCount, formatWhen, formatWhenExact, viewerZone } from '../lib/format';
 import {
-  allowableDomain, allowableEgress, apiParams, emptyRange, fromLocalInput, hasFilters, ipBlacklistLink, isBlocked, isHttpCode, maskedToNetwork, matchesFilters, outcomeOf, readFilters, splitStatus, squidResultText, statusTone, toLocalInput, whyText,
+  allowableDomain, allowableEgress, apiParams, emptyRange, fromLocalInput, hasFilters, ipBlacklistLink, isBlocked, isHttpCode, maskedToNetwork, matchesFilters, outcomeOf, rangeFilters, readFilters, splitStatus, squidResultText, statusTone, toLocalInput, whyText,
   writeFilters,
-  NO_FILTERS, type LogFilters, type Outcome,
+  NO_FILTERS, TIME_RANGES, type LogFilters, type Outcome, type TimeRange,
 } from '../lib/accessLog';
 import { cn } from '../lib/utils';
 import type { ClientsData, LogEntry, LogsPageData, ReasonCount } from '../types';
@@ -129,6 +129,17 @@ const SELECT_CLASS =
   'h-9 min-w-0 max-w-[14rem] rounded-control border border-line-strong bg-surface px-2.5 text-sm text-ink ' +
   'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent';
 
+/**
+ * The filter row's selects have fixed widths, so the six filters keep one
+ * row from a 948px column up (1280px with the sidebar open) whatever the
+ * options hold; a value too long for its box ends in an ellipsis and is
+ * whole in the select's title. Their first option names them (All clients,
+ * Any rule, Any time), and so does their aria-label.
+ */
+const FILTER_SELECT_CLASS =
+  'h-9 shrink-0 truncate rounded-control border border-line-strong bg-surface pl-2.5 pr-1 text-sm text-ink ' +
+  'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent';
+
 type WsStatus = 'connecting' | 'connected' | 'disconnected';
 
 export function Logs() {
@@ -164,6 +175,19 @@ export function Logs() {
 
   const setFilters = (next: Partial<LogFilters>) => {
     setParams(writeFilters({ ...filters, ...next }), { replace: true });
+  };
+
+  // The time range select. The URL keeps since and until as before; the
+  // select shows the choice that wrote them while they are unchanged. A range
+  // from anywhere else (a link, a reload, the two times typed) reads as
+  // Custom range, with its times, and no range as Any time.
+  const [rangePick, setRangePick] = useState<{ range: TimeRange; since: number | null; until: number | null } | null>(null);
+  let range: TimeRange = filters.since === null && filters.until === null ? 'any' : 'custom';
+  if (rangePick && rangePick.since === filters.since && rangePick.until === filters.until) range = rangePick.range;
+  const pickRange = (next: TimeRange) => {
+    const span = rangeFilters(next, Math.floor(Date.now() / 1000));
+    setRangePick({ range: next, since: span ? span.since : filters.since, until: span ? span.until : filters.until });
+    if (span) setFilters(span);
   };
 
   // The search box writes the URL a moment after typing stops, so each key
@@ -565,58 +589,73 @@ export function Logs() {
         }
       />
 
-      <section aria-label="Filters" className="flex flex-wrap items-center gap-3">
-        <SearchInput
-          label="Search destinations"
-          placeholder="Search host or URL"
-          value={search}
-          onChange={(v) => { typed.current = true; setSearch(v); }}
-          maxLength={MAX_QUERY_LEN}
-          className="w-full sm:w-auto sm:flex-[1_1_220px] sm:max-w-[320px]"
-        />
-        <SegmentedControl<Outcome>
-          label="Outcome"
-          value={filters.outcome}
-          onChange={(outcome) => setFilters({ outcome })}
-          options={[{ value: 'all', label: 'All' }, { value: 'allowed', label: 'Allowed' }, { value: 'blocked', label: 'Blocked' }]}
-        />
-        <label className="flex min-w-0 items-center gap-2 text-sm text-ink-secondary">
-          Client
-          <select className={SELECT_CLASS} value={filters.client} onChange={(e) => setFilters({ client: e.target.value })}>
+      <section aria-label="Filters" className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <SearchInput
+            label="Search destinations"
+            placeholder="Host or URL"
+            value={search}
+            onChange={(v) => { typed.current = true; setSearch(v); }}
+            maxLength={MAX_QUERY_LEN}
+            className="w-full sm:w-auto sm:flex-[1_1_8rem] sm:max-w-[320px]"
+          />
+          <SegmentedControl<Outcome>
+            label="Outcome"
+            value={filters.outcome}
+            onChange={(outcome) => setFilters({ outcome })}
+            options={[{ value: 'all', label: 'All' }, { value: 'allowed', label: 'Allowed' }, { value: 'blocked', label: 'Blocked' }]}
+          />
+          <select
+            aria-label="Client"
+            title={clientOptions.find((o) => o.value === filters.client)?.label ?? 'All clients'}
+            className={cn(FILTER_SELECT_CLASS, 'w-28')}
+            value={filters.client}
+            onChange={(e) => setFilters({ client: e.target.value })}
+          >
             <option value="">All clients</option>
             {clientOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
-        </label>
-        <label className="flex min-w-0 items-center gap-2 text-sm text-ink-secondary">
-          Rule
-          <select className={SELECT_CLASS} value={filters.rule} onChange={(e) => setFilters({ rule: e.target.value })}>
+          <select
+            aria-label="Rule"
+            title={ruleOptions.find((o) => o.value === filters.rule)?.label ?? 'Any rule'}
+            className={cn(FILTER_SELECT_CLASS, 'w-32')}
+            value={filters.rule}
+            onChange={(e) => setFilters({ rule: e.target.value })}
+          >
             <option value="">Any rule</option>
             {ruleOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
-        </label>
-        {/* On the viewer's clock, as every time on the page. */}
-        <label className="flex min-w-0 items-center gap-2 text-sm text-ink-secondary">
-          From
-          <input
-            type="datetime-local"
-            className={SELECT_CLASS}
-            value={filters.since ? toLocalInput(filters.since) : ''}
-            onChange={(e) => setFilters({ since: fromLocalInput(e.target.value) })}
-          />
-        </label>
-        <label className="flex min-w-0 items-center gap-2 text-sm text-ink-secondary">
-          Until
-          <input
-            type="datetime-local"
-            className={SELECT_CLASS}
-            value={filters.until ? toLocalInput(filters.until) : ''}
-            onChange={(e) => setFilters({ until: fromLocalInput(e.target.value) })}
-          />
-        </label>
-        <div className="flex h-9 items-center gap-2.5 rounded-control border border-line-strong bg-surface px-3 text-sm text-ink-secondary">
-          <Switch labelledBy={switchLabelId} checked={showInternal} onChange={toggleInternal} />
-          <span id={switchLabelId}>Show internal traffic</span>
+          <select aria-label="Time range" className={cn(FILTER_SELECT_CLASS, 'w-32')} value={range} onChange={(e) => pickRange(e.target.value as TimeRange)}>
+            {TIME_RANGES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+          </select>
+          <div className="flex h-9 shrink-0 items-center gap-2 px-1 text-[13px] text-ink-secondary">
+            <Switch labelledBy={switchLabelId} checked={showInternal} onChange={toggleInternal} />
+            <span id={switchLabelId}>Show internal traffic</span>
+          </div>
         </div>
+        {range === 'custom' && (
+          // On the viewer's clock, as every time on the page.
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex min-w-0 items-center gap-2 text-sm text-ink-secondary">
+              From
+              <input
+                type="datetime-local"
+                className={SELECT_CLASS}
+                value={filters.since ? toLocalInput(filters.since) : ''}
+                onChange={(e) => setFilters({ since: fromLocalInput(e.target.value) })}
+              />
+            </label>
+            <label className="flex min-w-0 items-center gap-2 text-sm text-ink-secondary">
+              Until
+              <input
+                type="datetime-local"
+                className={SELECT_CLASS}
+                value={filters.until ? toLocalInput(filters.until) : ''}
+                onChange={(e) => setFilters({ until: fromLocalInput(e.target.value) })}
+              />
+            </label>
+          </div>
+        )}
       </section>
 
       <Section title="Requests" description={timesNote()} flush>

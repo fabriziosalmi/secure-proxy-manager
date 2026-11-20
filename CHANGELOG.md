@@ -33,6 +33,19 @@ for at least one minor release before disappearing.
   when a page does not scroll, so the content no longer moves sideways from
   one page to the next (Settings, Appearance was 4 px wider than every other
   page), and the Settings section list stays in view under the band.
+- **Access logs: one time range select instead of From and Until, and the
+  filters keep one row.** "Until" wrapped alone onto a second row with the
+  internal-traffic switch, and the two empty date fields showed the
+  browser's own date format (such as gg/mm/aaaa) in an English page. The
+  select offers Any time, Last hour, Last 24 hours, Last 7 days and Custom
+  range; only Custom range shows the two times, on a row of their own. A
+  preset writes the same `since` that typing that time into From did, with
+  `until` open, so the URL and the request to the API are as before, and a
+  range from a link opens as Custom range with its times. The client and
+  rule selects are named by their first option (All clients, Any rule) and
+  have fixed widths, so search, outcome, client, rule, time range and the
+  internal-traffic switch sit on one row from a 1280 px window with the
+  sidebar open.
 
 ### Fixed
 
