@@ -633,6 +633,12 @@ jobs:
       # the same second never reloaded dnsmasq.
       - name: DNS reloads on every write, also two in the same second
         run: bash tests/shell/dns_reload_test.sh
+      # No workflow built the spm-mcp image, so a bump of its Python base went
+      # green without anyone building it. This builds mcp/Dockerfile and runs
+      # the server from it: Python version, pip check, imports, non-root, an
+      # MCP initialize over stdio, and the startup error behind a redirect.
+      - name: spm-mcp image builds and starts
+        run: bash tests/shell/mcp_image_test.sh
 
   # ── 8. Popular list URL health check ──────────────────────────────────
   check-urls:
