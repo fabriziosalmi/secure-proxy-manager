@@ -15,6 +15,17 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Changed
+
+- **The optional observability and Tailscale services move to newer
+  upstream images.** grafana 13.3.1, prometheus v3.16.0 and tailscale
+  v1.104.7 in both compose files, and k6 2.4.0 for the adversarial tests,
+  each pinned by digest. The tags they replace (grafana 13.3.0, prometheus
+  v3.15.1, tailscale v1.104.4, k6 2.3.0) ship Go binaries with
+  CVE-2026-97054 (GO-2026-6859, a crash of an HTTP/1 server through a race in
+  `MaxBytesReader`). The images this project builds already use Go 1.27.4,
+  which fixes it.
+
 ## [3.43.0] - 2026-11-17
 
 Hardening: what the proxy, the CLI, the MCP server, the installer and the
