@@ -593,7 +593,7 @@ export function Logs() {
         <div className="flex flex-wrap items-center gap-2">
           <SearchInput
             label="Search destinations"
-            placeholder="Host or URL"
+            placeholder="Search host or URL"
             value={search}
             onChange={(v) => { typed.current = true; setSearch(v); }}
             maxLength={MAX_QUERY_LEN}
