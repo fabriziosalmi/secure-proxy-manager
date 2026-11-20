@@ -28,6 +28,19 @@ for at least one minor release before disappearing.
   those 18 binaries, by path, until 2026-12-04. The images this project
   builds use Go 1.27.4 and are scanned at release with no exception.
 
+### Fixed
+
+- **The release-track canary reads the installer of the checkout it runs
+  in.** Since 3.43.0, `scripts/canary.sh` with `CANARY_TRACK=release` checks
+  that a release's images are published with `deploy/install.sh`, which it
+  looked for next to the script. Run from a copy outside the checkout, as a
+  systemd unit does so that a reset cannot rewrite the running script, it
+  stopped with "deploy/install.sh not found" before aligning, so a deployment
+  on the release track could not move to a newer release. It now takes the
+  installer from the checkout of its working directory. The test runs the
+  canary from such a copy, against a deployment that carries its own
+  installer.
+
 ## [3.43.0] - 2026-11-17
 
 Hardening: what the proxy, the CLI, the MCP server, the installer and the
