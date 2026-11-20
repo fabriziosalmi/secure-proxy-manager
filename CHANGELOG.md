@@ -15,6 +15,19 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Changed
+
+- **The `spm-mcp` image runs on Python 3.15** (`python:3.15-slim`, 3.15.2,
+  pinned by digest). Its two locks are regenerated for 3.15 with the same
+  versions; every compiled dependency (cffi, pydantic-core, rpds-py,
+  cryptography) has a 3.15 wheel for x86_64 and aarch64. The backend, WAF
+  and DNS images move to Alpine 3.24.4.
+- CI: the "Docker build" job now builds the `spm-mcp` image and starts the
+  server from it (`tests/shell/mcp_image_test.sh`): Python version, `pip
+  check`, imports, non-root user, an MCP initialize over stdio, and the
+  startup error behind a redirect. No workflow built that image before, so a
+  change of its base passed CI unbuilt.
+
 ## [3.43.1] - 2026-11-20
 
 Two fixes for what 3.43.0 left behind. Nothing is **BREAKING** and
