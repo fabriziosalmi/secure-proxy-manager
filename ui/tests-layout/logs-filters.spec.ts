@@ -44,6 +44,17 @@ for (const viewport of [{ width: 1512, height: 805 }, { width: 1280, height: 800
       expect(await bar.evaluate((el) => el.scrollWidth - el.clientWidth), 'the filter bar scrolls sideways').toBeLessThanOrEqual(0);
     });
 
+    // "Search host or U" at 1280: the native clear button of a search field
+    // takes part of its width, so the placeholder is typed in and measured
+    // with that button shown.
+    test('the search box shows its whole placeholder', async ({ page }) => {
+      const box = page.getByRole('searchbox', { name: 'Search destinations' });
+      const placeholder = (await box.getAttribute('placeholder'))!;
+      await box.fill(placeholder);
+      const fit = await box.evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }));
+      expect(fit.scroll, `"${placeholder}" needs ${fit.scroll} px, the box has ${fit.client}`).toBeLessThanOrEqual(fit.client);
+    });
+
     test('a custom range puts its two times on a row of their own, inside the page', async ({ page }) => {
       await page.getByRole('combobox', { name: 'Time range' }).selectOption('custom');
       const from = page.getByLabel('From');

@@ -608,7 +608,7 @@ export function Logs() {
           <select
             aria-label="Client"
             title={clientOptions.find((o) => o.value === filters.client)?.label ?? 'All clients'}
-            className={cn(FILTER_SELECT_CLASS, 'w-28')}
+            className={cn(FILTER_SELECT_CLASS, 'w-26')}
             value={filters.client}
             onChange={(e) => setFilters({ client: e.target.value })}
           >
@@ -618,7 +618,7 @@ export function Logs() {
           <select
             aria-label="Rule"
             title={ruleOptions.find((o) => o.value === filters.rule)?.label ?? 'Any rule'}
-            className={cn(FILTER_SELECT_CLASS, 'w-32')}
+            className={cn(FILTER_SELECT_CLASS, 'w-28')}
             value={filters.rule}
             onChange={(e) => setFilters({ rule: e.target.value })}
           >
@@ -628,7 +628,7 @@ export function Logs() {
           <select aria-label="Time range" className={cn(FILTER_SELECT_CLASS, 'w-32')} value={range} onChange={(e) => pickRange(e.target.value as TimeRange)}>
             {TIME_RANGES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>
-          <div className="flex h-9 shrink-0 items-center gap-2 px-1 text-[13px] text-ink-secondary">
+          <div className="flex h-9 shrink-0 items-center gap-2 pl-1 text-[13px] text-ink-secondary">
             <Switch labelledBy={switchLabelId} checked={showInternal} onChange={toggleInternal} />
             <span id={switchLabelId}>Show internal traffic</span>
           </div>
