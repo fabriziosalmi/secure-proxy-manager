@@ -163,3 +163,31 @@ for (const route of ['/logs', '/blacklists', '/egress', '/audit']) {
     await expect(tip).toBeHidden();
   });
 }
+
+// On a phone the band's row wraps: the actions go under the title and must
+// wrap inside the band. They could not shrink, so on /analytics the four
+// related-page links stayed one 365 px line and the page scrolled sideways
+// (by 2 px at 390 in CI's fonts, by 25 px at 360). Measured at 360, a common
+// Android width, so the margin does not depend on the fonts installed.
+test.describe('360x780', () => {
+  test.use({ viewport: { width: 360, height: 780 } });
+  test('on a phone the band holds its title and actions on every page, and no page scrolls sideways', async ({ page }, info) => {
+    test.skip(info.project.name !== 'desktop-1440', 'the viewport is set here, once');
+    await mockApi(page);
+    const out: string[] = [];
+    for (const route of ROUTES) {
+      await page.goto(route);
+      await expect(page.getByTestId('page-band').getByRole('heading', { level: 1 })).toBeVisible();
+      await page.waitForLoadState('networkidle');
+      const m = await page.evaluate(() => {
+        const row = document.querySelector('[data-testid="page-band"] > div') as HTMLElement;
+        const right = row.getBoundingClientRect().right - parseFloat(getComputedStyle(row).paddingRight);
+        const past = Math.max(0, ...[...row.children].map((k) => k.getBoundingClientRect().right - right));
+        const main = document.querySelector('main')!;
+        return { past: Math.round(past), scroll: main.scrollWidth - main.clientWidth };
+      });
+      if (m.past > 0.5 || m.scroll > 0) out.push(`${route}: band content ${m.past} px past its edge, page ${m.scroll} px wider than the screen`);
+    }
+    expect(out).toEqual([]);
+  });
+});

@@ -45,7 +45,10 @@ export function PageHeader({ title, eyebrow, description, describe = 'tooltip', 
           {description && describe === 'tooltip' && <InfoTip label={`About ${title}`}>{description}</InfoTip>}
         </div>
       </div>
-      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+      {/* On a wide screen the actions keep their width beside the title; on a
+          phone they go under it and wrap inside the band (min-w-0), or a row
+          of links ran past the screen. */}
+      {actions && <div className="flex min-w-0 flex-wrap items-center gap-2 lg:shrink-0">{actions}</div>}
     </>
   );
   const inline = description && describe === 'inline'

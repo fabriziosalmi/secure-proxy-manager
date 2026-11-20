@@ -25,7 +25,7 @@ for at least one minor release before disappearing.
   sidebar (Insights, Traffic, Protection, System), read from the navigation
   for the route, so the Overview now shows "Insights" too and no page can
   name a group it is not in. The page's buttons are on the right of the
-  band. A page description that says what the numbers count or over which
+  band; on a phone they go under the title and wrap inside the band. A page description that says what the numbers count or over which
   time window (Overview, Analytics, Clients) is a line at the top of the
   content; the others (Access logs, Blacklists, Default-deny allowlist,
   Audit log) are the tooltip of an info button next to the title, shown on
