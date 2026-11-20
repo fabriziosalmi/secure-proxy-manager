@@ -171,6 +171,25 @@ describe('App', () => {
     10000,
   )
 
+  // A path no page answers still fills the band: it was left empty, a 64px
+  // strip with nothing in it over the 404.
+  it('an unknown path shows "Page not found" in the band', async () => {
+    signedIn()
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url === 'settings') return Promise.resolve({ data: { data: [{ setting_name: 'wizard_completed', setting_value: 'true' }] } })
+      return Promise.resolve({ data: { data: [], meta: { total: 0 } } })
+    })
+    window.history.pushState({}, '', '/no-such-page')
+    try {
+      render(<App />)
+      const band = await screen.findByTestId('page-band', {}, { timeout: 5000 })
+      const h1 = await within(band).findByRole('heading', { level: 1 }, { timeout: 5000 })
+      expect(h1).toHaveTextContent('Page not found')
+    } finally {
+      window.history.pushState({}, '', '/')
+    }
+  }, 10000)
+
   it('shows the sign-in screen when GET /api/session has no session, and never reads localStorage for one', async () => {
     localStorage.setItem('auth_token', 'left-by-an-old-version')
     render(<App />)

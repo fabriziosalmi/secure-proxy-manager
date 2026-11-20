@@ -55,6 +55,36 @@ for (const viewport of [{ width: 1512, height: 805 }, { width: 1280, height: 800
       expect(fit.scroll, `"${placeholder}" needs ${fit.scroll} px, the box has ${fit.client}`).toBeLessThanOrEqual(fit.client);
     });
 
+    // "10.20.0.1…" and "Domain b…": a chosen client or rule was cut to the
+    // compact width that fits the select's own name. The browser measures
+    // what the value needs: a copy of the select holding only that option,
+    // at its natural width.
+    test('a chosen client and rule show their whole value', async ({ page }) => {
+      await page.goto('/logs?client=10.20.0.109&rule=domain_blacklist');
+      await expect(page.getByRole('table', { name: 'Access log requests' })).toBeVisible();
+      await page.waitForLoadState('networkidle');
+      const bar = page.getByRole('region', { name: 'Filters' });
+      for (const [name, want] of [['Client', '10.20.0.109'], ['Rule', 'Domain blacklist (proxy)']]) {
+        const select = bar.getByRole('combobox', { name });
+        await expect(select).toHaveValue(name === 'Client' ? '10.20.0.109' : 'domain_blacklist');
+        const fit = await select.evaluate((el) => {
+          const s = el as HTMLSelectElement;
+          const copy = s.cloneNode(false) as HTMLSelectElement;
+          copy.appendChild(s.options[s.selectedIndex].cloneNode(true));
+          copy.style.width = 'auto';
+          copy.style.maxWidth = 'none';
+          copy.style.position = 'absolute';
+          s.parentElement!.appendChild(copy);
+          const need = copy.getBoundingClientRect().width;
+          copy.remove();
+          return { text: s.options[s.selectedIndex].text, need, has: s.getBoundingClientRect().width };
+        });
+        expect(fit.text).toBe(want);
+        expect(fit.has, `"${fit.text}" needs ${Math.round(fit.need)} px, the ${name} select has ${Math.round(fit.has)}`).toBeGreaterThanOrEqual(fit.need - 0.5);
+      }
+      expect(await bar.evaluate((el) => el.scrollWidth - el.clientWidth), 'the filter bar scrolls sideways').toBeLessThanOrEqual(0);
+    });
+
     test('a custom range puts its two times on a row of their own, inside the page', async ({ page }) => {
       await page.getByRole('combobox', { name: 'Time range' }).selectOption('custom');
       const from = page.getByLabel('From');

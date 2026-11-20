@@ -131,12 +131,16 @@ const SELECT_CLASS =
   'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent';
 
 /**
- * The filter row's selects have fixed widths, so the six filters keep one
- * row from a 948px column up (1280px with the sidebar open) whatever the
- * options hold; a value too long for its box ends in an ellipsis and is
- * whole in the select's title. Their first option names them (All clients,
- * Any rule, Any time), and so does their aria-label.
+ * The filter row's selects are compact while they show their own name
+ * (All clients, Any rule, Any time: their first option, and their
+ * aria-label), so the six filters keep one row from a 948px column up
+ * (1280px with the sidebar open). A chosen client or rule takes the select's
+ * natural width, up to 14rem, so the value reads whole ("10.20.0.1..." was
+ * cut to the compact width), and the row may wrap while a filter is on. A
+ * value longer than that ends in an ellipsis and is whole in the title.
  */
+const filterWidth = (chosen: string, compact: string) => (chosen ? 'w-auto max-w-56' : compact);
+
 const FILTER_SELECT_CLASS =
   'h-9 shrink-0 truncate rounded-control border border-line-strong bg-surface pl-2.5 pr-1 text-sm text-ink ' +
   'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent';
@@ -608,7 +612,7 @@ export function Logs() {
           <select
             aria-label="Client"
             title={clientOptions.find((o) => o.value === filters.client)?.label ?? 'All clients'}
-            className={cn(FILTER_SELECT_CLASS, 'w-26')}
+            className={cn(FILTER_SELECT_CLASS, filterWidth(filters.client, 'w-26'))}
             value={filters.client}
             onChange={(e) => setFilters({ client: e.target.value })}
           >
@@ -618,7 +622,7 @@ export function Logs() {
           <select
             aria-label="Rule"
             title={ruleOptions.find((o) => o.value === filters.rule)?.label ?? 'Any rule'}
-            className={cn(FILTER_SELECT_CLASS, 'w-28')}
+            className={cn(FILTER_SELECT_CLASS, filterWidth(filters.rule, 'w-28'))}
             value={filters.rule}
             onChange={(e) => setFilters({ rule: e.target.value })}
           >

@@ -29,7 +29,8 @@ for at least one minor release before disappearing.
   time window (Overview, Analytics, Clients) is a line at the top of the
   content; the others (Access logs, Blacklists, Default-deny allowlist,
   Audit log) are the tooltip of an info button next to the title, shown on
-  hover and on keyboard focus. The main column keeps its scrollbar gutter
+  hover and on keyboard focus. An address no page answers shows "Page not
+  found" in the band. The main column keeps its scrollbar gutter
   when a page does not scroll, so the content no longer moves sideways from
   one page to the next (Settings, Appearance was 4 px wider than every other
   page), and the Settings section list stays in view under the band.
@@ -43,9 +44,10 @@ for at least one minor release before disappearing.
   `until` open, so the URL and the request to the API are as before, and a
   range from a link opens as Custom range with its times. The client and
   rule selects are named by their first option (All clients, Any rule) and
-  have fixed widths, so search, outcome, client, rule, time range and the
-  internal-traffic switch sit on one row from a 1280 px window with the
-  sidebar open.
+  are compact while nothing is chosen, so search, outcome, client, rule,
+  time range and the internal-traffic switch sit on one row from a 1280 px
+  window with the sidebar open; a chosen client or rule widens its select
+  so the value reads whole, and the row may then wrap.
 - **Overview: the four cards open the page that lists what they count, all
   in the same way.** Client requests opens the access log (it opened
   nothing), Blocked the blocked requests, Active clients the Clients page
@@ -60,8 +62,7 @@ for at least one minor release before disappearing.
 - **Settings: each row keeps its control by its text, and every description
   is written the same way.** On a 1512 px screen the "Require proxy login"
   switch ended 886 px from the start of its label; each row (label,
-  description and control)
-  is now at most 768 px wide, in every section, so the switch or choice is
+  description and control) is now at most 768 px wide, in every section, so the switch or choice is
   next to what it sets. The help under a narrow field ("Refresh provider
   lists every (hours)", "Keep logs for (days)") was cut to the field's
   width in smaller type; field help, and the notes under a field, now have
