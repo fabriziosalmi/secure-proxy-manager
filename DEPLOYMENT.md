@@ -55,12 +55,18 @@ curl -fsSL https://raw.githubusercontent.com/fabriziosalmi/secure-proxy-manager/
 
 1. installs Docker (`get.docker.com`), the Compose plugin and `git` when they
    are missing;
-2. clones the newest release, the highest `vX.Y.Z` tag, to
+2. clones the newest release, the highest `vX.Y.Z` tag whose five images
+   (web, backend, waf, proxy, dns) are published on `ghcr.io`, to
    `/opt/secure-proxy-manager`, or on a re-run moves the clone to it (detached).
-   `SPM_VERSION=vX.Y.Z` installs that release instead. `main` is never
-   installed: its compose file can be ahead of the release images. An
-   installation made by an earlier installer tracked `main` and moves to the
-   release too;
+   It asks the registry anonymously, with `curl`, before the clone moves. A tag
+   whose images are still building, or never passed the release gates, is
+   skipped with a `[WARN]` naming it and the missing images; at most two tags
+   are skipped, then it stops. When the registry cannot be asked it stops with
+   an error and changes nothing, rather than install an older release.
+   `SPM_VERSION=vX.Y.Z` installs that release instead, and stops if its images
+   are not published. `main` is never installed: its compose file can be ahead
+   of the release images. An installation made by an earlier installer tracked
+   `main` and moves to the release too;
 3. copies `deploy/docker-compose.prod.yml` to `compose.prod.yml` and selects it
    with `COMPOSE_FILE=compose.prod.yml` in `.env`;
 4. on a first run writes `.env` with `BASIC_AUTH_USERNAME=admin`, a random

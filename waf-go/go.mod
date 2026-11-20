@@ -9,7 +9,7 @@ require (
 	github.com/go-icap/icap v0.0.0-20151011115316-ca4fad4ebb28
 	github.com/wasilibs/go-re2 v1.13.0
 	golang.org/x/net v0.62.0
-	golang.org/x/text v0.43.0
+	golang.org/x/text v0.44.0
 	rsc.io/binaryregexp v0.2.0
 )
 
@@ -30,7 +30,7 @@ require (
 	github.com/valllabh/ocsf-schema-golang v1.0.3 // indirect
 	github.com/wasilibs/go-aho-corasick v0.6.0 // indirect
 	github.com/wasilibs/go-libinjection v0.5.0 // indirect
-	golang.org/x/sync v0.24.0 // indirect
+	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )

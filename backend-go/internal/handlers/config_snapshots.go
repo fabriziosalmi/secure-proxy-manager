@@ -189,13 +189,41 @@ var snapshotState atomic.Pointer[SnapshotHandlers]
 // for a route that changes the configuration. A snapshot that cannot be
 // taken is logged and the change goes ahead: history must not block a fix.
 func snapshotBefore(reason string) func(http.Handler) http.Handler {
+	return snapshotBeforeFunc(func(*http.Request) string { return reason })
+}
+
+// settingChangeReason names the setting a PUT /api/settings/{name} changes,
+// so the history tells it from a settings save. A name the route refuses is
+// not written into the history.
+func settingChangeReason(r *http.Request) string {
+	if name := chi.URLParam(r, "name"); isWritableSettingKey(name) {
+		return "a change to setting " + name
+	}
+	return "a change to a setting"
+}
+
+// snapshotBeforeFunc is snapshotBefore with a reason that depends on the
+// request.
+//
+// A request that carries dry_run (any value but "" or "false") is not
+// snapshotted, so it must change nothing. An operation in dryRunOps previews
+// it or refuses it itself (dryRun); every other one is refused here, before
+// its handler runs: a handler that does not read dry_run would apply the
+// change with no snapshot to go back to.
+func snapshotBeforeFunc(reasonOf func(*http.Request) string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			v := r.URL.Query().Get("dry_run")
+			if v != "" && v != "false" && !dryRunOps[r.Method+" "+routeKey(r)] {
+				writeError(w, http.StatusBadRequest, "this operation has no dry run: nothing was changed; send it without dry_run to run it")
+				return
+			}
 			// A preview changes nothing, and neither does a dry_run the handler
 			// refuses: only a call that runs for real is snapshotted.
-			if v := r.URL.Query().Get("dry_run"); (v == "" || v == "false") && snapshotState.Load() != nil {
+			if (v == "" || v == "false") && snapshotState.Load() != nil {
 				sh := snapshotState.Load()
 				user, _ := r.Context().Value(middleware.CtxUsername).(string)
+				reason := reasonOf(r)
 				if _, _, err := takeSnapshot(sh.db, sh.cfg, user, "before "+reason); err != nil {
 					log.Warn().Err(err).Str("reason", reason).Msg("configuration snapshot not taken")
 				}
@@ -203,6 +231,16 @@ func snapshotBefore(reason string) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// routeKey is the route r matched, with its path parameters written as the
+// OpenAPI document and dryRunOps write them ({id}, not {id:[0-9]+}).
+func routeKey(r *http.Request) string {
+	rctx := chi.RouteContext(r.Context())
+	if rctx == nil {
+		return ""
+	}
+	return chiParam.ReplaceAllString(rctx.RoutePattern(), "{$1}")
 }
 
 // SnapshotHandlers serves the configuration history.

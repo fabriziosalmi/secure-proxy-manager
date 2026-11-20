@@ -15,6 +15,256 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Changed
+
+- **The `spm-mcp` image runs on Python 3.15** (`python:3.15-slim`, 3.15.2,
+  pinned by digest). Its two locks are regenerated for 3.15 with the same
+  versions; every compiled dependency (cffi, pydantic-core, rpds-py,
+  cryptography) has a 3.15 wheel for x86_64 and aarch64. The backend, WAF
+  and DNS images move to Alpine 3.24.4.
+- CI: the "Docker build" job now builds the `spm-mcp` image and starts the
+  server from it (`tests/shell/mcp_image_test.sh`): Python version, `pip
+  check`, imports, non-root user, an MCP initialize over stdio, and the
+  startup error behind a redirect. No workflow built that image before, so a
+  change of its base passed CI unbuilt.
+
+## [3.43.1] - 2026-11-20
+
+Two fixes for what 3.43.0 left behind. Nothing is **BREAKING** and
+`X-API-Version` stays 1.
+
+**Upgrade notes.**
+- A deployment that follows releases with `scripts/canary.sh`
+  (`CANARY_TRACK=release`) from a copy of the script outside its checkout
+  could not move past 3.43.0: the 3.43.0 canary stops before aligning. Align
+  it to 3.43.1 once by hand, or run the 3.43.0 script once from a copy kept
+  inside the checkout (for example `.canary-once/canary.sh`); from 3.43.1 on
+  it moves by itself.
+- The optional observability and Tailscale profiles pull newer images
+  (grafana 13.3.1, prometheus v3.16.0, tailscale v1.104.7).
+
+### Changed
+
+- **The optional observability and Tailscale services move to newer
+  upstream images.** grafana 13.3.1, prometheus v3.16.0 and tailscale
+  v1.104.7 in both compose files, and k6 2.4.0 for the adversarial tests,
+  each pinned by digest. The tags they replace ship Go binaries with
+  CVE-2026-97054 (GO-2026-6859, a crash of an HTTP/1 server through a race in
+  `MaxBytesReader`, fixed in Go 1.26.11 / 1.27.4). tailscale v1.104.7 is
+  built with a fixed Go. grafana 13.3.1, prometheus v3.16.0 and k6 2.4.0, the
+  newest tags, are not yet: the image scan carries an exception for exactly
+  those 18 binaries, by path, until 2026-12-04. The images this project
+  builds use Go 1.27.4 and are scanned at release with no exception.
+
+### Fixed
+
+- **The release-track canary reads the installer of the checkout it runs
+  in.** Since 3.43.0, `scripts/canary.sh` with `CANARY_TRACK=release` checks
+  that a release's images are published with `deploy/install.sh`, which it
+  looked for next to the script. Run from a copy outside the checkout, as a
+  systemd unit does so that a reset cannot rewrite the running script, it
+  stopped with "deploy/install.sh not found" before aligning, so a deployment
+  on the release track could not move to a newer release. It now takes the
+  installer from the checkout of its working directory. The test runs the
+  canary from such a copy, against a deployment that carries its own
+  installer.
+
+## [3.43.0] - 2026-11-17
+
+Hardening: what the proxy, the CLI, the MCP server, the installer and the
+release say they did is now what they did. One change is marked
+**BREAKING** and `X-API-Version` stays 1: nine configuration operations that
+never declared `dry_run` now refuse it instead of applying the change.
+
+**Upgrade notes.**
+- A raw API call that sent `dry_run` to one of the nine operations listed
+  below gets `400 invalid_request` and nothing changes. `spm`, `spm-mcp` and
+  the web UI never send it there.
+- The release workflow now publishes all five images or none: no version tag
+  or `:latest` moves until every image has passed its scan, and on GHCR each
+  image is signed before it is tagged.
+- `spm-mcp` 0.5.1 carries the redirect and startup-hint fixes below and is
+  published to PyPI separately; it works with 3.41.0 or later.
+
+### Changed
+
+- **No image of a release is tagged until all five have passed their scan.**
+  The release workflow builds, pushes by digest and scans every image first,
+  and moves no `vX.Y.Z` or `latest` tag until all five have passed the scan
+  and the `spm` binaries are signed. Then, for each image, it checks that the
+  scanned digest resolves, signs it on GHCR, and only after that gives it its
+  GHCR tags, so on GHCR a signing failure leaves the image untagged instead of
+  tagged and unsigned. The Docker Hub mirror follows: copying the digest to
+  Docker Hub creates its Hub tags, and the Hub copy is signed after that. A
+  red scan on one image no longer leaves an image that finished first
+  published on its own, as dns was in 3.26.0 while web failed its scan and the
+  other three stopped. A failure while publishing is finished by re-running
+  the failed jobs of the same run, with the digests that were scanned, without
+  cutting a new release. Each scanned digest is handed to publishing under a
+  name that carries the run attempt, and publishing reads, for each image, the
+  digest of the newest attempt: a full rerun publishes the digests it rebuilt
+  and scanned, and a rerun of the failed jobs only still finds the earlier
+  attempt's.
+- CI: a newer push to a pull request cancels the CI run of the commit it
+  replaces, so a superseded run no longer holds runners the new head waits
+  for. Runs on main, in the merge queue, the nightly run and manual runs each
+  get a group of their own and are never cancelled or queued behind another
+  run.
+- **BREAKING** (`X-API-Version: 1`): **a request that carries `dry_run` to a
+  configuration change that has no preview is refused and changes nothing.**
+  The nine operations that take a configuration snapshot first but do not
+  declare `dry_run` (`PUT /api/settings/{name}`, `POST /api/settings`,
+  `PUT /api/waf/policy`, `POST /api/waf/policy/exceptions`,
+  `POST /api/waf/policy/observe-rules`, `POST /api/egress-allowlist`,
+  `DELETE /api/egress-allowlist/{id}`, `POST /api/client-groups`,
+  `PUT /api/client-groups/{id}`) answer `400 invalid_request` to a
+  `dry_run` other than `false` or empty, before their handler runs. They ignored the
+  parameter and applied the change, while the snapshot taken before every
+  change was skipped for a request carrying `dry_run`, so a caller that asked
+  for a preview got the change with no snapshot to restore. `dry_run=false`,
+  an empty `dry_run` or none runs them as before. A test lists every route behind the
+  snapshot and holds each to this or to a real preview.
+
+### Fixed
+
+- **The installer installs the newest release whose images are published.**
+  It took the newest `vX.Y.Z` git tag, which exists from the moment it is
+  pushed, while the images are published only at the end of the release run
+  and never when a gate fails: an install or update in that window, or on a
+  release whose images were never published, stopped at the image pull with
+  `manifest unknown`. `deploy/install.sh` now asks `ghcr.io` anonymously
+  whether the five images (web, backend, waf, proxy, dns) of the tag exist
+  before it clones or moves the installation. A tag without them is skipped,
+  with a `[WARN]` naming it and the missing images, at most twice; then it
+  stops. When the registry cannot be asked it stops with an error and changes
+  nothing, rather than install an older release. An explicit `SPM_VERSION`
+  is checked the same way and never falls back. `scripts/canary.sh` follows
+  the same rule on its `release` track, using the installer's own check.
+
+- **The blacklist auto-refresh refuses a feed above 32 MB, the cap the import
+  already used.** It read up to 200 MiB of a feed into memory, in a backend
+  limited to 128M, and cut a larger feed short with no error, so the entries
+  past the cut were handled as dropped. A feed above the cap now counts as
+  failed: its entries stay, nothing of that list is removed in that run, and
+  its source reads "not downloaded: larger than the 32 MB cap". A custom feed
+  between 32 MB and 200 MiB that refreshed before now fails the same way; the
+  import and the refresh share one constant, so the two caps cannot drift.
+- **A tar-pitted block no longer holds the shared inspection budget.** A
+  client blocked more than three times in a minute still waits 10 seconds for
+  each further block page, but its request now gives back the inspection
+  budget and lets go of its body before that wait, not after. One client's
+  repeated blocked uploads can no longer make other clients' requests wait for
+  the budget and fail with a 503.
+- **A page that fails to load after an upgrade offers a reload that works.**
+  A tab left open across an upgrade asks for page files the new build no
+  longer serves. The error screen now says a new version was installed and
+  its button reloads the page. Before, its Try again button brought back the
+  same error every time, because the failed load is kept until the page is
+  reloaded. Other errors keep Try again.
+- **Change password accepts every password the backend accepts.** The form
+  counted only 20 symbols as a special character, so a passphrase such as
+  `correct-horse-9`, whose only symbols are hyphens, kept the button disabled
+  although the API takes it. It now counts any character that is not an
+  ASCII letter or digit, as the backend does, and counts the length in
+  characters, so a 7-character password with an emoji is no longer shown as
+  long enough.
+- **Removing the last rows of a later page moves the table back a page.** On
+  Blacklists and the Egress allowlist, removing every row of page 2 or later
+  left the table on a page past the end. It showed the
+  empty state, as if the list were empty, with no Previous button to go
+  back. The table now moves to the last page that has rows.
+- **A refused access-log search says why.** The Logs search box stops at the
+  256 characters the backend takes. When the backend refuses the filters,
+  for example a longer search that arrives through the global search, the
+  table shows the backend's reason ("q is too long") instead of "logs did
+  not answer", and offers no Retry, which would be refused the same way.
+- **Blocked IPs and IP exceptions accept a single IPv6 address or network.**
+  Add entries, Single entry, refused `2001:db8::1` and `2001:db8::/32` as
+  "not an IPv4 address or network", although the backend and the proxy take
+  IPv6 and a pasted list already added it. The form now checks IPv6 the way
+  the backend does and refuses only what the backend refuses, saying "not
+  an IP address or network".
+- **After Reset statistics, Clear the log or Delete older logs, the pages
+  show the emptied figures.** Reset statistics marked no cached figure out
+  of date, and the other two only the Logs page, so for up to a minute
+  Logs, Clients, Overview and Analytics could show the numbers from before
+  the deletion. Every figure counted from the request log or the WAF is now
+  fetched again.
+- **`spm` stops at a redirect and names where it points.** The `web`
+  service's plain HTTP ports answer every `/api/` path with a 301 to its
+  https address. `spm` followed it, so a `POST` or `DELETE` arrived there as a
+  `GET` with the token. When the https certificate passed (`--insecure`, or a
+  certificate an authority signed), its 200 read as done, and
+  `spm blocked-ips add` printed "Added" and exited 0 with nothing added. A redirect is now an error that
+  names its target, nothing is sent there, and the exit status is 3.
+- **`spm-mcp` 0.5.1 reports a redirect as an error that names where it
+  points.** A 3xx answer, such as the one the plain HTTP port gives, came back
+  as a successful empty result, and at startup as "not an OpenAPI document".
+  It is now an error naming the `Location`, with the hint to set `SPM_URL` to
+  that server's address. The startup error now carries that hint, and the
+  one for a refused token, which it used to drop: with `SPM_URL` on the plain
+  HTTP port it is the only error shown. The fix ships in `spm-mcp` 0.5.1, which works with the same
+  servers as 0.5.0 (3.41.0 or later).
+- **`spm <list> remove VALUE` removes the entry written as `VALUE`.** With
+  both `example.com` and `.example.com` on the default-deny allowlist and the
+  wider one newer, `spm allowlist remove example.com` removed `.example.com`,
+  printed "Removed example.com" and exited 0, so default-deny then blocked the
+  subdomains. The exact entry now wins. A loose match (`.example.com` or
+  `*.example.com` for `example.com`) still counts when it is the only one, and
+  one that fits several entries is refused with exit status 1 and nothing
+  removed. The search reads every page, so an entry beyond the first 1000
+  matches is found instead of reported as not on the list. The search sent to
+  the server is the bare name: the server reads `*` in a search as a literal
+  character, so `spm allowlist remove '*.example.com'` said it was not on the
+  list while `.example.com` was, and a blocked domain kept as
+  `*.ads.example.org` could be removed only as written. "Removed" names the
+  entry as the list writes it, which a loose match may write differently
+  from `VALUE`.
+- **`spm login` sends a saved token only to the server it was saved for.**
+  `spm login --url https://OTHER:8443` without `--token` pinned the other
+  server's certificate and then sent it the token saved for the first server,
+  without asking. It now asks for a token for any address other than the
+  saved one, and reuses the saved token for the same address. When the server
+  refuses a reused token, the message says to give a new one with `--token`.
+- **`spm login --insecure` to an https address is refused.** It pinned
+  nothing, printed "Signed in" and exited 0, and every later command, which
+  checks the certificate, then failed with exit status 3 against the default
+  self-signed one. It now exits 2 with nothing sent, and the message names
+  `--fingerprint` as the way to pin without the question.
+- An extra HTTPS port set in Settings carries HTTPS even below 1025 (993,
+  465, 636, 853), with SSL bump on or off. The proxy used to refuse it as
+  `port_policy`, because the `Safe_ports` rule ran first: the tunnel
+  (`CONNECT`), each request inside a bumped tunnel (an `https://` request
+  that Squid checks again) and an `https://` URL a client asks the proxy to
+  fetch without a tunnel. Plain HTTP to such a port, and HTTPS to a port
+  that is not listed, are still refused. Ports such as 44, 8 and 844 are
+  now added too: they were taken as already present because 443 and 8443
+  contain them.
+- **The WAF reconciler notices a WAF restart it did not see.** Every 30
+  seconds it reads the heuristics the WAF runs and pushes the stored value of
+  each one that differs, so a WAF that restarted between two passes, or a
+  restore that changed a `waf_h_*` setting, no longer leaves the WAF on its
+  `WAF_H_*` compose defaults. A WAF that matches gets no writes; a WAF whose
+  running heuristics cannot be read gets every stored value.
+- **Saving or restoring only the time window or the bandwidth limits reaches
+  the proxy.** `time_restrictions.conf` and `bandwidth_limits.conf` are
+  rewritten when a request carries any of their settings, not only the
+  toggle, so `PUT /api/settings/{name}` (`spm settings set
+  time_restriction_start 09:00`) and a snapshot restore that changes only a
+  time or a limit no longer leave the proxy on the old values.
+- **Changing one setting takes a configuration snapshot first.**
+  `PUT /api/settings/{name}` (`spm settings set`) is preceded by a snapshot,
+  as `POST /api/settings` is, with the reason "before a change to setting
+  {name}", so the configuration history can undo it and tells it apart from a
+  settings save.
+- **`POST /api/maintenance/reload-config` no longer answers "Proxy reloaded"
+  when exporting the lists failed.** The proxy still reloads, and the answer
+  is `200` with `status: "partial"` and `code: "export_failed"`, saying the
+  proxy enforces the list files already on disk. The dashboard shows it as a
+  warning, not as applied and not as a reload that could not be requested. A
+  `trigger_write_failed` answer no longer claims the lists were exported when
+  they were not.
+
 ## [3.42.0] - 2026-11-16
 
 The MCP server offers 102 tools instead of 13. Nothing in the API is

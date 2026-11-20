@@ -51,6 +51,7 @@ SPM_URL = os.environ.get("SPM_URL", "http://localhost:5001").rstrip("/")
 
 # Named so the two branches below read as status classes rather than as
 # literals a reader has to decode.
+HTTP_MULTIPLE_CHOICES = 300  # the first redirect status
 HTTP_UNAUTHORIZED = 401
 HTTP_FORBIDDEN = 403
 HTTP_BAD_REQUEST = 400
@@ -107,6 +108,12 @@ def _req(method: str, path: str, **kw: Any) -> Any:
         r = _client.request(method, path, **kw)
     except httpx.HTTPError as e:  # network/DNS/TLS
         return {"error": f"request failed: {e}", "hint": f"is SPM_URL={SPM_URL} reachable?"}
+    if HTTP_MULTIPLE_CHOICES <= r.status_code < HTTP_BAD_REQUEST:
+        # httpx does not follow it, so nothing went where it points. The web
+        # service's plain HTTP port answers every /api/ path this way.
+        where = r.headers.get("location") or "(no Location)"
+        return {"error": f"redirected to {where} ({r.status_code})",
+                "hint": "set SPM_URL to that server's address; nothing was sent there"}
     if r.status_code == HTTP_UNAUTHORIZED:
         hint = ("check SPM_TOKEN: it may be revoked or expired" if SPM_TOKEN
                 else "check SPM_USERNAME / SPM_PASSWORD")
@@ -286,8 +293,12 @@ class SPMServer:
             spec = _req("GET", "/api/openapi.json")
             if not isinstance(spec, dict) or "paths" not in spec:
                 detail = spec.get("error") if isinstance(spec, dict) else "not an OpenAPI document"
+                # The hint says what to do (set SPM_URL to the address a
+                # redirect names, check SPM_TOKEN): with SPM_URL on the plain
+                # HTTP port this error is the only one the user sees.
+                hint = spec.get("hint") if isinstance(spec, dict) else None
                 raise RuntimeError(f"spm-mcp: GET /api/openapi.json from {SPM_URL} failed ({detail}); "
-                                   "the tools come from it")
+                                   "the tools come from it" + (f"; {hint}" if hint else ""))
             named = any(isinstance(op, dict) and op.get("x-spm-mcp-name")
                         for item in spec["paths"].values() for op in item.values())
             if not named:

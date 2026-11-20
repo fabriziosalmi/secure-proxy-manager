@@ -389,6 +389,16 @@ acl direct_ipv6_host dstdom_regex -i ^\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\]$
 
 # HTTP method definitions
 acl CONNECT method CONNECT
+# HTTPS to a port in SSL_ports: a tunnel to it (CONNECT), or an https://
+# request to it (proto HTTPS), which is what a client sends when it asks Squid
+# to fetch an https:// URL and what Squid checks for every request inside a
+# bumped tunnel. Settings > Extra HTTPS ports adds a port to SSL_ports only, so
+# this lets HTTPS to 993 or 465 past the Safe_ports rule, with SSL bump on or
+# off, while plain HTTP (proto HTTP) to the same port stays refused there.
+acl spm_https_proto proto HTTPS
+acl spm_tls_tunnel all-of CONNECT SSL_ports
+acl spm_tls_request all-of spm_https_proto SSL_ports
+acl spm_tls_port any-of spm_tls_tunnel spm_tls_request
 
 # Block reasons. An annotate_transaction ACL always matches; its only effect is
 # to set the spm_reason note, which the spm logformat writes to the access log
@@ -441,7 +451,12 @@ http_access deny !Safe_methods spm_r_protocol_policy
 
 # Access rules
 http_access deny ftp_proto spm_r_protocol_policy
-http_access deny !Safe_ports spm_r_port_policy
+# HTTPS to a port in SSL_ports is left to the rules below: an extra HTTPS port
+# below 1025 is not a Safe_port, and this rule refused its tunnel, and with SSL
+# bump on every request inside the tunnel. A CONNECT to a port outside
+# SSL_ports is refused by "deny CONNECT !SSL_ports" below; an https:// request
+# to such a port that is not a Safe_port is refused here.
+http_access deny !Safe_ports !spm_tls_port spm_r_port_policy
 
 # Who may use the proxy at all. Every allow rule below is scoped by destination
 # only, so without this gate a client from ANY address could tunnel into the
@@ -681,8 +696,10 @@ if [ -n "$EXTRA_SSL_PORTS" ]; then
     for p in ${EXTRA_SSL_PORTS//,/ }; do
         # Validate: must be a number 1-65535
         if echo "$p" | grep -qE '^[0-9]+$' && [ "$p" -ge 1 ] && [ "$p" -le 65535 ]; then
-            if ! grep -q "acl SSL_ports port $p" "$SQUID_CONF"; then
-                sed -i "/^acl SSL_ports port 8443/a acl SSL_ports port $p" "$SQUID_CONF"
+            # Whole line: a substring match took 44, 8 and 844 as present
+            # (443, 8443) and never added them.
+            if ! grep -qx "acl SSL_ports port $p" "$SQUID_CONF"; then
+                sed -i "/^acl SSL_ports port 8443\$/a acl SSL_ports port $p" "$SQUID_CONF"
                 echo "  Added SSL_port $p"
             fi
         else

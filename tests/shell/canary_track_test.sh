@@ -6,6 +6,12 @@
 # still the newest. Either way the tracked lists the backend exports survive
 # the reset. compose and curl are stubs that pass.
 #
+# The release track follows the installer's rule (deploy/install.sh,
+# published_release): a tag whose five images are not in the registry is
+# skipped, and named, at most twice; a registry that cannot be asked stops the
+# canary where it is. The stub curl plays ghcr.io: every image is published
+# unless $T/missing names it, and nothing answers while $T/registry_down exists.
+#
 # Usage: tests/shell/canary_track_test.sh
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
@@ -24,8 +30,16 @@ case "$*" in
 esac
 exit 0
 EOF
+export REGISTRY_STATE="$T"
 cat > "$T/bin/curl" <<'EOF'
 #!/usr/bin/env bash
+case "$*" in
+  *"ghcr.io/token"*) [ -e "$REGISTRY_STATE/registry_down" ] && exit 7; echo '{"token":"t"}'; exit 0 ;;
+  *"ghcr.io/v2/"*)
+    if [ -e "$REGISTRY_STATE/registry_down" ]; then printf 000; exit 7; fi
+    while read -r m; do case "$*" in *"$m"*) printf 404; exit 0 ;; esac; done < <(cat "$REGISTRY_STATE/missing" 2>/dev/null)
+    printf 200; exit 0 ;;
+esac
 case "$*" in *"/api/health"*) echo '{"status":"healthy","version":"9.9.9"}'; exit 0 ;; esac
 code=405; case "$*" in *"/login"*) code=403 ;; esac
 case "$*" in *'%header{x-squid-error}'*) printf '%s ' "$code" ;; *) printf '%s' "$code" ;; esac
@@ -33,13 +47,16 @@ exit 0
 EOF
 chmod +x "$T/bin/compose" "$T/bin/curl"
 
-# Upstream: v3.9.0, v3.10.0, v3.10.1-rc1, mcp-v9.0.0, then main ahead of all.
+# Upstream: v3.8.0, v3.9.0, v3.10.0, v3.10.1-rc1, mcp-v9.0.0, then main ahead of all.
 # v3.9.0 sorts after v3.10.0 as text. config/domain_blacklist.txt is tracked,
 # as the repository's fixture is.
 g() { git -C "$T/src" -c user.name=t -c user.email=t@t "$@"; }
 git init -q -b main "$T/src"
-mkdir -p "$T/src/config"
-for v in 3.9.0 3.10.0 3.10.1-rc1 mcp-9.0.0 main; do
+mkdir -p "$T/src/config" "$T/src/deploy"
+# The deployment carries its own installer, as a real checkout does: the
+# release track must read that one, not one next to wherever the script runs.
+cp "$REPO/deploy/install.sh" "$T/src/deploy/install.sh"
+for v in 3.8.0 3.9.0 3.10.0 3.10.1-rc1 mcp-9.0.0 main; do
   printf '%s\n' "$v" > "$T/src/VERSION"
   echo fixture.example > "$T/src/config/domain_blacklist.txt"
   g add -A; g commit -q -m "$v"
@@ -47,15 +64,18 @@ for v in 3.9.0 3.10.0 3.10.1-rc1 mcp-9.0.0 main; do
 done
 git clone -q --bare "$T/src" "$T/upstream.git"
 
-deploy() { # a deployment cloned at an older release, with a live list
+deploy() { # [release, default v3.9.0] a deployment cloned at an older release, with a live list
   rm -rf "$T/d"
   git clone -q "$T/upstream.git" "$T/d"
-  git -C "$T/d" -c advice.detachedHead=false checkout -q -B main v3.9.0
+  git -C "$T/d" -c advice.detachedHead=false checkout -q -B main "${1:-v3.9.0}"
   printf 'live1.example\nlive2.example\n' > "$T/d/config/domain_blacklist.txt"
 }
 canary() { # track (empty = default) -> exit code; output in $T/out
+  # As the systemd unit runs it: a copy outside the checkout (so a reset
+  # cannot rewrite the running script), started in the deployment directory.
+  mkdir -p "$T/run"; install -m 755 "$REPO/scripts/canary.sh" "$T/run/spm-canary.sh"
   (cd "$T/d" && PATH="$T/bin:$PATH" COMPOSE="$T/bin/compose" CANARY_STATE="$T/state.json" \
-    PROBE_RETRY_DELAY=0 CANARY_TRACK="${1:-}" bash "$REPO/scripts/canary.sh" > "$T/out" 2>&1)
+    PROBE_RETRY_DELAY=0 CANARY_TRACK="${1:-}" "$T/run/spm-canary.sh" > "$T/out" 2>&1)
 }
 at() { cat "$T/d/VERSION"; }
 
@@ -77,6 +97,31 @@ deploy; canary; rc=$?
 deploy; canary nightly; rc=$?
 [ "$rc" -ne 0 ] && [ "$(at)" = 3.9.0 ] && grep -q "CANARY_TRACK must be main or release, not 'nightly'" "$T/state.json" \
   && ok "an unknown track: refused, nothing moves" || bad "unknown track" "rc=$rc at=$(at) $(cat "$T/state.json")"
+
+# The newest release without one of its images: the canary aligns to the one
+# before and says which tag it skipped and why.
+echo 'secure-proxy-manager-waf/manifests/v3.10.0' > "$T/missing"
+deploy v3.8.0; canary release; rc=$?
+[ "$rc" -eq 0 ] && [ "$(at)" = 3.9.0 ] && grep -q 'Skipping v3.10.0.*waf' "$T/out" \
+  && ok "release: v3.10.0 without its waf image, aligned to v3.9.0, v3.10.0 named as skipped" \
+  || bad "release: newest without its images" "rc=$rc at=$(at) $(tail -4 "$T/out" | tr '\n' ' ')"
+
+# Three releases in a row without their images: refused, nothing moves.
+printf '%s\n' secure-proxy-manager-dns/manifests/v3.10.0 secure-proxy-manager-web/manifests/v3.9.0 \
+  secure-proxy-manager-proxy/manifests/v3.8.0 > "$T/missing"
+deploy v3.8.0; canary release; rc=$?
+[ "$rc" -ne 0 ] && [ "$(at)" = 3.8.0 ] && grep -q 'none of the newest releases has all its images published' "$T/state.json" \
+  && ok "release: no published release among the newest three, refused, nothing moves" \
+  || bad "release: none published" "rc=$rc at=$(at) $(cat "$T/state.json")"
+rm -f "$T/missing"
+
+# The registry cannot be asked: refused, never aligned to an older release.
+touch "$T/registry_down"
+deploy v3.8.0; canary release; rc=$?
+[ "$rc" -ne 0 ] && [ "$(at)" = 3.8.0 ] && grep -q 'could not ask the registry' "$T/state.json" \
+  && ok "release: registry unreachable, refused, nothing moves" \
+  || bad "release: registry unreachable" "rc=$rc at=$(at) $(cat "$T/state.json")"
+rm -f "$T/registry_down"
 
 # A remote with no release tag at all: refused, never aligned to main instead.
 git -C "$T/upstream.git" tag -l 'v*' | xargs -n1 git -C "$T/upstream.git" tag -d >/dev/null

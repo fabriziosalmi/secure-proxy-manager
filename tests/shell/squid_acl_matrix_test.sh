@@ -81,16 +81,26 @@ create_network 198.18.0.0/24   "$PFX-ext"
 create_network 192.168.77.0/24 "$PFX-lan"
 create_network 203.0.113.0/24  "$PFX-pub"
 
-# Upstreams: a plain HTTP server on :80 and :8443 (the CONNECT target) serving
-# an index and an .exe in three letter cases, plus a file whose name holds
-# ".exe" but does not end with it, from the proxy image itself (python3 is in
-# it). Each exists, so a request the proxy lets through is a 200, not a 404.
+# Upstreams: a plain HTTP server on :80, :8443 (the CONNECT target) and :993
+# (an extra HTTPS port below 1025) serving an index and an .exe in three letter
+# cases, plus a file whose name holds ".exe" but does not end with it, from the
+# proxy image itself (python3 is in it). Each exists, so a request the proxy
+# lets through is a 200, not a 404. The same files over HTTPS on :465 (another
+# extra HTTPS port below 1025), with a self-signed certificate made here, for
+# the requests Squid itself sends over TLS.
 upstream() {
   local name="$1" net="$2" ip="$3"
   docker run -d --name "$name" --network "$net" --ip "$ip" --memory 64m --entrypoint /bin/bash "$IMAGE" -c '
     mkdir -p /srv && cd /srv && echo ok > index.html
     for f in x.exe X.EXE x.Exe x.exe.txt; do echo MZ > "$f"; done
     python3 -m http.server 8443 >/dev/null 2>&1 &
+    python3 -m http.server 993 >/dev/null 2>&1 &
+    openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=pub.test \
+      -keyout /tmp/k.pem -out /tmp/c.pem >/dev/null 2>&1
+    python3 -c "import http.server as h, ssl, sys
+s = h.ThreadingHTTPServer((str(), 465), h.SimpleHTTPRequestHandler)
+c = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); c.load_cert_chain(sys.argv[1], sys.argv[2])
+s.socket = c.wrap_socket(s.socket, server_side=True); s.serve_forever()" /tmp/c.pem /tmp/k.pem >/dev/null 2>&1 &
     exec python3 -m http.server 80 >/dev/null 2>&1' >/dev/null
 }
 upstream "$PFX-pub" "$PFX-pub" "$PUB_SVC"
@@ -144,6 +154,27 @@ tunnel() {
     -x "http://$( [ "$net" = "$PFX-ext" ] && echo "$PROXY_EXT" || echo "$PROXY_LAN" ):3128" \
     "$@" "http://$target/" 2>/dev/null
 }
+# fwd NET IP URL [curl args]: HTTP status of a request whose target is the
+# absolute URL, sent to the proxy as is. curl tunnels an https:// URL through
+# the proxy itself, so --request-target sends "GET https://host:port/": what a
+# client sends when it asks Squid to fetch an https:// URL, and the request
+# Squid checks for each request inside a bumped tunnel.
+fwd() {
+  local net="$1" ip="$2" url="$3"; shift 3
+  docker run --rm --network "$net" --ip "$ip" --memory 64m --entrypoint curl "$IMAGE" \
+    -s -o /dev/null -w '%{http_code}' --max-time 10 --request-target "$url" \
+    "$@" "http://$( [ "$net" = "$PFX-ext" ] && echo "$PROXY_EXT" || echo "$PROXY_LAN" ):3128/" 2>/dev/null
+}
+# bumped NET IP URL [curl args]: HTTP status of an https:// URL fetched
+# through a tunnel that Squid decrypts (SSL bump); -k accepts the certificate
+# Squid makes for the host.
+bumped() {
+  local net="$1" ip="$2" url="$3"; shift 3
+  docker run --rm --network "$net" --ip "$ip" --memory 64m --entrypoint curl "$IMAGE" \
+    -s -o /dev/null -w '%{http_code}' --max-time 10 -k --http1.1 \
+    -x "http://$( [ "$net" = "$PFX-ext" ] && echo "$PROXY_EXT" || echo "$PROXY_LAN" ):3128" \
+    "$@" "$url" 2>/dev/null
+}
 expect() { # name got want
   if [ "$2" = "$3" ]; then ok "$1 → $2"; else bad "$1" "got $2, want $3"; fi
 }
@@ -189,6 +220,22 @@ check() {
   expect "$name" "$got" "$want"
   expect "$name: reason logged" "$(logged "$before" 12)" "$reason"
 }
+# check_bumped NAME WANT_STATUS WANT_REASON NET IP URL: like check, for a
+# request inside a bumped tunnel. The tunnel's CONNECT is logged too, and not
+# always first, so the reason is read from the line whose URL is URL.
+check_bumped() {
+  local name="$1" want="$2" reason="$3" url="$6"
+  local before got line _
+  before="$(nlines)"
+  got="$(bumped "$4" "$5" "$url")"
+  expect "$name" "$got" "$want"
+  for _ in $(seq 1 25); do
+    line="$(docker exec "$PFX-proxy" sed -n "$((before + 1)),\$p" /var/log/squid/access.log | awk -v u="$url" '$7 == u {print $12; exit}')"
+    [ -n "$line" ] && break
+    sleep 0.2
+  done
+  expect "$name: reason logged" "$line" "$reason"
+}
 
 echo "── baseline: who may use the proxy ──"
 start_proxy 'true' || exit 1
@@ -232,6 +279,33 @@ check  "LAN client → public IP literal (CONNECT :8443)"  403 direct_ip       t
 check  "LAN client → port outside Safe_ports"            403 port_policy     code   "$PFX-lan" "$LAN_CLIENT" http://pub.test:22/
 check  "LAN client → CONNECT to a non-SSL port"          403 port_policy     tunnel "$PFX-lan" "$LAN_CLIENT" pub.test:8080
 check  "LAN client → PUT"                                403 protocol_policy code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/ -X PUT
+
+echo "── an extra HTTPS port below 1025 ──"
+# Settings > Extra HTTPS ports: 993 is not in Safe_ports, and the Safe_ports
+# rule used to refuse the tunnel as port_policy before the CONNECT rule could
+# allow it. The tunnel now opens; plain HTTP to the same port is still refused,
+# and so is a tunnel to a port below 1025 that is not listed. An https:// request
+# that is not a CONNECT (Squid speaks TLS to the server) passed the CONNECT
+# exception neither, so it was refused too; it now passes on a listed port
+# only. The upstream's certificate is self-signed, hence DONT_VERIFY_PEER.
+XSSL_SEED='printf "SQUID_PORT=3128\nEXTRA_SSL_PORTS=993,465\n" > /config/squid_settings.env; echo "tls_outgoing_options flags=DONT_VERIFY_PEER" > /config/custom_squid_extra.conf'
+start_proxy "$XSSL_SEED" || exit 1
+check  "LAN client → CONNECT to extra HTTPS port 993"    200 none          tunnel "$PFX-lan" "$LAN_CLIENT" pub.test:993
+check  "LAN client → plain HTTP to extra port 993"       403 port_policy   code   "$PFX-lan" "$LAN_CLIENT" http://pub.test:993/
+check  "LAN client → CONNECT to unlisted port 995"       403 port_policy   tunnel "$PFX-lan" "$LAN_CLIENT" pub.test:995
+check  "LAN client → https:// URL on extra port 465"     200 none          fwd    "$PFX-lan" "$LAN_CLIENT" https://pub.test:465/
+check  "LAN client → plain HTTP to extra port 465"       403 port_policy   code   "$PFX-lan" "$LAN_CLIENT" http://pub.test:465/
+check  "LAN client → https:// URL on unlisted port 995"  403 port_policy   fwd    "$PFX-lan" "$LAN_CLIENT" https://pub.test:995/
+check  "LAN client → https:// URL on port 22"            403 port_policy   fwd    "$PFX-lan" "$LAN_CLIENT" https://pub.test:22/
+
+echo "── an extra HTTPS port below 1025 under SSL bump ──"
+# With SSL bump on, the tunnel to 465 opened, but every request inside it is an
+# https:// request that Squid checks again, and the Safe_ports rule refused
+# each one as port_policy: the extra port worked only with bump off.
+start_proxy "touch /config/ssl_bump_enabled; $XSSL_SEED" || exit 1
+check_bumped "LAN client → bumped https:// on extra port 465" 200 none     "$PFX-lan" "$LAN_CLIENT" https://pub.test:465/
+check  "LAN client → plain HTTP to extra port 465"       403 port_policy   code   "$PFX-lan" "$LAN_CLIENT" http://pub.test:465/
+check  "LAN client → https:// URL on unlisted port 995"  403 port_policy   fwd    "$PFX-lan" "$LAN_CLIENT" https://pub.test:995/
 
 echo "── IP blacklist blocks the destination ──"
 start_proxy "echo $PUB_SVC > /config/ip_blacklist.txt" || exit 1

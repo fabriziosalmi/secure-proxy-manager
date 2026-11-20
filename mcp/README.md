@@ -15,7 +15,7 @@ and offers one tool for each operation the backend marks for MCP
 (`x-spm-mcp-name`): the tool's description is the operation's summary, and its
 arguments are the operation's path parameters, query parameters and request
 body fields, with the API's own schemas. A tool the server does not have is
-never offered. spm-mcp 0.5.0 needs Secure Proxy Manager 3.41.0 or later; an
+never offered. spm-mcp 0.5.0 and 0.5.1 need Secure Proxy Manager 3.41.0 or later; an
 older server names no tool, and spm-mcp says so instead of offering none.
 
 Secure Proxy Manager 3.41.0 names 13 tools. From 3.42.0 the server names

@@ -23,8 +23,9 @@
 #
 # CANARY_TRACK picks what it aligns to: main (the default), for the canary that
 # tries main before a release; release, the newest vX.Y.Z tag in numeric
-# order (no release candidate, no mcp-v*), for an environment other machines
-# depend on, which should move only when a release does.
+# order (no release candidate, no mcp-v*) whose images are published, by the
+# installer's rule, for an environment other machines depend on, which should
+# move only when a release does.
 #
 # Exit status is 0 when every check passed. The verdict is also written to
 # CANARY_STATE (default /var/lib/spm-canary.json) so a reader that is not
@@ -65,8 +66,27 @@ case "$CANARY_TRACK" in
   release)
     echo "── aligning to the newest release ──"
     git fetch -q --force origin 'refs/tags/v*:refs/tags/v*' || { bad "git fetch of the release tags failed"; finish; exit 1; }
-    TAG=$(git tag -l 'v*' | grep -Ex 'v[0-9]+\.[0-9]+\.[0-9]+' | sort -t. -k1.2,1n -k2,2n -k3,3n | tail -n 1)
-    [ -n "$TAG" ] || { bad "no release tag (vX.Y.Z) to align to"; finish; exit 1; }
+    TAGS=$(git tag -l 'v*' | grep -Ex 'v[0-9]+\.[0-9]+\.[0-9]+' | sort -t. -k1.2,1nr -k2,2nr -k3,3nr)
+    [ -n "$TAGS" ] || { bad "no release tag (vX.Y.Z) to align to"; finish; exit 1; }
+    # A release is one whose five images are published, as for the installer:
+    # the git tag exists while the images are still building, and stays when
+    # a gate fails. The rule is the installer's own published_release, from
+    # this checkout's deploy/install.sh, sourced in a subshell (sourcing it
+    # defines its functions and sets set -e there, not here). It skips an
+    # unpublished tag at most twice, naming it, and stops when the registry
+    # cannot be asked rather than align to an older release. The checkout is
+    # the one this runs in, not the script's directory: the systemd unit runs
+    # a copy outside the checkout, so a reset cannot rewrite the running script.
+    INSTALLER="$(git rev-parse --show-toplevel 2>/dev/null)/deploy/install.sh"
+    [ -f "$INSTALLER" ] || { bad "$INSTALLER not found, cannot check the release images"; finish; exit 1; }
+    rc=0
+    # shellcheck disable=SC1090,SC2086 # the checkout's installer; one tag per word
+    TAG=$( (source "$INSTALLER" && published_release $TAGS) ) || rc=$?
+    case "$rc" in
+      0) ;;
+      1) bad "none of the newest releases has all its images published; not moving"; finish; exit 1 ;;
+      *) bad "could not ask the registry whether the release images are published; not moving"; finish; exit 1 ;;
+    esac
     echo "  newest release: $TAG"
     TARGET_REF="$TAG^{commit}"
     ;;

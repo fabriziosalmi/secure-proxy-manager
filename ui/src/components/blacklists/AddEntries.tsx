@@ -18,7 +18,7 @@ import toast from 'react-hot-toast';
 import { Download, Loader2 } from 'lucide-react';
 import { api, getErrorMessage } from '../../lib/api';
 import { formatCount } from '../../lib/format';
-import { isValidDomain, isValidIP, parseGeoCountries } from '../../lib/validation';
+import { isValidDomain, isValidIPOrNetwork, parseGeoCountries } from '../../lib/validation';
 import { cn } from '../../lib/utils';
 import { Button } from '../ui/Button';
 import { Section } from '../ui/Section';
@@ -135,9 +135,10 @@ export function AddEntries({ list, method, onMethodChange, onChanged, onClose }:
       setError(`"${v}" is not an exact name: write ${exact}. A domain exception takes that same name off Blocked domains, however it is written there, and covers no name under it.`);
       return;
     }
-    if (list.field === 'ip' ? !isValidIP(v) : !isValidDomain(v)) {
+    // IPv4 and IPv6, as the backend takes them (netguard.IsValidCIDR).
+    if (list.field === 'ip' ? !isValidIPOrNetwork(v) : !isValidDomain(v)) {
       setError(list.field === 'ip'
-        ? `"${v}" is not an IPv4 address or network: four numbers from 0 to 255, optionally /0 to /32.`
+        ? `"${v}" is not an IP address or network, such as 203.0.113.7, 203.0.113.0/24 or 2001:db8::/32.`
         : `"${v}" is not a domain name: labels of letters, digits and hyphens separated by dots.`);
       return;
     }

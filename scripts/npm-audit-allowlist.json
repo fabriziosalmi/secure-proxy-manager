@@ -1,4 +1,4 @@
 {
-  "_comment": "GHSA IDs that npm-audit-gate.mjs will NOT fail on. ONLY for advisories that are non-applicable or dev-only with no proportionate fix. Each MUST carry a justification and, ideally, a tracked follow-up. Runtime-reachable advisories must never be listed here — fix them. Currently EMPTY (the react-router RSC exception was retired by the v8 migration, #191).",
+  "_comment": "GHSA IDs that npm-audit-gate.mjs will NOT fail on. ONLY for advisories that are non-applicable or dev-only with no proportionate fix. Each MUST carry a justification and, ideally, a tracked follow-up. Runtime-reachable advisories must never be listed here: fix them. Currently EMPTY (GHSA-fc5q-39xc-vjpf, picomatch, was withdrawn on 2026-11-18).",
   "allow": {}
 }

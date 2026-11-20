@@ -43,6 +43,15 @@ describe('ChangePassword uses the shared password rule', () => {
     expect(api.post).toHaveBeenCalledWith('change-password', { current_password: 'old-pass', new_password: 'abcdef1!' })
   })
 
+  // A generated passphrase whose only symbol is a hyphen: the backend takes it.
+  it('submits a passphrase whose only special characters are hyphens', async () => {
+    renderWithProviders(<ChangePassword />)
+    await fill('old-pass', 'correct-horse-9', 'correct-horse-9')
+    expect(screen.getByRole('list', { name: 'Password rules' })).toHaveTextContent('Has a special character')
+    await userEvent.click(screen.getByRole('button', { name: 'Change password' }))
+    expect(api.post).toHaveBeenCalledWith('change-password', { current_password: 'old-pass', new_password: 'correct-horse-9' })
+  })
+
   // The change ends every earlier session, including this one; the backend
   // returns a fresh token and the page must keep it or it is signed out.
   it('keeps the session going: the backend renews the cookie and the page re-plans the expiry it returns', async () => {

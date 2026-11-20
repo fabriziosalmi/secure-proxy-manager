@@ -10,6 +10,7 @@ import (
 	"os"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -75,7 +76,9 @@ func bodyWeight(icapHeader textproto.MIMEHeader, contentLength int64, body io.Re
 }
 
 // reserveWeight waits for n bytes of the inspection budget. It returns the
-// function that gives them back, and false when the wait ran out.
+// function that gives them back, and false when the wait ran out. The
+// function gives them back once however often it is called, so a handler can
+// return the budget early (block, before a tar-pit sleep) and still defer it.
 func reserveWeight(n int64) (func(), bool) {
 	if n <= 0 {
 		return func() {}, true
@@ -94,7 +97,8 @@ func reserveWeight(n int64) (func(), bool) {
 	if !ok {
 		return func() {}, false
 	}
-	return func() { b.Release(got) }, true
+	var once sync.Once
+	return func() { once.Do(func() { b.Release(got) }) }, true
 }
 
 // configureInspectBudget sizes the budget from the container's memory limit,

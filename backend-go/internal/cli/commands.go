@@ -221,23 +221,67 @@ func listByNoun(noun string) (listDef, bool) {
 	return listDef{}, false
 }
 
-// findEntry is the id of the entry whose value is exactly v.
-func (s *session) findEntry(l listDef, v string) (string, int) {
-	data, _, code := s.call("GET", l.path+"?limit=1000&search="+url.QueryEscape(v), nil)
-	if code != exitOK {
-		return "", code
-	}
-	var items []map[string]any
-	_ = json.Unmarshal(data, &items)
-	want := strings.TrimPrefix(strings.ToLower(v), "*.")
-	for _, it := range items {
-		have := strings.TrimPrefix(strings.ToLower(str(it[l.field])), ".")
-		if have == want || strings.EqualFold(str(it[l.field]), v) {
-			return str(it["id"]), exitOK
+// findEntry is the id of the entry written as v, and that entry as the list
+// writes it, which a loose match may write differently from v. An entry written exactly so
+// wins over any newer one that matches v loosely, such as ".example.com" or
+// "*.example.com" for example.com (the allowlist keeps the two apart: the host alone, and the
+// host with its subdomains). Without an exact one, a loose match counts when
+// it is the only one; v may also be written "*.example.com". Every page of
+// the search is read.
+//
+// The search sent is the bare name, not v: the backend searches with SQL LIKE,
+// where "*" is a literal character, so "*.example.com" would find no
+// ".example.com" on the allowlist and no "example.com" on Domain exceptions.
+// Every stored form of a name (n, .n, *.n, as Blocked domains keeps them,
+// in any case) contains the bare name, and the backend's LIKE ignores case.
+func (s *session) findEntry(l listDef, v string) (string, string, int) {
+	want := bareName(v)
+	var looseIDs, looseValues []string
+	for offset := 0; ; {
+		q := fmt.Sprintf("?limit=1000&offset=%d&search=%s", offset, url.QueryEscape(want))
+		data, r, code := s.call("GET", l.path+q, nil)
+		if code != exitOK {
+			return "", "", code
+		}
+		var items []map[string]any
+		_ = json.Unmarshal(data, &items)
+		for _, it := range items {
+			if strings.EqualFold(str(it[l.field]), v) {
+				return str(it["id"]), str(it[l.field]), exitOK
+			}
+			if bareName(str(it[l.field])) == want {
+				looseIDs = append(looseIDs, str(it["id"]))
+				looseValues = append(looseValues, str(it[l.field]))
+			}
+		}
+		var page struct {
+			Meta struct {
+				Total int `json:"total"`
+			} `json:"meta"`
+		}
+		_ = json.Unmarshal(r.body, &page)
+		offset += len(items)
+		if len(items) == 0 || offset >= page.Meta.Total {
+			break
 		}
 	}
-	fmt.Fprintf(s.stderr, "spm: %s is not on %s\n", v, l.label)
-	return "", exitRefused
+	switch len(looseIDs) {
+	case 0:
+		fmt.Fprintf(s.stderr, "spm: %s is not on %s\n", v, l.label)
+		return "", "", exitRefused
+	case 1:
+		return looseIDs[0], looseValues[0], exitOK
+	}
+	fmt.Fprintf(s.stderr, "spm: %s matches more than one entry of %s (%s); nothing removed: give the entry as it is written\n",
+		v, l.label, strings.Join(looseValues, ", "))
+	return "", "", exitRefused
+}
+
+// bareName is v in lower case without the "*." and leading dots that write a
+// name with its subdomains: the name the exporter enforces for a blocked
+// domain (database.EnforcedDomain). An IP address or network is unchanged.
+func bareName(v string) string {
+	return strings.TrimLeft(strings.TrimPrefix(strings.ToLower(v), "*."), ".")
 }
 
 func runList(l listDef, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
@@ -301,12 +345,12 @@ func runList(l listDef, args []string, stdin io.Reader, stdout, stderr io.Writer
 		if !need(1, "the entry to remove") {
 			return exitUsage
 		}
-		id, code := s.findEntry(l, pos[0])
+		id, entry, code := s.findEntry(l, pos[0])
 		if code != exitOK {
 			return code
 		}
 		if _, _, code = s.call("DELETE", l.path+"/"+id, nil); code == exitOK {
-			fmt.Fprintf(stdout, "Removed %s from %s\n", pos[0], l.label)
+			fmt.Fprintf(stdout, "Removed %s from %s\n", entry, l.label)
 		}
 		return code
 	case "clear":
