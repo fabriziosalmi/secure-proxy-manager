@@ -70,12 +70,32 @@ deploy() { # [release, default v3.9.0] a deployment cloned at an older release, 
   git -C "$T/d" -c advice.detachedHead=false checkout -q -B main "${1:-v3.9.0}"
   printf 'live1.example\nlive2.example\n' > "$T/d/config/domain_blacklist.txt"
 }
+# git, but its first $GIT_FETCH_FAILS fetches fail as a DNS blip does
+# ("Could not resolve host"); everything else goes to the real git.
+export REAL_GIT; REAL_GIT=$(command -v git)
+mkdir -p "$T/gitstub"
+cat > "$T/gitstub/git" <<'EOF'
+#!/usr/bin/env bash
+if [ "${1:-}" = fetch ] && [ "${GIT_FETCH_FAILS:-0}" -gt 0 ]; then
+  n=$(cat "$GIT_FETCH_COUNT" 2>/dev/null || echo 0)
+  if [ "$n" -lt "$GIT_FETCH_FAILS" ]; then
+    echo $((n + 1)) > "$GIT_FETCH_COUNT"
+    echo "fatal: unable to access 'https://github.invalid/repo.git/': Could not resolve host: github.invalid" >&2
+    exit 128
+  fi
+fi
+exec "$REAL_GIT" "$@"
+EOF
+chmod +x "$T/gitstub/git"
+export GIT_FETCH_COUNT="$T/fetch_count"
+
 canary() { # track (empty = default) -> exit code; output in $T/out
   # As the systemd unit runs it: a copy outside the checkout (so a reset
   # cannot rewrite the running script), started in the deployment directory.
   mkdir -p "$T/run"; install -m 755 "$REPO/scripts/canary.sh" "$T/run/spm-canary.sh"
-  (cd "$T/d" && PATH="$T/bin:$PATH" COMPOSE="$T/bin/compose" CANARY_STATE="$T/state.json" \
-    PROBE_RETRY_DELAY=0 CANARY_TRACK="${1:-}" "$T/run/spm-canary.sh" > "$T/out" 2>&1)
+  rm -f "$GIT_FETCH_COUNT"
+  (cd "$T/d" && PATH="$T/gitstub:$T/bin:$PATH" COMPOSE="$T/bin/compose" CANARY_STATE="$T/state.json" \
+    PROBE_RETRY_DELAY=0 FETCH_RETRY_DELAY=0 CANARY_TRACK="${1:-}" "$T/run/spm-canary.sh" > "$T/out" 2>&1)
 }
 at() { cat "$T/d/VERSION"; }
 
@@ -122,6 +142,23 @@ deploy v3.8.0; canary release; rc=$?
   && ok "release: registry unreachable, refused, nothing moves" \
   || bad "release: registry unreachable" "rc=$rc at=$(at) $(cat "$T/state.json")"
 rm -f "$T/registry_down"
+
+# A fetch that fails as a DNS blip does is retried: a one-second resolver
+# outage left a release-track run red with nothing moved.
+deploy; GIT_FETCH_FAILS=1 canary release; rc=$?
+[ "$rc" -eq 0 ] && [ "$(at)" = 3.10.0 ] && [ "$(cat "$GIT_FETCH_COUNT" 2>/dev/null)" = 1 ] && grep -q 'retrying' "$T/out" \
+  && ok "release: a fetch that fails once is retried, and the run aligns" \
+  || bad "release: fetch retried" "rc=$rc at=$(at) fails=$(cat "$GIT_FETCH_COUNT" 2>/dev/null) $(tail -4 "$T/out" | tr '\n' ' ')"
+deploy; GIT_FETCH_FAILS=2 canary; rc=$?
+[ "$rc" -eq 0 ] && [ "$(at)" = main ] && [ "$(cat "$GIT_FETCH_COUNT" 2>/dev/null)" = 2 ] \
+  && ok "main: a fetch that fails twice is retried, and the run aligns" \
+  || bad "main: fetch retried" "rc=$rc at=$(at) $(tail -4 "$T/out" | tr '\n' ' ')"
+# A fetch that keeps failing is refused after FETCH_ATTEMPTS, nothing moves.
+deploy v3.8.0; GIT_FETCH_FAILS=9 canary release; rc=$?
+[ "$rc" -ne 0 ] && [ "$(at)" = 3.8.0 ] && [ "$(cat "$GIT_FETCH_COUNT" 2>/dev/null)" = 3 ] \
+  && grep -q 'git fetch of the release tags failed 3 times' "$T/state.json" \
+  && ok "release: a fetch that fails 3 times is refused, nothing moves" \
+  || bad "release: fetch keeps failing" "rc=$rc at=$(at) fails=$(cat "$GIT_FETCH_COUNT" 2>/dev/null) $(cat "$T/state.json")"
 
 # A remote with no release tag at all: refused, never aligned to main instead.
 git -C "$T/upstream.git" tag -l 'v*' | xargs -n1 git -C "$T/upstream.git" tag -d >/dev/null
