@@ -52,7 +52,10 @@ chmod +x "$T/bin/compose" "$T/bin/curl"
 # as the repository's fixture is.
 g() { git -C "$T/src" -c user.name=t -c user.email=t@t "$@"; }
 git init -q -b main "$T/src"
-mkdir -p "$T/src/config"
+mkdir -p "$T/src/config" "$T/src/deploy"
+# The deployment carries its own installer, as a real checkout does: the
+# release track must read that one, not one next to wherever the script runs.
+cp "$REPO/deploy/install.sh" "$T/src/deploy/install.sh"
 for v in 3.8.0 3.9.0 3.10.0 3.10.1-rc1 mcp-9.0.0 main; do
   printf '%s\n' "$v" > "$T/src/VERSION"
   echo fixture.example > "$T/src/config/domain_blacklist.txt"
@@ -68,8 +71,11 @@ deploy() { # [release, default v3.9.0] a deployment cloned at an older release, 
   printf 'live1.example\nlive2.example\n' > "$T/d/config/domain_blacklist.txt"
 }
 canary() { # track (empty = default) -> exit code; output in $T/out
+  # As the systemd unit runs it: a copy outside the checkout (so a reset
+  # cannot rewrite the running script), started in the deployment directory.
+  mkdir -p "$T/run"; install -m 755 "$REPO/scripts/canary.sh" "$T/run/spm-canary.sh"
   (cd "$T/d" && PATH="$T/bin:$PATH" COMPOSE="$T/bin/compose" CANARY_STATE="$T/state.json" \
-    PROBE_RETRY_DELAY=0 CANARY_TRACK="${1:-}" bash "$REPO/scripts/canary.sh" > "$T/out" 2>&1)
+    PROBE_RETRY_DELAY=0 CANARY_TRACK="${1:-}" "$T/run/spm-canary.sh" > "$T/out" 2>&1)
 }
 at() { cat "$T/d/VERSION"; }
 

@@ -74,8 +74,10 @@ case "$CANARY_TRACK" in
     # this checkout's deploy/install.sh, sourced in a subshell (sourcing it
     # defines its functions and sets set -e there, not here). It skips an
     # unpublished tag at most twice, naming it, and stops when the registry
-    # cannot be asked rather than align to an older release.
-    INSTALLER="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/deploy/install.sh"
+    # cannot be asked rather than align to an older release. The checkout is
+    # the one this runs in, not the script's directory: the systemd unit runs
+    # a copy outside the checkout, so a reset cannot rewrite the running script.
+    INSTALLER="$(git rev-parse --show-toplevel 2>/dev/null)/deploy/install.sh"
     [ -f "$INSTALLER" ] || { bad "$INSTALLER not found, cannot check the release images"; finish; exit 1; }
     rc=0
     # shellcheck disable=SC1090,SC2086 # the checkout's installer; one tag per word
