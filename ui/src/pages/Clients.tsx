@@ -33,6 +33,7 @@ import { useModal } from '../hooks/useModal';
 import { useMediaQuery, DESKTOP_QUERY } from '../hooks/useMediaQuery';
 import { api, getData } from '../lib/api';
 import { formatCount, formatWhen, formatWhenExact } from '../lib/format';
+import { outcomeOf } from '../lib/accessLog';
 import { cn } from '../lib/utils';
 import type { ClientsData, ClientStat, ClientDetail, ClientDomain, ClientRecent } from '../types';
 import { tableKind } from '../lib/clientKind';
@@ -312,7 +313,10 @@ function unclassifiedNote(unclassified: number, blocked: number): string {
 
 function RecentReason({ r }: { r: ClientRecent }) {
   if (r.blocked === undefined) return null;
-  if (!r.blocked) return <Badge tone="success">Allowed</Badge>;
+  const outcome = outcomeOf(r);
+  if (outcome === 'allowed') return <Badge tone="success">Allowed</Badge>;
+  // As in the access log: no rule blocked it, but it ended in 502, 503 or 504.
+  if (outcome === 'upstream_error') return <Badge tone="warning">Upstream error</Badge>;
   if (!r.reason_label) return <Badge tone="danger">Blocked</Badge>;
   return <Badge tone={r.reason === 'unclassified' ? 'neutral' : 'danger'}>{r.reason_label}</Badge>;
 }
@@ -437,7 +441,7 @@ function ClientDetailBody({ ip, row }: { ip: string; row?: ClientStat }) {
           <ul>
             {info.recent.map((r, i) => (
               <li key={`${r.timestamp}-${i}`} className="flex flex-col gap-1 border-t border-line-subtle px-5 py-2 text-xs">
-                <code className="break-all font-mono text-ink">{r.destination}</code>
+                <code className="font-mono text-ink"><Hostname name={r.destination} /></code>
                 <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-ink-muted">
                   <span className="whitespace-nowrap font-mono tabular-nums" title={formatWhenExact(r.timestamp)}>{shortTime(r.timestamp)}</span>
                   <span className="font-mono">{r.method}</span>

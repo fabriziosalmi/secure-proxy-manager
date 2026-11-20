@@ -114,7 +114,7 @@ export function apiParams(f: LogFilters, showInternal: boolean): URLSearchParams
 }
 
 /** The live feed sends blocked as 0 or 1, GET /api/logs as a boolean. */
-export const isBlocked = (r: LogEntry) => r.blocked === true || r.blocked === 1;
+export const isBlocked = (r: Pick<LogEntry, 'blocked'>) => r.blocked === true || r.blocked === 1;
 
 /**
  * Parses an IPv4 address (or a masked IPv4 address like "192.168.1.x") into its
@@ -323,9 +323,10 @@ export type RequestOutcome = 'allowed' | 'upstream_error' | 'blocked';
  * What happened to r: blocked by a rule, failed beyond the proxy (no rule
  * blocked it, but it ended in 502, 503 or 504), or allowed. The Allowed and
  * Blocked filters still split rows by the blocked flag alone, so an upstream
- * error is among the Allowed ones.
+ * error is among the Allowed ones. It takes any row with the two fields, so
+ * a client's recent requests read the same as the access log.
  */
-export function outcomeOf(r: LogEntry): RequestOutcome {
+export function outcomeOf(r: Pick<LogEntry, 'blocked' | 'status'>): RequestOutcome {
   if (isBlocked(r)) return 'blocked';
   return UPSTREAM_ERRORS.has(splitStatus(r.status).code) ? 'upstream_error' : 'allowed';
 }
