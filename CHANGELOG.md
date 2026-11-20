@@ -15,8 +15,26 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.43.2] - 2026-11-20
+
+Maintenance: newer bases and dependencies, and a release dry run and CI that
+exercise what they did not. Nothing is **BREAKING** and `X-API-Version`
+stays 1.
+
+**Upgrade notes.** Nothing to do. The backend's SQLite driver moves to
+modernc.org/sqlite 1.62.0; one database was opened by 3.43.1, then by this
+driver, then by 3.43.1 again, with the data intact and `PRAGMA
+integrity_check` clean at each step, so a rollback to 3.43.1 reads what 3.43.2
+wrote.
+
 ### Changed
 
+- **Dependency updates.** modernc.org/sqlite 1.62.0 (modernc.org/libc 1.80.1)
+  and golang.org/x/oauth2 0.38.0 in the backend; jsdom 31 for the UI tests,
+  whose style checks now compare a `max(px, %)` length as numbers because
+  jsdom 31 writes the percentage to six significant digits; and the release
+  workflow's sigstore/cosign-installer 4.1.3, docker/login-action 4.8.0 and
+  github/codeql-action 4.39.3.
 - **The `spm-mcp` image runs on Python 3.15** (`python:3.15-slim`, 3.15.2,
   pinned by digest). Its two locks are regenerated for 3.15 with the same
   versions; every compiled dependency (cffi, pydantic-core, rpds-py,
