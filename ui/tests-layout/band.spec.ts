@@ -171,11 +171,11 @@ for (const route of ['/logs', '/blacklists', '/egress', '/audit']) {
 // Android width, so the margin does not depend on the fonts installed.
 test.describe('360x780', () => {
   test.use({ viewport: { width: 360, height: 780 } });
-  test('on a phone the band holds its title and actions on every page, and no page scrolls sideways', async ({ page }, info) => {
-    test.skip(info.project.name !== 'desktop-1440', 'the viewport is set here, once');
-    await mockApi(page);
-    const out: string[] = [];
-    for (const route of ROUTES) {
+  // One test per page: the 16 pages in one test ran past its 30 s under the full suite.
+  for (const route of ROUTES) {
+    test(`${route}: on a phone the band holds its title and actions, and the page does not scroll sideways`, async ({ page }, info) => {
+      test.skip(info.project.name !== 'desktop-1440', 'the viewport is set here, once');
+      await mockApi(page);
       await page.goto(route);
       await expect(page.getByTestId('page-band').getByRole('heading', { level: 1 })).toBeVisible();
       await page.waitForLoadState('networkidle');
@@ -186,8 +186,8 @@ test.describe('360x780', () => {
         const main = document.querySelector('main')!;
         return { past: Math.round(past), scroll: main.scrollWidth - main.clientWidth };
       });
-      if (m.past > 0.5 || m.scroll > 0) out.push(`${route}: band content ${m.past} px past its edge, page ${m.scroll} px wider than the screen`);
-    }
-    expect(out).toEqual([]);
-  });
+      expect(m.past, 'band content past its edge (px)').toBeLessThanOrEqual(0);
+      expect(m.scroll, 'page wider than the screen (px)').toBeLessThanOrEqual(0);
+    });
+  }
 });
