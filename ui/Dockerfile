@@ -5,7 +5,7 @@
 # assets, but building the product on a runtime its own toolchain calls
 # unsupported is not a thing to leave standing. 26 also sits above 25, so a
 # later Dependabot bump cannot quietly put it back.
-FROM node:26-alpine@sha256:0b36e8c136b94cd4fcf02188228e76c31ad5872eef3fec8cbd2eee500cfd9e80 AS frontend-builder
+FROM node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS frontend-builder
 WORKDIR /frontend
 COPY ./ui/package*.json ./
 RUN npm ci
@@ -13,7 +13,7 @@ COPY ./ui/ ./
 RUN npm run build
 
 # Pin: nginx 1.31.8 alpine (2026-10)
-FROM nginx:1.31.8-alpine@sha256:1ef7ca94d7879df82421428ce13bd1eaa412404953859cf7a5b6512c25e67a60
+FROM nginx:1.31.8-alpine@sha256:fed7e14be83cbd2661a75cdc5b872d936cf155d46c327084d30b8df19ae88d72
 
 # openssl for self-signed cert generation at boot
 # Distribution packages are installed without a version constraint. That is a
