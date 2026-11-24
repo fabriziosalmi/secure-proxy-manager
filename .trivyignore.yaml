@@ -40,6 +40,21 @@ vulnerabilities:
     statement: "libcrypto3/libssl3 3.5.7-r0 in grafana/k6:2.3.0; fixed in 3.5.8-r0, pending an upstream rebuild."
     expired_at: 2026-12-31
 
+  # CVE-2026-78661, golang.org/x/net/html < 0.62.0. The scan of 2026-11-25
+  # still finds it in prom/prometheus:v3.16.0 (x/net 0.61.0) and
+  # tailscale/tailscale:v1.104.7, the newest tags on Docker Hub that day.
+  # Scoped to those binaries by path, so it cannot hide the same CVE in any
+  # other image, Grafana's included. The images this project builds use
+  # x/net 0.62.0 and are scanned at release with no ignore file.
+  - id: CVE-2026-78661
+    paths:
+      - "bin/prometheus"
+      - "bin/promtool"
+      - "usr/local/bin/containerboot"
+      - "usr/local/bin/tailscale"
+      - "usr/local/bin/tailscaled"
+    statement: "golang.org/x/net/html < 0.62.0 in prom/prometheus:v3.16.0 (prometheus, promtool) and tailscale/tailscale:v1.104.7 (containerboot, tailscale, tailscaled), the newest tags on Docker Hub on 2026-11-25; upstream rebuild required. Recorded 2026-11-25."
+    expired_at: 2026-12-25
   # CVE-2026-97054 (GO-2026-6859), Go net/http: an HTTP/1 server can crash
   # through a race in MaxBytesReader; fixed in Go 1.26.11 / 1.27.4. Recorded
   # 2026-11-20 when the CI scan of grafana 13.3.1, prometheus v3.16.0 and k6
