@@ -41,11 +41,12 @@ vulnerabilities:
     expired_at: 2026-12-31
 
   # CVE-2026-78661, golang.org/x/net/html < 0.62.0. The scan of 2026-11-25
-  # still finds it in prom/prometheus:v3.16.0 (x/net 0.61.0) and
-  # tailscale/tailscale:v1.104.7, the newest tags on Docker Hub that day.
-  # Scoped to those binaries by path, so it cannot hide the same CVE in any
-  # other image, Grafana's included. The images this project builds use
-  # x/net 0.62.0 and are scanned at release with no ignore file.
+  # still finds it in prom/prometheus:v3.16.0 (x/net 0.61.0),
+  # tailscale/tailscale:v1.104.7 and eight datasource plugins bundled with
+  # grafana/grafana:13.3.2, the newest tags on Docker Hub that day. Scoped to
+  # those binaries by path, so it cannot hide the same CVE anywhere else. The
+  # images this project builds use x/net 0.62.0 and are scanned at release
+  # with no ignore file.
   - id: CVE-2026-78661
     paths:
       - "bin/prometheus"
@@ -53,7 +54,38 @@ vulnerabilities:
       - "usr/local/bin/containerboot"
       - "usr/local/bin/tailscale"
       - "usr/local/bin/tailscaled"
-    statement: "golang.org/x/net/html < 0.62.0 in prom/prometheus:v3.16.0 (prometheus, promtool) and tailscale/tailscale:v1.104.7 (containerboot, tailscale, tailscaled), the newest tags on Docker Hub on 2026-11-25; upstream rebuild required. Recorded 2026-11-25."
+      - "usr/share/grafana/data/plugins-bundled/grafana-postgresql-datasource/gpx_grafana_postgresql_datasource_linux_amd64"
+      - "usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64"
+      - "usr/share/grafana/data/plugins-bundled/jaeger/gpx_grafana-jaeger-datasource_linux_amd64"
+      - "usr/share/grafana/data/plugins-bundled/loki/gpx_grafana-loki-datasource_linux_amd64"
+      - "usr/share/grafana/data/plugins-bundled/mssql/gpx_grafana-mssql-datasource_linux_amd64"
+      - "usr/share/grafana/data/plugins-bundled/mysql/gpx_grafana-mysql-datasource_linux_amd64"
+      - "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64"
+      - "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64"
+    statement: "golang.org/x/net/html < 0.62.0 in prom/prometheus:v3.16.0 (prometheus, promtool), tailscale/tailscale:v1.104.7 (containerboot, tailscale, tailscaled) and eight datasource plugins of grafana/grafana:13.3.2, the newest tags on Docker Hub on 2026-11-25; upstream rebuild required. Recorded 2026-11-25."
+    expired_at: 2026-12-25
+  # The mysql datasource plugin of grafana/grafana:13.3.2 (the newest tag on
+  # 2026-11-25) is still built with Go 1.26.7, so four Go stdlib CVEs fixed in
+  # 1.26.9 / 1.26.10 remain in that one binary. Scoped to it by path.
+  - id: CVE-2026-111943
+    paths:
+      - "usr/share/grafana/data/plugins-bundled/mysql/gpx_grafana-mysql-datasource_linux_amd64"
+    statement: "Go stdlib crypto/x509, fixed in 1.26.10 / 1.27.3, in the mysql datasource plugin of grafana/grafana:13.3.2 (Go 1.26.7), the newest tag on Docker Hub on 2026-11-25; upstream rebuild required. Recorded 2026-11-25."
+    expired_at: 2026-12-25
+  - id: CVE-2026-78667
+    paths:
+      - "usr/share/grafana/data/plugins-bundled/mysql/gpx_grafana-mysql-datasource_linux_amd64"
+    statement: "Go stdlib net/http, fixed in 1.26.9 / 1.27.2, in the mysql datasource plugin of grafana/grafana:13.3.2 (Go 1.26.7), the newest tag on Docker Hub on 2026-11-25; upstream rebuild required. Recorded 2026-11-25."
+    expired_at: 2026-12-25
+  - id: CVE-2026-78669
+    paths:
+      - "usr/share/grafana/data/plugins-bundled/mysql/gpx_grafana-mysql-datasource_linux_amd64"
+    statement: "Go stdlib net/http2, fixed in 1.26.9 / 1.27.2, in the mysql datasource plugin of grafana/grafana:13.3.2 (Go 1.26.7), the newest tag on Docker Hub on 2026-11-25; upstream rebuild required. Recorded 2026-11-25."
+    expired_at: 2026-12-25
+  - id: CVE-2026-97031
+    paths:
+      - "usr/share/grafana/data/plugins-bundled/mysql/gpx_grafana-mysql-datasource_linux_amd64"
+    statement: "Go stdlib crypto/tls, fixed in 1.26.9 / 1.27.2, in the mysql datasource plugin of grafana/grafana:13.3.2 (Go 1.26.7), the newest tag on Docker Hub on 2026-11-25; upstream rebuild required. Recorded 2026-11-25."
     expired_at: 2026-12-25
   # CVE-2026-97054 (GO-2026-6859), Go net/http: an HTTP/1 server can crash
   # through a race in MaxBytesReader; fixed in Go 1.26.11 / 1.27.4. Recorded
