@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeAll, afterAll } from 'vitest'
-import { formatAge, formatBytes, formatClock, formatCount, formatDate, formatDateTime, formatHourMinute, formatKilobytes, formatPercent, formatRange, formatShare, formatSpan, formatTime, formatWhen, formatWhenExact, utcClockIn } from './format'
+import { formatAge, formatBytes, formatClock, formatDuration, formatCount, formatDate, formatDateTime, formatHourMinute, formatKilobytes, formatPercent, formatRange, formatShare, formatSpan, formatTime, formatWhen, formatWhenExact, utcClockIn } from './format'
 import { simulateItalianLocale, setRomeTimeZone } from '../test/helpers'
 
 describe('formatRange', () => {
@@ -182,6 +182,27 @@ describe('formatKilobytes', () => {
     const fresh = await import('./format')
     expect(fresh.formatKilobytes(5000 * 1024 * 1024 * 1024)).toBe('5,000 TB')
     expect(fresh.formatKilobytes(1536)).toBe('1.5 MB')
+  })
+})
+
+describe('formatDuration', () => {
+  // The access log's Duration: elapsed_ms as Squid logged it.
+  it('writes a request under a second in ms and longer ones in the largest unit', () => {
+    expect(formatDuration(0)).toBe('0 ms')
+    expect(formatDuration(12)).toBe('12 ms')
+    expect(formatDuration(850)).toBe('850 ms')
+    expect(formatDuration(2400)).toBe('2.4 s')
+    expect(formatDuration(45_300)).toBe('45.3 s')
+    expect(formatDuration(210_000)).toBe('3.5 min')
+    expect(formatDuration(4_320_000)).toBe('1.2 h')
+  })
+
+  it('moves to the next unit where rounding would reach it, not "1,000 ms" or "60.0 s"', () => {
+    expect(formatDuration(999)).toBe('999 ms')
+    expect(formatDuration(999.6)).toBe('1.0 s')
+    expect(formatDuration(59_940)).toBe('59.9 s')
+    expect(formatDuration(59_960)).toBe('1.0 min')
+    expect(formatDuration(3_597_000)).toBe('1.0 h')
   })
 })
 
