@@ -865,6 +865,12 @@
           "destination": {
             "type": "string"
           },
+          "elapsed_ms": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "event_id": {
             "type": [
               "string",
@@ -919,7 +925,8 @@
           "internal",
           "kind",
           "resolved_ip",
-          "event_id"
+          "event_id",
+          "elapsed_ms"
         ],
         "type": "object"
       },
