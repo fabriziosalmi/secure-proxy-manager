@@ -35,8 +35,10 @@ FROM nginx:1.31.8-alpine@sha256:fed7e14be83cbd2661a75cdc5b872d936cf155d46c327084
 # curl/libcurl (CVE-2026-92392, the base ships 8.22.0-r0, Alpine 3.24 has
 # 8.23.0-r0 since 2026-10-26) and libxslt (CVE-2026-87636 and CVE-2026-9947,
 # the base ships 1.1.43-r3, Alpine 3.24 has 1.1.43-r4; found by the v3.30.0
-# release scan).
-RUN apk add --no-cache openssl 'libexpat>=2.10.0-r0' 'brotli-libs>=1.2.1-r0' 'curl>=8.23.0-r0' 'libcurl>=8.23.0-r0' 'libxslt>=1.1.43-r4' && rm /etc/nginx/conf.d/default.conf
+# release scan) and libxml2 (CVE-2026-86144, the base ships 2.13.9-r2, Alpine
+# 3.24 has 2.13.9-r3 on x86_64 and aarch64; found by the v3.44.0 release dry
+# run).
+RUN apk add --no-cache openssl 'libexpat>=2.10.0-r0' 'brotli-libs>=1.2.1-r0' 'curl>=8.23.0-r0' 'libcurl>=8.23.0-r0' 'libxslt>=1.1.43-r4' 'libxml2>=2.13.9-r3' && rm /etc/nginx/conf.d/default.conf
 
 COPY --from=frontend-builder /frontend/dist /usr/share/nginx/html
 COPY ./ui/nginx.conf.template            /etc/nginx/templates/default.conf.template
