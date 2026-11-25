@@ -144,19 +144,26 @@ const clientDetail = {
 /** A request the WAF blocked, logged as the proxy saw it in plain HTTP. */
 const WAF_BLOCK_URL = 'http://tienda.shop-example.org/tienda1/publico/autenticar.jsp?modo=entrar&login=caria&pwd=EnSaCad%24oRa&remember=on'; // slopless-disable-line VBC-034 -- an access log row of a plain HTTP request, as the proxy logged it
 
+// Durations from a few ms to a CONNECT tunnel held open for an hour, so the
+// Duration column is measured with its widest values.
+const logDurations = [12, 850, 2400, 45_300, 4_320_000, 210_000];
+
 const logRows = [3072, 7066, 4096, 6963, 7168, 3379].map((bytes, i) => ({
   id: 1000 - i, timestamp: `2026-10-29 07:51:${String(30 - i).padStart(2, '0')}`, source_ip: '10.20.0.109', method: 'CONNECT',
   destination: 'clientservices.googleapis.com:443', status: 'TCP_TUNNEL/200', bytes, blocked: false, reason: 'none', reason_label: 'Allowed',
   internal: false, kind: 'Private network address', resolved_ip: '142.250.180.10', event_id: null as string | null,
+  elapsed_ms: logDurations[i] as number | null,
 })).concat([{
   id: 990, timestamp: '2026-10-28 22:51:10', source_ip: '10.20.0.109', method: 'CONNECT', destination: 'github.com:443', status: 'TCP_DENIED/403',
   bytes: 3900, blocked: true, reason: 'domain_blacklist', reason_label: 'Domain blacklist (proxy)', internal: false, kind: 'Private network address', resolved_ip: null as unknown as string,
-  event_id: null,
+  event_id: null, elapsed_ms: 0,
 }, {
   id: 989, timestamp: '2026-10-28 22:50:41', source_ip: '10.20.0.109', method: 'GET',
   destination: WAF_BLOCK_URL,
   status: 'NONE_NONE/403', bytes: 205, blocked: true, reason: 'waf', reason_label: 'WAF', internal: false, kind: 'Private network address',
   resolved_ip: null as unknown as string, event_id: 'dmi3z8mpcz74-1',
+  // A row logged before elapsed_ms was recorded: "Not recorded" is the widest cell.
+  elapsed_ms: null,
 }]);
 
 /** The WAF's account of the WAF block above (GET /api/waf/events/{id}). */
