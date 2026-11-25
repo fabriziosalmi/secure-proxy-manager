@@ -119,6 +119,9 @@ band. One change is marked **BREAKING** and `X-API-Version` stays 1:
   base images. The Trivy exceptions for third-party images that expired on
   2026-11-30 are replaced by exceptions scoped to the exact binaries that
   still carry each CVE, expiring 2026-12-25.
+- **The web image installs libxml2 2.13.9-r3 or later (CVE-2026-86144).**
+  Its nginx base image still ships 2.13.9-r2; the release dry run found it
+  before the tag.
 
 ### Fixed
 
