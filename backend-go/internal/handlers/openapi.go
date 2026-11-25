@@ -277,8 +277,9 @@ var openAPISchemas = map[string]any{
 		"id": oaInt, "timestamp": oaStr, "source_ip": oaStr, "method": oaStr, "destination": oaStr,
 		"status": oaStr, "bytes": oaInt, "blocked": oaBool, "reason": oaStr, "reason_label": oaStr,
 		"internal": oaBool, "kind": oaStr, "resolved_ip": oaNullable("string"), "event_id": oaNullable("string"),
+		"elapsed_ms": oaNullable("integer"),
 	}, "id", "timestamp", "source_ip", "method", "destination", "status", "bytes", "blocked",
-		"reason", "reason_label", "internal", "kind", "resolved_ip", "event_id"),
+		"reason", "reason_label", "internal", "kind", "resolved_ip", "event_id", "elapsed_ms"),
 	"LogList": oaList("LogRow"),
 	"LogStats": oaData(oaObject(map[string]any{
 		"total_count": oaInt, "blocked_count": oaInt, "ip_blocks_count": oaInt, "last_import": oaStr,

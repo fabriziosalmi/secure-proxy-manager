@@ -110,18 +110,19 @@ func (h *LogHandlers) GetLogs(w http.ResponseWriter, r *http.Request) {
 
 // logColumns are the proxy_logs columns a log row is read from, in the order
 // scanLogRow expects.
-const logColumns = "id,timestamp,source_ip,method,destination,status,bytes,blocked,block_reason,resolved_ip,event_id"
+const logColumns = "id,timestamp,source_ip,method,destination,status,bytes,blocked,block_reason,resolved_ip,event_id,elapsed_ms"
 
 type logRow struct {
 	id                                      int64
 	ts, srcIP, method, dest, status, reason sql.NullString
 	bytes, blocked                          sql.NullInt64
 	resolvedIP, eventID                     sql.NullString
+	elapsedMs                               sql.NullInt64
 }
 
 func scanLogRow(rows *sql.Rows) (logRow, error) {
 	var l logRow
-	err := rows.Scan(&l.id, &l.ts, &l.srcIP, &l.method, &l.dest, &l.status, &l.bytes, &l.blocked, &l.reason, &l.resolvedIP, &l.eventID)
+	err := rows.Scan(&l.id, &l.ts, &l.srcIP, &l.method, &l.dest, &l.status, &l.bytes, &l.blocked, &l.reason, &l.resolvedIP, &l.eventID, &l.elapsedMs)
 	return l, err
 }
 
@@ -163,6 +164,9 @@ func (l logRow) wire(src *InternalSources, gdpr bool) map[string]any {
 		// GET /api/waf/events/{event_id} has the rules behind it. The tailer
 		// stores "" for a row without one.
 		"event_id": nullIfEmpty(l.eventID),
+		// How long Squid took over the request, in milliseconds; null for a
+		// row logged before it was recorded.
+		"elapsed_ms": nullInt(l.elapsedMs),
 	}
 }
 
@@ -395,4 +399,12 @@ func nullIfEmpty(s sql.NullString) any {
 		return nil
 	}
 	return s.String
+}
+
+// nullInt is an integer column on the wire, null when it has no value.
+func nullInt(n sql.NullInt64) any {
+	if !n.Valid {
+		return nil
+	}
+	return n.Int64
 }
