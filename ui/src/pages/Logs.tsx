@@ -28,7 +28,7 @@ import { useConfirm } from '../hooks/useConfirm';
 import { useModal } from '../hooks/useModal';
 import { useMediaQuery, DESKTOP_QUERY } from '../hooks/useMediaQuery';
 import { api, getData, getErrorMessage } from '../lib/api';
-import { formatBytes, formatCount, formatWhen, formatWhenExact, viewerZone } from '../lib/format';
+import { formatBytes, formatCount, formatDuration, formatWhen, formatWhenExact, viewerZone } from '../lib/format';
 import {
   allowableDomain, allowableEgress, apiParams, emptyRange, fromLocalInput, hasFilters, ipBlacklistLink, isBlocked, isHttpCode, maskedToNetwork, matchesFilters, outcomeOf, rangeFilters, readFilters, splitStatus, squidResultText, statusTone, toLocalInput, whyText,
   writeFilters,
@@ -100,6 +100,11 @@ function rowTime(ts: string): string {
  * destination (TCP_TUNNEL/503). A block is named "Blocked by <rule>" to a
  * screen reader, as the colour says it to the eye.
  */
+/** How long the request took, or "Not recorded" for a row logged before it was. */
+function durationText(r: LogEntry): string {
+  return typeof r.elapsed_ms === 'number' ? formatDuration(r.elapsed_ms) : 'Not recorded';
+}
+
 function OutcomeBadge({ r }: { r: LogEntry }) {
   const outcome = outcomeOf(r);
   if (outcome === 'allowed') return <Badge tone="success">Allowed</Badge>;
@@ -521,6 +526,14 @@ export function Logs() {
       className: 'whitespace-nowrap text-ink-muted',
       cell: ({ entry }) => (typeof entry.bytes === 'number' ? formatBytes(entry.bytes) : 'Not recorded'),
     },
+    {
+      id: 'duration',
+      header: 'Duration',
+      align: 'right',
+      hideOnPhone: true,
+      className: 'whitespace-nowrap text-ink-muted',
+      cell: ({ entry }) => durationText(entry),
+    },
   ];
 
   const hidden = firstMeta?.internal ?? 0;
@@ -799,6 +812,10 @@ function RequestDetail({ r, filters, onAllow, onAllowEgress, onShowClient }: {
         <div className="min-w-0">
           <dt className="text-xs text-ink-muted">Outcome</dt>
           <dd className="mt-0.5"><OutcomeBadge r={r} /></dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-xs text-ink-muted">Duration</dt>
+          <dd className="mt-0.5 font-mono text-[13px]">{durationText(r)}</dd>
         </div>
         <div className="min-w-0">
           <dt className="text-xs text-ink-muted">Why</dt>
