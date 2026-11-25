@@ -15,6 +15,23 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.44.0] - 2026-11-25
+
+The access log separates requests that failed beyond the proxy from the
+ones that worked, and every page of the dashboard gets the same header
+band. One change is marked **BREAKING** and `X-API-Version` stays 1:
+`outcome=allowed` on the access log API no longer includes upstream errors.
+
+**Upgrade notes.**
+- A script that reads `GET /api/logs?outcome=allowed` or
+  `GET /api/logs/export?outcome=allowed` as "every request no rule blocked"
+  should ask for `outcome=allowed` and `outcome=upstream_error`, or for every
+  row less `outcome=blocked`. `spm`, `spm-mcp` and the web UI need no change.
+- The first start after the upgrade creates one index on the access log,
+  `idx_proxy_logs_upstream_error`: 385 ms on 1,000,000 rows in our
+  measurement, once.
+- The production compose file pins grafana 13.3.2.
+
 ### Changed
 
 - **BREAKING** (`X-API-Version: 1`): **`outcome=allowed` on `GET /api/logs`
@@ -90,6 +107,21 @@ for at least one minor release before disappearing.
   pointer is over the second one (its hover ground) or the keyboard focus
   is on it; once the pointer leaves, only the current section is
   highlighted, so nothing was changed there.
+
+### Security
+
+- **The backend takes gorilla/websocket at commit d67f418 (GO-2026-6278).**
+  v1.5.3 draws the frame mask key from math/rand. The key is only generated
+  on client connections and the backend only accepts WebSocket connections,
+  so it was not reachable here; the upstream fix has no tagged release yet.
+- **Base images and third-party images move:** grafana 13.3.2 in the
+  compose files, and new digests for the golang, ubuntu, node and nginx
+  base images. The Trivy exceptions for third-party images that expired on
+  2026-11-30 are replaced by exceptions scoped to the exact binaries that
+  still carry each CVE, expiring 2026-12-25.
+- **The web image installs libxml2 2.13.9-r3 or later (CVE-2026-86144).**
+  Its nginx base image still ships 2.13.9-r2; the release dry run found it
+  before the tag.
 
 ### Fixed
 
