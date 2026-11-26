@@ -28,7 +28,7 @@ import { useConfirm } from '../hooks/useConfirm';
 import { useModal } from '../hooks/useModal';
 import { useMediaQuery, DESKTOP_QUERY } from '../hooks/useMediaQuery';
 import { api, getData, getErrorMessage } from '../lib/api';
-import { formatBytes, formatCount, formatWhen, formatWhenExact, viewerZone } from '../lib/format';
+import { formatBytes, formatCount, formatDuration, formatWhen, formatWhenExact, viewerZone } from '../lib/format';
 import {
   allowableDomain, allowableEgress, apiParams, emptyRange, fromLocalInput, hasFilters, ipBlacklistLink, isBlocked, isHttpCode, maskedToNetwork, matchesFilters, outcomeOf, rangeFilters, readFilters, splitStatus, squidResultText, statusTone, toLocalInput, whyText,
   writeFilters,
@@ -91,6 +91,11 @@ const plural = (n: number, one: string, many: string) => `${formatCount(n)} ${n 
 /** "2026-10-29 12:07:56" whatever the day: a log row is looked up, so its time is written whole. */
 function rowTime(ts: string): string {
   return ts ? formatWhen(ts, { style: 'full' }) : 'Not recorded';
+}
+
+/** How long the request took, or "Not recorded" for a row logged before it was. */
+function durationText(r: LogEntry): string {
+  return typeof r.elapsed_ms === 'number' ? formatDuration(r.elapsed_ms) : 'Not recorded';
 }
 
 /**
@@ -521,6 +526,14 @@ export function Logs() {
       className: 'whitespace-nowrap text-ink-muted',
       cell: ({ entry }) => (typeof entry.bytes === 'number' ? formatBytes(entry.bytes) : 'Not recorded'),
     },
+    {
+      id: 'duration',
+      header: 'Duration',
+      align: 'right',
+      hideOnPhone: true,
+      className: 'whitespace-nowrap text-ink-muted',
+      cell: ({ entry }) => durationText(entry),
+    },
   ];
 
   const hidden = firstMeta?.internal ?? 0;
@@ -799,6 +812,11 @@ function RequestDetail({ r, filters, onAllow, onAllowEgress, onShowClient }: {
         <div className="min-w-0">
           <dt className="text-xs text-ink-muted">Outcome</dt>
           <dd className="mt-0.5"><OutcomeBadge r={r} /></dd>
+        </div>
+        <div className="min-w-0">
+          {/* A CONNECT tunnel's elapsed time is how long it stayed open, not a response time. */}
+          <dt className="text-xs text-ink-muted">{squid === 'TCP_TUNNEL' ? 'Tunnel open for' : 'Duration'}</dt>
+          <dd className="mt-0.5 font-mono text-[13px]">{durationText(r)}</dd>
         </div>
         <div className="min-w-0">
           <dt className="text-xs text-ink-muted">Why</dt>

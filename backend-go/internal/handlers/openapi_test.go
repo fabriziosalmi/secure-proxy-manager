@@ -157,10 +157,10 @@ func TestOpenAPISchemasMatchRealResponses(t *testing.T) {
 	for _, q := range []string{
 		`INSERT INTO ip_blacklist(ip) VALUES('198.51.100.7')`,
 		`INSERT INTO domain_blacklist(domain, description) VALUES('legacy.example', NULL)`,
-		`INSERT INTO proxy_logs(timestamp, unix_timestamp, source_ip, method, destination, status, bytes, blocked, block_reason, resolved_ip, event_id)
-		   VALUES(datetime('now'), strftime('%s','now'), '10.0.0.5', 'GET', 'http://ads.example/x', 'TCP_DENIED/403', 120, 1, 'waf', NULL, 'evt-1')`,
-		`INSERT INTO proxy_logs(timestamp, unix_timestamp, source_ip, method, destination, status, bytes, blocked, block_reason, resolved_ip, event_id)
-		   VALUES(datetime('now'), strftime('%s','now'), '10.0.0.6', 'CONNECT', 'example.com:443', 'TCP_TUNNEL/200', 5000, 0, 'none', '93.184.216.34', '')`,
+		`INSERT INTO proxy_logs(timestamp, unix_timestamp, source_ip, method, destination, status, bytes, blocked, block_reason, resolved_ip, event_id, elapsed_ms)
+		   VALUES(datetime('now'), strftime('%s','now'), '10.0.0.5', 'GET', 'http://ads.example/x', 'TCP_DENIED/403', 120, 1, 'waf', NULL, 'evt-1', NULL)`,
+		`INSERT INTO proxy_logs(timestamp, unix_timestamp, source_ip, method, destination, status, bytes, blocked, block_reason, resolved_ip, event_id, elapsed_ms)
+		   VALUES(datetime('now'), strftime('%s','now'), '10.0.0.6', 'CONNECT', 'example.com:443', 'TCP_TUNNEL/200', 5000, 0, 'none', '93.184.216.34', '', 850)`,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			t.Fatalf("seed: %v", err)
@@ -244,7 +244,7 @@ func TestOpenAPISchemasMatchRealResponses(t *testing.T) {
 	// The data reached the fields that are easy to get wrong.
 	for key, want := range map[string][]string{
 		"GET /api/settings":         {`"secret":true`, `"is_set":true`},
-		"GET /api/logs":             {`"event_id":"evt-1"`, `"event_id":null`, `"resolved_ip":null`, `"resolved_ip":"93.184.216.34"`, `"blocked":true`},
+		"GET /api/logs":             {`"event_id":"evt-1"`, `"event_id":null`, `"resolved_ip":null`, `"resolved_ip":"93.184.216.34"`, `"blocked":true`, `"elapsed_ms":null`, `"elapsed_ms":850`},
 		"GET /api/ip-blacklist":     {`"source_id":null`, `"source_kind":"manual"`},
 		"GET /api/domain-blacklist": {`"description":null`},
 		"GET /api/client-setup":     {`"sha256":"`},

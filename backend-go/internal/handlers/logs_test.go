@@ -28,6 +28,48 @@ func TestLogHandlers_GetLogs(t *testing.T) {
 	}
 }
 
+// GET /api/logs returns how long each request took, and null for a row
+// logged before elapsed_ms was recorded or for a DNS sinkhole row, whose 0
+// is not a duration.
+func TestLogHandlers_GetLogsElapsedMs(t *testing.T) {
+	db, _, _, cleanup := setupTestDB(t)
+	defer cleanup()
+	h := NewLogHandlers(db)
+
+	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, source_ip, method, destination, status, bytes, elapsed_ms) VALUES (datetime('now'), '1.1.1.1', 'GET', 'http://a.example', 'TCP_MISS/200', 123, 2400)")
+	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, source_ip, method, destination, status, bytes) VALUES (datetime('now'), '1.1.1.2', 'GET', 'http://b.example', 'TCP_MISS/200', 123)")
+	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, source_ip, method, destination, status, bytes, blocked, elapsed_ms) VALUES (datetime('now'), '1.1.1.3', 'DNS', 'dns.example', 'TCP_DENIED/0.0.0.0', 0, 1, 0)")
+
+	w := httptest.NewRecorder()
+	h.GetLogs(w, httptest.NewRequest("GET", "/api/logs", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d", w.Code)
+	}
+	var resp struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	got := map[string]any{}
+	for _, row := range resp.Data {
+		v, ok := row["elapsed_ms"]
+		if !ok {
+			t.Fatalf("row %v has no elapsed_ms", row["destination"])
+		}
+		got[row["destination"].(string)] = v
+	}
+	if got["http://a.example"] != float64(2400) {
+		t.Errorf("elapsed_ms = %v; want 2400", got["http://a.example"])
+	}
+	if got["http://b.example"] != nil {
+		t.Errorf("elapsed_ms = %v; want null for a row without one", got["http://b.example"])
+	}
+	if v, ok := got["dns.example"]; !ok || v != nil {
+		t.Errorf("elapsed_ms = %v (present %v); want null for a DNS sinkhole row", v, ok)
+	}
+}
+
 func TestLogHandlers_GDPR(t *testing.T) {
 	db, _, _, cleanup := setupTestDB(t)
 	defer cleanup()

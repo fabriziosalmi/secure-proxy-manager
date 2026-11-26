@@ -28,7 +28,7 @@ const row = (over: Partial<LogEntry> & { id: number }): LogEntry => ({
   ...over,
 })
 
-const allowed = row({ id: 3, resolved_ip: '93.184.216.34' })
+const allowed = row({ id: 3, resolved_ip: '93.184.216.34', elapsed_ms: 2400 })
 const dnsBlock = row({
   id: 2, method: 'GET', destination: 'http://ads.example.net/pixel', status: 'TCP_DENIED/403', bytes: 4900,
   blocked: true, reason: 'domain_blacklist_dns', reason_label: 'Domain blacklist (DNS)',
@@ -238,6 +238,29 @@ describe('Logs', () => {
     expect(within(outcome).getByText('Upstream error')).toHaveAttribute('data-tone', 'warning')
     expect(within(details).getByText(/^No rule blocked it, but it failed beyond the proxy \(HTTP 503\)/)).toBeInTheDocument()
     expect(within(details).queryByText('Allowed: no rule blocked it.')).toBeNull()
+    logsBody = () => page([allowed, dnsBlock, wafBlock, oldBlock])
+  })
+
+  // The backend stored elapsed_ms on every row and the page never showed it.
+  it('shows how long each request took, in the table and in the details, and says when it was not recorded', async () => {
+    const quick = row({ id: 5, destination: 'quick.example:443', elapsed_ms: 850 })
+    logsBody = () => page([allowed, quick, oldBlock])
+    renderWithProviders(<Logs />)
+    await waitFor(() => expect(bodyRows()).toHaveLength(3))
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toContain('Duration')
+    const [a, q, old] = bodyRows()
+    expect(cellOf(a, 'Duration')).toHaveTextContent('2.4 s')
+    expect(cellOf(q, 'Duration')).toHaveTextContent('850 ms')
+    expect(cellOf(old, 'Duration')).toHaveTextContent('Not recorded')
+
+    fireEvent.click(screen.getByRole('button', { name: quick.destination }))
+    const details = screen.getByRole('region', { name: 'Request details' })
+    // quick is a CONNECT tunnel (TCP_TUNNEL): its time is how long the tunnel stayed open.
+    expect(within(details).queryByText('Duration')).toBeNull()
+    expect(within(details).getByText('Tunnel open for').nextElementSibling).toHaveTextContent('850 ms')
+    fireEvent.click(screen.getByRole('button', { name: oldBlock.destination }))
+    const oldDetails = screen.getByRole('region', { name: 'Request details' })
+    expect(within(oldDetails).getByText('Duration').nextElementSibling).toHaveTextContent('Not recorded')
     logsBody = () => page([allowed, dnsBlock, wafBlock, oldBlock])
   })
 

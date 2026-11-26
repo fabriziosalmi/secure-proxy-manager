@@ -169,6 +169,8 @@ export interface LogEntry {
   resolved_ip?: string | null;
   /** The WAF's event ID on a request the WAF blocked (GET /api/waf/events/{id}); null otherwise. */
   event_id?: string | null;
+  /** How long the request took, in milliseconds; null for rows logged before it was recorded. */
+  elapsed_ms?: number | null;
 }
 
 /** Pagination envelope shared by every collection endpoint (SECURE-API-02). */

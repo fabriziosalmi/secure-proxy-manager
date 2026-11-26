@@ -186,6 +186,19 @@ export function formatBytes(bytes: number): string {
   return formatKilobytes(bytes / 1024);
 }
 
+/**
+ * "850 ms", "2.4 s", "3.5 min", "1.2 h": how long a request took, from its
+ * duration in milliseconds. Each unit is used until the rounded value would
+ * read as the next one ("1,000 ms" is "1.0 s").
+ */
+export function formatDuration(ms: number): string {
+  const v = Math.max(0, ms);
+  if (Math.round(v) < 1000) return `${COUNT.format(v)} ms`;
+  if (v < 59_950) return `${SIZE_SMALL.format(v / 1000)} s`;
+  if (v < 3_597_000) return `${SIZE_SMALL.format(v / 60_000)} min`;
+  return `${SIZE_SMALL.format(v / 3_600_000)} h`;
+}
+
 /** "45s", "12 min", "3 h", "2 d": how long ago something was, from its age in seconds. */
 export function formatAge(seconds: number): string {
   const s = Math.max(0, Math.round(seconds));
