@@ -93,6 +93,11 @@ function rowTime(ts: string): string {
   return ts ? formatWhen(ts, { style: 'full' }) : 'Not recorded';
 }
 
+/** How long the request took, or "Not recorded" for a row logged before it was. */
+function durationText(r: LogEntry): string {
+  return typeof r.elapsed_ms === 'number' ? formatDuration(r.elapsed_ms) : 'Not recorded';
+}
+
 /**
  * What happened to the request: "Allowed", "Upstream error", or the rule
  * that blocked it. The column was headed "Rule" and said "Allowed" for every
@@ -100,11 +105,6 @@ function rowTime(ts: string): string {
  * destination (TCP_TUNNEL/503). A block is named "Blocked by <rule>" to a
  * screen reader, as the colour says it to the eye.
  */
-/** How long the request took, or "Not recorded" for a row logged before it was. */
-function durationText(r: LogEntry): string {
-  return typeof r.elapsed_ms === 'number' ? formatDuration(r.elapsed_ms) : 'Not recorded';
-}
-
 function OutcomeBadge({ r }: { r: LogEntry }) {
   const outcome = outcomeOf(r);
   if (outcome === 'allowed') return <Badge tone="success">Allowed</Badge>;
@@ -814,7 +814,8 @@ function RequestDetail({ r, filters, onAllow, onAllowEgress, onShowClient }: {
           <dd className="mt-0.5"><OutcomeBadge r={r} /></dd>
         </div>
         <div className="min-w-0">
-          <dt className="text-xs text-ink-muted">Duration</dt>
+          {/* A CONNECT tunnel's elapsed time is how long it stayed open, not a response time. */}
+          <dt className="text-xs text-ink-muted">{squid === 'TCP_TUNNEL' ? 'Tunnel open for' : 'Duration'}</dt>
           <dd className="mt-0.5 font-mono text-[13px]">{durationText(r)}</dd>
         </div>
         <div className="min-w-0">

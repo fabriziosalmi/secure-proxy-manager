@@ -255,7 +255,9 @@ describe('Logs', () => {
 
     fireEvent.click(screen.getByRole('button', { name: quick.destination }))
     const details = screen.getByRole('region', { name: 'Request details' })
-    expect(within(details).getByText('Duration').nextElementSibling).toHaveTextContent('850 ms')
+    // quick is a CONNECT tunnel (TCP_TUNNEL): its time is how long the tunnel stayed open.
+    expect(within(details).queryByText('Duration')).toBeNull()
+    expect(within(details).getByText('Tunnel open for').nextElementSibling).toHaveTextContent('850 ms')
     fireEvent.click(screen.getByRole('button', { name: oldBlock.destination }))
     const oldDetails = screen.getByRole('region', { name: 'Request details' })
     expect(within(oldDetails).getByText('Duration').nextElementSibling).toHaveTextContent('Not recorded')

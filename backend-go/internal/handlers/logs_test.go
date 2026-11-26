@@ -29,7 +29,8 @@ func TestLogHandlers_GetLogs(t *testing.T) {
 }
 
 // GET /api/logs returns how long each request took, and null for a row
-// logged before elapsed_ms was recorded.
+// logged before elapsed_ms was recorded or for a DNS sinkhole row, whose 0
+// is not a duration.
 func TestLogHandlers_GetLogsElapsedMs(t *testing.T) {
 	db, _, _, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -37,6 +38,7 @@ func TestLogHandlers_GetLogsElapsedMs(t *testing.T) {
 
 	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, source_ip, method, destination, status, bytes, elapsed_ms) VALUES (datetime('now'), '1.1.1.1', 'GET', 'http://a.example', 'TCP_MISS/200', 123, 2400)")
 	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, source_ip, method, destination, status, bytes) VALUES (datetime('now'), '1.1.1.2', 'GET', 'http://b.example', 'TCP_MISS/200', 123)")
+	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, source_ip, method, destination, status, bytes, blocked, elapsed_ms) VALUES (datetime('now'), '1.1.1.3', 'DNS', 'dns.example', 'TCP_DENIED/0.0.0.0', 0, 1, 0)")
 
 	w := httptest.NewRecorder()
 	h.GetLogs(w, httptest.NewRequest("GET", "/api/logs", nil))
@@ -62,6 +64,9 @@ func TestLogHandlers_GetLogsElapsedMs(t *testing.T) {
 	}
 	if got["http://b.example"] != nil {
 		t.Errorf("elapsed_ms = %v; want null for a row without one", got["http://b.example"])
+	}
+	if v, ok := got["dns.example"]; !ok || v != nil {
+		t.Errorf("elapsed_ms = %v (present %v); want null for a DNS sinkhole row", v, ok)
 	}
 }
 

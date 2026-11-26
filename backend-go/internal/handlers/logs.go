@@ -165,9 +165,19 @@ func (l logRow) wire(src *InternalSources, gdpr bool) map[string]any {
 		// stores "" for a row without one.
 		"event_id": nullIfEmpty(l.eventID),
 		// How long Squid took over the request, in milliseconds; null for a
-		// row logged before it was recorded.
-		"elapsed_ms": nullInt(l.elapsedMs),
+		// row logged before it was recorded, and for a DNS sinkhole row.
+		"elapsed_ms": l.elapsedOnWire(),
 	}
+}
+
+// elapsedOnWire is elapsed_ms as GET /api/logs returns it. A DNS sinkhole
+// row (method DNS) never went through Squid: the DNS tailer stores 0 for it,
+// which is not a duration, so it goes out as null ("Not recorded").
+func (l logRow) elapsedOnWire() any {
+	if l.method.String == "DNS" {
+		return nil
+	}
+	return nullInt(l.elapsedMs)
 }
 
 func (h *LogHandlers) Stats(w http.ResponseWriter, r *http.Request) {
