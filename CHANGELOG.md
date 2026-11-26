@@ -15,6 +15,41 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.45.0] - 2026-11-26
+
+The access log shows how long each request took. No change is marked
+**BREAKING** and `X-API-Version` stays 1.
+
+**Upgrade notes.**
+- No migration: the duration is read from a column the access log already
+  stores. `spm`, `spm-mcp` and the web UI need no change.
+
+### Added
+
+- **The access log shows how long each request took** (#724, #738, by
+  @susheelg1197). `GET /api/logs` returns `elapsed_ms` on every row: how long
+  Squid took over the request, in milliseconds, or `null` for a DNS sinkhole
+  row and for a row logged before the duration was recorded. The Logs page
+  shows it in a Duration column, hidden on phones, and in the request detail,
+  where a tunnel's duration reads "Tunnel open for". The CSV export is
+  unchanged.
+
+### Changed
+
+- **CodeQL runs as a workflow in this repository instead of GitHub's default
+  setup** (#739). Default setup does not analyse pull requests from forks,
+  and main requires CodeQL results before a merge, so a contributor's pull
+  request could not be merged. The workflow analyses the same languages with
+  the same categories, on pull requests, on pushes to main and weekly.
+
+### Security
+
+- **The CI scan of third-party compose images ignores CVE-2026-124709 only
+  in `tailscale/tailscale:v1.104.7`** (#737), in its `libcrypto3` and
+  `libssl3` 3.5.9-r0, until 2026-12-26. The fix, 3.5.9-r2, waits for an
+  upstream rebuild; v1.104.7 is still the newest stable tag. A newer image or
+  another package version is scanned in full.
+
 ## [3.44.0] - 2026-11-25
 
 The access log separates requests that failed beyond the proxy from the
