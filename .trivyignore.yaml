@@ -118,3 +118,18 @@ vulnerabilities:
       - "usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64"
     statement: "Go stdlib < 1.26.11 / 1.27.4 in grafana/grafana:13.3.1 (grafana binary and 14 bundled datasource plugins), prom/prometheus:v3.16.0 (prometheus, promtool) and grafana/k6:2.4.0 (k6), the newest tags on Docker Hub on 2026-11-20; upstream rebuild required. Recorded 2026-11-20."
     expired_at: 2026-12-04
+
+  # CVE-2026-124709, OpenSSL: a memory leak in QUIC handling can exhaust
+  # memory; fixed in 3.5.9-r2. Recorded 2026-11-26 when the nightly CI scan of
+  # tailscale/tailscale:v1.104.7 (Alpine 3.22.8) found libcrypto3 and libssl3
+  # 3.5.9-r0. v1.104.7 (2026-11-12) is still the newest stable tag on Docker
+  # Hub; only unstable v1.105 builds are newer, and this project does not pin
+  # unstable images. The tailscale and tailscaled binaries scan clean. Scoped by
+  # purl to that exact build, so a newer image or another package version is
+  # scanned in full.
+  - id: CVE-2026-124709
+    purls:
+      - "pkg:apk/alpine/libcrypto3@3.5.9-r0?arch=x86_64&distro=3.22.8"
+      - "pkg:apk/alpine/libssl3@3.5.9-r0?arch=x86_64&distro=3.22.8"
+    statement: "libcrypto3/libssl3 3.5.9-r0 in tailscale/tailscale:v1.104.7 (Alpine 3.22.8), the newest stable tag on Docker Hub on 2026-11-26; fixed in 3.5.9-r2, pending an upstream rebuild. Recorded 2026-11-26."
+    expired_at: 2026-12-26
